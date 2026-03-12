@@ -1,0 +1,378 @@
+# ============================================================
+# nav2_monitor 故障检测配置
+# 基于实际系统节点/topic 信息 (2026-03-12)
+# ============================================================
+
+multi_value_judge:
+  trigger_count: 2
+  recover_count: 2
+
+# ============================================================
+# 底盘停留原地 / 反馈异常检测 (全局)
+# ============================================================
+chassis_stationary:
+  enabled: 1
+  module_name: "chassis_stationary"
+  command_topic: "/command"
+  moto_topic: "/moto_info"
+  odom_topic: "/odom_init"
+  source_timeout_s: 1.0
+  idle_timeout_s: 30.0
+  command_speed_threshold: 0.05
+  moto_speed_threshold: 0.05
+  odom_speed_threshold: 0.03
+  anomaly_level: "ERROR"
+  idle_level: "WARNING"
+  safety_system: 2
+  safety_slow_down_percentage: 50.0
+  anomaly_actions: ["safety_system", "supervisor"]
+  idle_actions: ["none"]
+
+# ============================================================
+# 模块定义
+# ============================================================
+modules:
+
+  # ----------------------------------------------------------
+  # 1. chassis_node — 底盘电机驱动
+  #    节点: /chassis_node
+  #    发布: /moto_info, /encoder_info, /is_emergency_stop
+  #    订阅: /command, /joy
+  # ----------------------------------------------------------
+  - name: "chassis_node"
+    supervisor: 1
+    safety_system: 2
+    nodes:
+      - "chassis_node"
+    topics:
+      - name: "/moto_info"
+        min_hz: 10.0
+      - name: "/encoder_info"
+        min_hz: 10.0
+
+  # ----------------------------------------------------------
+  # 2. chassid_odometry_node — 底盘里程计
+  #    节点: /odometry_node
+  #    发布: /odom_init, /odom_base, /odom_vel, /tf, /wheel_velocity
+  #    订阅: /moto_info, /is_emergency_stop
+  # ----------------------------------------------------------
+  - name: "chassid_odometry_node"
+    supervisor: 1
+    safety_system: 2
+    nodes:
+      - "odometry_node"
+    topics:
+      - name: "/odom_init"
+        min_hz: 10.0
+      - name: "/odom_base"
+        min_hz: 10.0
+
+  # ----------------------------------------------------------
+  # 3. battery_node — 电池状态
+  #    节点: /battery_node
+  #    发布: /battery_state
+  # ----------------------------------------------------------
+  - name: "battery_node"
+    supervisor: 0
+    safety_system: 2
+    nodes:
+      - "battery_node"
+    topics:
+      - name: "/battery_state"
+        min_hz: 0.01
+    feedback_topics:
+      - topic_name: "/battery_state"
+        metric_name: "voltage"
+        min_value: 20.0
+        level: "WARNING"
+        max_stale_s: 150.0
+        actions: ["supervisor"]
+      - topic_name: "/battery_state"
+        metric_name: "percentage"
+        min_value: 0.10
+        level: "ERROR"
+        max_stale_s: 150.0
+        actions: ["safety_system", "supervisor"]
+
+  # ----------------------------------------------------------
+  # 4. livox — 激光雷达驱动 (livox MID-360)
+  #    节点: /livox_lidar_publisher (livox_ros_driver2)
+  #    发布: /livox/lidar (CustomMsg), /livox/imu (Imu)
+  # ----------------------------------------------------------
+  - name: "livox"
+    supervisor: 1
+    safety_system: 2
+    nodes:
+      - "livox_lidar_publisher"
+    topics:
+      - name: "/livox/lidar"
+        min_hz: 5.0
+      - name: "/livox/imu"
+        min_hz: 150.0
+
+  # ----------------------------------------------------------
+  # 5. usb_cam — USB 摄像头
+  #    节点: /front_camera, /back_camera, /left_camera, /right_camera
+  #    发布: /front_camera/image_raw, /back_camera/image_raw,
+  #         /left_camera/image_raw, /right_camera/image_raw
+  # ----------------------------------------------------------
+  - name: "usb_cam"
+    supervisor: 0
+    safety_system: 0
+    nodes:
+      - "front_camera"
+      - "back_camera"
+      - "left_camera"
+      - "right_camera"
+    topics:
+      - name: "/front_camera/image_raw"
+        min_hz: 10.0
+      - name: "/back_camera/image_raw"
+        min_hz: 10.0
+      - name: "/left_camera/image_raw"
+        min_hz: 10.0
+      - name: "/right_camera/image_raw"
+        min_hz: 10.0
+
+  # ----------------------------------------------------------
+  # 6. rgbd_cam — RGBD 深度相机 (Orbbec)
+  #    节点: /camera/camera (orbbec_camera_node)
+  #    发布: /camera/color/image_raw, /camera/depth/image_raw
+  # ----------------------------------------------------------
+  - name: "rgbd_cam"
+    supervisor: 1
+    safety_system: 2
+    nodes:
+      - "camera/camera"
+    topics:
+      - name: "/camera/color/image_raw"
+        min_hz: 10.0
+      - name: "/camera/depth/image_raw"
+        min_hz: 10.0
+
+  # ----------------------------------------------------------
+  # 7. uitrasonic — 超声波传感器 (8路)
+  #    节点: /uss_driver_publisher
+  #    发布: /ultrasonic_1~8, /ultrasonic_eight_distance
+  #    订阅: /elevator_status, /odom
+  # ----------------------------------------------------------
+  - name: "uitrasonic"
+    supervisor: 1
+    safety_system: 0
+    nodes:
+      - "uss_driver_publisher"
+    topics:
+      - name: "/ultrasonic_1"
+        min_hz: 5.0
+      - name: "/ultrasonic_2"
+        min_hz: 5.0
+      - name: "/ultrasonic_4"
+        min_hz: 5.0
+      - name: "/ultrasonic_5"
+        min_hz: 5.0
+      - name: "/ultrasonic_7"
+        min_hz: 5.0
+      - name: "/ultrasonic_8"
+        min_hz: 5.0
+
+  # ----------------------------------------------------------
+  # 8. navigation — Nav2 导航核心 + 辅助
+  #    节点: controller_server, planner_server, bt_navigator,
+  #          behavior_server, smoother_server, velocity_smoother,
+  #          waypoint_follower, lifecycle_manager_navigation,
+  #          map_server, global_costmap, local_costmap
+  #    关键 topic:
+  #      /cmd_vel_nav (controller_server 发布)
+  #      /cmd_vel     (velocity_smoother, behavior_server 发布)
+  #      /plan        (planner_server 发布)
+  #      /map         (map_server 发布)
+  #      /global_costmap/costmap, /local_costmap/costmap
+  # ----------------------------------------------------------
+  - name: "navigation"
+    supervisor: 1
+    safety_system: 2
+    nodes:
+      - "controller_server"
+      - "planner_server"
+      - "bt_navigator"
+      - "behavior_server"
+      - "smoother_server"
+      - "velocity_smoother"
+      - "waypoint_follower"
+      - "lifecycle_manager_navigation"
+      - "map_server"
+      - "global_costmap/global_costmap"
+      - "local_costmap/local_costmap"
+    topics:
+      # - name: "/cmd_vel_nav"
+      #   min_hz: 5.0
+      - name: "/cmd_vel"
+        min_hz: 5.0
+      - name: "/plan"
+        min_hz: 0.5
+      - name: "/map"
+        min_hz: 0.01
+      - name: "/global_costmap/costmap"
+        min_hz: 0.5
+      - name: "/local_costmap/costmap"
+        min_hz: 2.0
+
+  # ----------------------------------------------------------
+  # 9. light-lm — FAST-LIO2 激光里程计/建图
+  #    节点: /lio_node (lifecycle)
+  #    发布: /fastlio2/body_cloud, /fastlio2/lio_odom, /fastlio2/lio_path
+  #    订阅: /livox/imu, /livox/lidar
+  # ----------------------------------------------------------
+  - name: "light-lm"
+    supervisor: 1
+    safety_system: 2
+    nodes: []
+      # - "lio_node"
+    topics: []
+      # - name: "/fastlio2/lio_odom"
+      #   min_hz: 5.0
+      # - name: "/fastlio2/body_cloud"
+      #   min_hz: 5.0
+
+  # ----------------------------------------------------------
+  # 10. localization_ekf — EKF 定位融合
+  #     节点: /ekf_filter_node (robot_localization)
+  #     发布: /odometry/filtered, /tf, /diagnostics
+  #     订阅: /cmd_vel, /livox/imu, /odom_init, /set_pose
+  # ----------------------------------------------------------
+  - name: "localization_ekf"
+    supervisor: 1
+    safety_system: 2
+    nodes:
+      - "ekf_filter_node"
+    topics:
+      - name: "/odometry/filtered"
+        min_hz: 10.0
+      # - name: "/tf"
+      #   min_hz: 10.0
+
+  # ----------------------------------------------------------
+  # 11. amcl — 全局重定位 (ICP localizer)
+  #     节点: /localizer_node (lifecycle)
+  #     发布: /map_cloud
+  #     订阅: /fastlio2/body_cloud, /fastlio2/lio_odom
+  # ----------------------------------------------------------
+  - name: "amcl"
+    supervisor: 1
+    safety_system: 2
+    nodes:
+      - "amcl"
+    topics: []
+
+  # ----------------------------------------------------------
+  # 12. pointcloud_to_laserscan — 点云转激光扫描
+  #     节点: /pointcloud_to_laserscan
+  #     发布: /scan (LaserScan)
+  #     订阅: cloud_in (PointCloud2)
+  # ----------------------------------------------------------
+  - name: "pointcloud_to_laserscan"
+    supervisor: 1
+    safety_system: 2
+    nodes:
+      - "pointcloud_to_laserscan"
+    topics:
+      - name: "/scan"
+        min_hz: 5.0
+
+  # ----------------------------------------------------------
+  # 13. elevator_server — 电梯呼叫服务
+  #     节点: /elevator_server (lifecycle)
+  #     服务: /elevator/call
+  # ----------------------------------------------------------
+  - name: "elevator_server"
+    supervisor: 1
+    safety_system: 0
+    nodes:
+      - "elevator_server"
+    topics: []
+
+  # ----------------------------------------------------------
+  # 14. elevator_state_detector — 电梯状态检测
+  #     节点: /elevator_state_detector
+  #     发布: /elevator_status
+  # ----------------------------------------------------------
+  - name: "elevator_state_detector"
+    supervisor: 1
+    safety_system: 2
+    nodes:
+      - "elevator_state_detector"
+    topics: []
+      # - name: "/elevator_status"
+      #   min_hz: 1.0
+
+  # ----------------------------------------------------------
+  # 15. rgbd_detect — RGBD 目标检测
+  #     节点: /object_detection_node
+  #     发布: /detected_objects_nav (Detection2DArray)
+  #           /detected_objects_pointcloud (PointCloud2)
+  #     订阅: /camera/color/image_raw, /camera/depth/image_raw
+  # ----------------------------------------------------------
+  - name: "rgbd_detect"
+    supervisor: 1
+    safety_system: 2
+    nodes:
+      - "object_detection_node"
+    topics: []
+      # - name: "/detected_objects_nav"
+      #   min_hz: 5.0
+      # - name: "/detected_objects_pointcloud"
+      #   min_hz: 5.0
+
+  # ----------------------------------------------------------
+  # 16. rgbd_post_process — RGBD 后处理 (点云过滤)
+  #     节点: /pointcloud_processor
+  #     发布: /filtered_pointcloud (PointCloud2)
+  #     订阅: /detected_objects_pointcloud
+  # ----------------------------------------------------------
+  - name: "rgbd_post_process"
+    supervisor: 1
+    safety_system: 0
+    nodes:
+      - "pointcloud_processor"
+    topics: []
+      # - name: "/filtered_pointcloud"
+      #   min_hz: 5.0
+
+  # ----------------------------------------------------------
+  # 17. task_execute_server — 任务执行服务
+  #     节点: /task_execute_server
+  #     订阅: /navigate_todoor/_action/feedback
+  # ----------------------------------------------------------
+  - name: "task_execute_server"
+    supervisor: 1
+    safety_system: 0
+    nodes:
+      - "task_execute_server"
+    topics: []
+
+  # ----------------------------------------------------------
+  # 18. navigation_todoor_server — 导航到门服务
+  #     节点: /navigate_todoor_server (lifecycle, master_SDK_server)
+  #     发布: /navigation_status
+  # ----------------------------------------------------------
+  - name: "navigation_todoor_server"
+    supervisor: 1
+    safety_system: 0
+    nodes:
+      - "navigate_todoor_server"
+    topics: []
+
+  # ----------------------------------------------------------
+  # 19. cmd_vel_to_command — 速度指令转底盘协议
+  #     节点: /cmd_vel_to_command_node (cmd_vel_transport)
+  #     发布: /command
+  #     订阅: /cmd_vel, /odom_base, /odom, /livox/imu
+  # ----------------------------------------------------------
+  - name: "cmd_vel_to_command"
+    supervisor: 1
+    safety_system: 2
+    nodes:
+      - "cmd_vel_to_command_node"
+    topics: []
+      # - name: "/command"
+      #   min_hz: 5.0
