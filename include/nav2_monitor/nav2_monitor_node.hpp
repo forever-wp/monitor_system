@@ -8,6 +8,9 @@
 #include <std_msgs/msg/string.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <sensor_msgs/msg/battery_state.hpp>
+#include <sensor_msgs/msg/laser_scan.hpp>
+#include <sensor_msgs/msg/point_cloud2.hpp>
+#include <geometry_msgs/msg/polygon_stamped.hpp>
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
 #include <map>
@@ -16,6 +19,7 @@
 #include <mutex>
 #include <deque>
 #include "nav2_monitor/system_monitor.hpp"
+#include "nav2_monitor/monitor_data_store.hpp"
 #include "nav2_monitor/fault_detector.hpp"
 #include "nav2_monitor/fault_state_coordinator.hpp"
 #include "nav2_monitor/vehicle_status_monitor.hpp"
@@ -28,15 +32,6 @@ namespace nav2_monitor
 struct TopicInfo
 {
   std::string type;
-  std::string publisher_node;
-  rclcpp::Time last_seen;
-  bool has_publisher;
-  std::deque<rclcpp::Time> msg_times;
-  double frequency;
-  bool has_valid_data;
-  size_t empty_msg_count;
-  //   std::deque<double> latencies_ms;
-  //   double avg_latency_ms;
 };
 
 struct TransformInfo
@@ -57,12 +52,15 @@ private:
   void on_command(const std_msgs::msg::String::SharedPtr msg);
   void on_odom(const nav_msgs::msg::Odometry::SharedPtr msg);
   void on_battery_state(const sensor_msgs::msg::BatteryState::SharedPtr msg);
+  void on_collision_scan(const sensor_msgs::msg::LaserScan::SharedPtr msg);
+  void on_collision_pointcloud(const sensor_msgs::msg::PointCloud2::SharedPtr msg);
   void try_subscribe_moto_topic();
   double parse_command_speed(const std::string & payload) const;
   bool decode_moto_info(const rclcpp::SerializedMessage & msg, double & left_speed, double & right_speed) const;
   bool should_publish_action(const std::string & module_name, ActionType action, const rclcpp::Time & now);
   rcl_interfaces::msg::SetParametersResult on_parameter_change(const std::vector<rclcpp::Parameter>& params);
-  void subscribe_topics();
+  void subscribe_watch_topics();
+  void publish_collision_zones();
 
   rclcpp::TimerBase::SharedPtr scan_timer_;
   rclcpp::TimerBase::SharedPtr check_timer_;
@@ -72,15 +70,17 @@ private:
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr command_sub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
   rclcpp::Subscription<sensor_msgs::msg::BatteryState>::SharedPtr battery_sub_;
+  rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr collision_scan_sub_;
+  rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr collision_pointcloud_sub_;
+  std::map<std::string, rclcpp::Publisher<geometry_msgs::msg::PolygonStamped>::SharedPtr> collision_zone_pubs_;
   rclcpp::GenericSubscription::SharedPtr moto_sub_;
 
   std::mutex mtx_;
   std::vector<std::string> target_nodes_;
-  std::vector<std::string> target_topics_;
+  std::vector<std::string> watch_topics_;
   std::vector<std::string> fallback_target_nodes_;
-  std::vector<std::string> fallback_target_topics_;
+  std::vector<std::string> fallback_watch_topics_;
   bool monitor_targets_from_fault_config_{false};
-  std::map<std::string, rclcpp::Time> node_last_seen_;
   std::map<std::string, TopicInfo> topic_info_;
   std::map<std::string, rclcpp::GenericSubscription::SharedPtr> topic_subs_;
 
@@ -95,19 +95,14 @@ private:
   double supervisor_cooldown_s_;
   std::string algorithm_feedback_topic_;
   std::string battery_state_topic_;
+  std::string base_frame_id_{"base_link"};
   std::string command_topic_;
   std::string moto_topic_;
   std::string odom_topic_;
   std::string moto_topic_type_;
   double battery_state_timeout_s_{5.0};
-  struct BatteryStateCache
-  {
-    bool has_data{false};
-    rclcpp::Time last_seen;
-    float temperature{0.0F};
-    float percentage{0.0F};
-  } battery_state_;
   SystemMonitor sys_monitor_;
+  MonitorDataStore data_store_;
   FaultDetector fault_detector_;
   FaultStateCoordinator fault_state_coordinator_;
   std::unique_ptr<VehicleStatusMonitor> vehicle_monitor_;

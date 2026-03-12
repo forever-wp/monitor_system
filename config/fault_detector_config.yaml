@@ -8,6 +8,49 @@ multi_value_judge:
   recover_count: 2
 
 # ============================================================
+# 碰撞检测（轻量版 LaserScan + 区域）
+# ============================================================
+collision_detection:
+  enabled: 0
+  module_name: "collision_detection"
+  scan_topic: "/scan"
+  pointcloud_topic: "/livox/points"
+  pointcloud_min_height: 0.0
+  pointcloud_max_height: 1.5
+  source_timeout_s: 0.5
+  zones:
+    - name: "front_approach"
+      enabled: 1
+      model: "approach"
+      points: [1.2, 0.45, 1.2, -0.45, 0.2, -0.45, 0.2, 0.45]
+      level: "WARNING"
+      safety_system: 1
+      safety_slow_down_percentage: 50.0
+      time_before_collision: 1.0
+      actions: ["safety_system"]
+      visualize: 1
+      polygon_pub_topic: "/nav2_monitor/collision_zone/front_approach"
+    - name: "front_slow"
+      enabled: 1
+      points: [0.8, 0.35, 0.8, -0.35, 0.2, -0.35, 0.2, 0.35]
+      min_points: 3
+      level: "ERROR"
+      safety_system: 1
+      safety_slow_down_percentage: 30.0
+      actions: ["safety_system"]
+      visualize: 1
+      polygon_pub_topic: "/nav2_monitor/collision_zone/front_slow"
+    - name: "front_stop"
+      enabled: 1
+      points: [0.5, 0.25, 0.5, -0.25, 0.0, -0.25, 0.0, 0.25]
+      min_points: 3
+      level: "CRITICAL"
+      safety_system: 2
+      actions: ["safety_system"]
+      visualize: 1
+      polygon_pub_topic: "/nav2_monitor/collision_zone/front_stop"
+
+# ============================================================
 # 底盘停留原地 / 反馈异常检测 (全局)
 # ============================================================
 chassis_stationary:
@@ -44,7 +87,7 @@ modules:
     safety_system: 2
     nodes:
       - "chassis_node"
-    topics:
+    watch_topics:
       - name: "/moto_info"
         min_hz: 10.0
       - name: "/encoder_info"
@@ -61,7 +104,7 @@ modules:
     safety_system: 2
     nodes:
       - "odometry_node"
-    topics:
+    watch_topics:
       - name: "/odom_init"
         min_hz: 10.0
       - name: "/odom_base"
@@ -77,17 +120,17 @@ modules:
     safety_system: 2
     nodes:
       - "battery_node"
-    topics:
+    watch_topics:
       - name: "/battery_state"
         min_hz: 0.01
-    feedback_topics:
-      - topic_name: "/battery_state"
+    feedback_rules:
+      - source_topic: "/battery_state"
         metric_name: "voltage"
         min_value: 20.0
         level: "WARNING"
         max_stale_s: 150.0
         actions: ["supervisor"]
-      - topic_name: "/battery_state"
+      - source_topic: "/battery_state"
         metric_name: "percentage"
         min_value: 0.10
         level: "ERROR"
@@ -104,7 +147,7 @@ modules:
     safety_system: 2
     nodes:
       - "livox_lidar_publisher"
-    topics:
+    watch_topics:
       - name: "/livox/lidar"
         min_hz: 5.0
       - name: "/livox/imu"
@@ -124,7 +167,7 @@ modules:
       - "back_camera"
       - "left_camera"
       - "right_camera"
-    topics:
+    watch_topics:
       - name: "/front_camera/image_raw"
         min_hz: 10.0
       - name: "/back_camera/image_raw"
@@ -144,7 +187,7 @@ modules:
     safety_system: 2
     nodes:
       - "camera/camera"
-    topics:
+    watch_topics:
       - name: "/camera/color/image_raw"
         min_hz: 10.0
       - name: "/camera/depth/image_raw"
@@ -161,7 +204,7 @@ modules:
     safety_system: 0
     nodes:
       - "uss_driver_publisher"
-    topics:
+    watch_topics:
       - name: "/ultrasonic_1"
         min_hz: 5.0
       - name: "/ultrasonic_2"
@@ -203,11 +246,11 @@ modules:
       - "map_server"
       - "global_costmap/global_costmap"
       - "local_costmap/local_costmap"
-    topics:
+    watch_topics:
       # - name: "/cmd_vel_nav"
       #   min_hz: 5.0
-      - name: "/cmd_vel"
-        min_hz: 5.0
+      # - name: "/cmd_vel"
+      #   min_hz: 5.0
       - name: "/plan"
         min_hz: 0.5
       - name: "/map"
@@ -228,7 +271,7 @@ modules:
     safety_system: 2
     nodes: []
       # - "lio_node"
-    topics: []
+    watch_topics: []
       # - name: "/fastlio2/lio_odom"
       #   min_hz: 5.0
       # - name: "/fastlio2/body_cloud"
@@ -245,7 +288,7 @@ modules:
     safety_system: 2
     nodes:
       - "ekf_filter_node"
-    topics:
+    watch_topics:
       - name: "/odometry/filtered"
         min_hz: 10.0
       # - name: "/tf"
@@ -262,7 +305,7 @@ modules:
     safety_system: 2
     nodes:
       - "amcl"
-    topics: []
+    watch_topics: []
 
   # ----------------------------------------------------------
   # 12. pointcloud_to_laserscan — 点云转激光扫描
@@ -275,7 +318,7 @@ modules:
     safety_system: 2
     nodes:
       - "pointcloud_to_laserscan"
-    topics:
+    watch_topics:
       - name: "/scan"
         min_hz: 5.0
 
@@ -289,7 +332,7 @@ modules:
     safety_system: 0
     nodes:
       - "elevator_server"
-    topics: []
+    watch_topics: []
 
   # ----------------------------------------------------------
   # 14. elevator_state_detector — 电梯状态检测
@@ -301,7 +344,7 @@ modules:
     safety_system: 2
     nodes:
       - "elevator_state_detector"
-    topics: []
+    watch_topics: []
       # - name: "/elevator_status"
       #   min_hz: 1.0
 
@@ -317,7 +360,7 @@ modules:
     safety_system: 2
     nodes:
       - "object_detection_node"
-    topics: []
+    watch_topics: []
       # - name: "/detected_objects_nav"
       #   min_hz: 5.0
       # - name: "/detected_objects_pointcloud"
@@ -334,7 +377,7 @@ modules:
     safety_system: 0
     nodes:
       - "pointcloud_processor"
-    topics: []
+    watch_topics: []
       # - name: "/filtered_pointcloud"
       #   min_hz: 5.0
 
@@ -348,7 +391,7 @@ modules:
     safety_system: 0
     nodes:
       - "task_execute_server"
-    topics: []
+    watch_topics: []
 
   # ----------------------------------------------------------
   # 18. navigation_todoor_server — 导航到门服务
@@ -360,7 +403,7 @@ modules:
     safety_system: 0
     nodes:
       - "navigate_todoor_server"
-    topics: []
+    watch_topics: []
 
   # ----------------------------------------------------------
   # 19. cmd_vel_to_command — 速度指令转底盘协议
@@ -373,6 +416,6 @@ modules:
     safety_system: 2
     nodes:
       - "cmd_vel_to_command_node"
-    topics: []
+    watch_topics: []
       # - name: "/command"
       #   min_hz: 5.0
