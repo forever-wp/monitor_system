@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>safety_emergency_executor</name>
+  <version>0.1.0</version>
+  <description>Emergency action executor extracted from safety state machine, controlled by /safety_system/cmd.</description>
+  <maintainer email="2996199463@qq.com">tokou</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>std_msgs</depend>
+  <depend>nav2_monitor</depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
