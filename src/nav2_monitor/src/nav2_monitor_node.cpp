@@ -16,6 +16,12 @@
 #include <ament_index_cpp/get_package_share_directory.hpp>
 #include <rclcpp/serialized_message.hpp>
 #include <tf2/exceptions.h>
+#include <tf2/LinearMath/Quaternion.h>
+#include <tf2/LinearMath/Vector3.h>
+#include <tf2/LinearMath/Transform.h>
+#include <sensor_msgs/point_cloud2_iterator.hpp>
+#include <tf2/LinearMath/Matrix3x3.h>
+#include <limits>
 
 namespace nav2_monitor
 {
@@ -131,13 +137,14 @@ Nav2MonitorNode::Nav2MonitorNode()
     "battery_state_topic", "/battery_state");
   battery_state_timeout_s_ = std::max(
     1.0, this->declare_parameter<double>("battery_state_timeout_s", 90.0));
+  base_frame_id_ = this->declare_parameter<std::string>("base_frame_id", "base_link");
 
   fallback_target_nodes_ = this->declare_parameter<std::vector<std::string>>(
     "target_nodes", std::vector<std::string>{});
-  fallback_target_topics_ = this->declare_parameter<std::vector<std::string>>(
-    "target_topics", std::vector<std::string>{});
+  fallback_watch_topics_ = this->declare_parameter<std::vector<std::string>>(
+    "watch_topics", std::vector<std::string>{});
   target_nodes_ = fallback_target_nodes_;
-  target_topics_ = fallback_target_topics_;
+  watch_topics_ = fallback_watch_topics_;
 
   auto tf_strs = this->declare_parameter<std::vector<std::string>>(
     "target_transforms", std::vector<std::string>{});
@@ -173,7 +180,7 @@ Nav2MonitorNode::Nav2MonitorNode()
     if (!config_stream.good()) {
       RCLCPP_ERROR(
         get_logger(),
-        "fault_config not readable: %s (resolved: %s), fallback to target_nodes/target_topics",
+        "fault_config not readable: %s (resolved: %s), fallback to target_nodes/watch_topics",
         config_file.c_str(), resolved_config_file.c_str());
     } else {
       fault_detector_.load_config(resolved_config_file);
@@ -181,16 +188,16 @@ Nav2MonitorNode::Nav2MonitorNode()
   }
   if (fault_detector_.has_module_configs()) {
     target_nodes_ = fault_detector_.get_monitored_nodes();
-    target_topics_ = fault_detector_.get_monitored_topics();
+    watch_topics_ = fault_detector_.get_watched_topics();
     monitor_targets_from_fault_config_ = true;
     RCLCPP_INFO(
       get_logger(), "Monitor targets loaded from fault_config modules: %zu nodes, %zu topics",
-      target_nodes_.size(), target_topics_.size());
+      target_nodes_.size(), watch_topics_.size());
   } else {
     monitor_targets_from_fault_config_ = false;
     RCLCPP_INFO(
       get_logger(),
-      "fault_config missing/empty modules, fallback to target_nodes/target_topics params");
+      "fault_config missing/empty modules, fallback to target_nodes/watch_topics params");
   }
 
   if (fault_detector_.chassis_stationary_enabled()) {
@@ -216,6 +223,32 @@ Nav2MonitorNode::Nav2MonitorNode()
   battery_sub_ = this->create_subscription<sensor_msgs::msg::BatteryState>(
     battery_state_topic_, rclcpp::SensorDataQoS(),
     std::bind(&Nav2MonitorNode::on_battery_state, this, std::placeholders::_1));
+
+  if (fault_detector_.collision_detection_enabled()) {
+    const auto & cfg = fault_detector_.get_collision_detection_config();
+    if (!cfg.scan_topic.empty()) {
+      collision_scan_sub_ = this->create_subscription<sensor_msgs::msg::LaserScan>(
+        cfg.scan_topic, rclcpp::SensorDataQoS(),
+        std::bind(&Nav2MonitorNode::on_collision_scan, this, std::placeholders::_1));
+    }
+    if (!cfg.pointcloud_topic.empty()) {
+      collision_pointcloud_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
+        cfg.pointcloud_topic, rclcpp::SensorDataQoS(),
+        std::bind(&Nav2MonitorNode::on_collision_pointcloud, this, std::placeholders::_1));
+    }
+    for (const auto & zone : cfg.zones) {
+      if (!zone.visualize || zone.points.size() < 3) {
+        continue;
+      }
+      auto qos = rclcpp::QoS(1).transient_local().reliable();
+      collision_zone_pubs_[zone.name] = this->create_publisher<geometry_msgs::msg::PolygonStamped>(
+        zone.polygon_pub_topic, qos);
+    }
+    publish_collision_zones();
+    RCLCPP_INFO(
+      get_logger(), "Collision detection enabled: scan=%s pointcloud=%s",
+      cfg.scan_topic.c_str(), cfg.pointcloud_topic.c_str());
+  }
 
   std::string vehicle_status_file = this->declare_parameter<std::string>(
     "vehicle_status_file", "/home/ry/.ros/navigate_status/navigate_todoor_status.json");
@@ -293,7 +326,7 @@ void Nav2MonitorNode::on_command(const std_msgs::msg::String::SharedPtr msg)
   const double speed = parse_command_speed(msg->data);
   const auto now = this->now();
   std::lock_guard<std::mutex> lock(mtx_);
-  fault_detector_.update_command_speed(speed, now);
+  data_store_.set_command_speed(speed, now);
 }
 
 void Nav2MonitorNode::on_odom(const nav_msgs::msg::Odometry::SharedPtr msg)
@@ -303,7 +336,7 @@ void Nav2MonitorNode::on_odom(const nav_msgs::msg::Odometry::SharedPtr msg)
   const auto stamp = (msg->header.stamp.sec != 0 || msg->header.stamp.nanosec != 0) ?
     rclcpp::Time(msg->header.stamp) : this->now();
   std::lock_guard<std::mutex> lock(mtx_);
-  fault_detector_.update_odom_speed(speed, stamp);
+  data_store_.set_odom_speed(speed, stamp);
 }
 
 void Nav2MonitorNode::on_battery_state(const sensor_msgs::msg::BatteryState::SharedPtr msg)
@@ -311,10 +344,117 @@ void Nav2MonitorNode::on_battery_state(const sensor_msgs::msg::BatteryState::Sha
   const auto has_stamp = (msg->header.stamp.sec != 0) || (msg->header.stamp.nanosec != 0);
   const auto stamp = has_stamp ? rclcpp::Time(msg->header.stamp) : this->now();
   std::lock_guard<std::mutex> lock(mtx_);
-  battery_state_.has_data = true;
-  battery_state_.last_seen = stamp;
-  battery_state_.temperature = msg->temperature;
-  battery_state_.percentage = msg->percentage;
+  data_store_.set_battery_state(msg->temperature, msg->percentage, stamp);
+}
+
+void Nav2MonitorNode::on_collision_scan(const sensor_msgs::msg::LaserScan::SharedPtr msg)
+{
+  std::vector<CollisionPoint> points;
+  points.reserve(msg->ranges.size());
+
+  double tx = 0.0;
+  double ty = 0.0;
+  double yaw = 0.0;
+  bool have_tf = msg->header.frame_id.empty() || msg->header.frame_id == base_frame_id_;
+  if (!have_tf) {
+    try {
+      auto tf = tf_buffer_->lookupTransform(base_frame_id_, msg->header.frame_id, tf2::TimePointZero);
+      tx = tf.transform.translation.x;
+      ty = tf.transform.translation.y;
+      tf2::Quaternion q(
+        tf.transform.rotation.x, tf.transform.rotation.y,
+        tf.transform.rotation.z, tf.transform.rotation.w);
+      double roll = 0.0;
+      double pitch = 0.0;
+      tf2::Matrix3x3(q).getRPY(roll, pitch, yaw);
+      have_tf = true;
+    } catch (const std::exception & e) {
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 5000,
+        "Collision scan transform failed: %s", e.what());
+      return;
+    }
+  }
+
+  double angle = msg->angle_min;
+  const double cos_yaw = std::cos(yaw);
+  const double sin_yaw = std::sin(yaw);
+  for (const auto range : msg->ranges) {
+    if (!std::isfinite(range) || range < msg->range_min || range > msg->range_max) {
+      angle += msg->angle_increment;
+      continue;
+    }
+
+    const double sx = range * std::cos(angle);
+    const double sy = range * std::sin(angle);
+    CollisionPoint point;
+    if (have_tf && msg->header.frame_id != base_frame_id_) {
+      point.x = cos_yaw * sx - sin_yaw * sy + tx;
+      point.y = sin_yaw * sx + cos_yaw * sy + ty;
+    } else {
+      point.x = sx;
+      point.y = sy;
+    }
+    points.push_back(point);
+    angle += msg->angle_increment;
+  }
+
+  const auto stamp = (msg->header.stamp.sec != 0 || msg->header.stamp.nanosec != 0) ?
+    rclcpp::Time(msg->header.stamp) : this->now();
+  std::lock_guard<std::mutex> lock(mtx_);
+  data_store_.set_collision_points("scan", points, stamp);
+}
+
+void Nav2MonitorNode::on_collision_pointcloud(const sensor_msgs::msg::PointCloud2::SharedPtr msg)
+{
+  const auto & cfg = fault_detector_.get_collision_detection_config();
+  std::vector<CollisionPoint> points;
+  points.reserve(msg->width * msg->height);
+
+  tf2::Transform transform;
+  bool have_tf = msg->header.frame_id.empty() || msg->header.frame_id == base_frame_id_;
+  if (!have_tf) {
+    try {
+      auto tf = tf_buffer_->lookupTransform(base_frame_id_, msg->header.frame_id, tf2::TimePointZero);
+      tf2::Quaternion q(
+        tf.transform.rotation.x, tf.transform.rotation.y,
+        tf.transform.rotation.z, tf.transform.rotation.w);
+      transform.setOrigin(tf2::Vector3(
+        tf.transform.translation.x, tf.transform.translation.y, tf.transform.translation.z));
+      transform.setRotation(q);
+      have_tf = true;
+    } catch (const std::exception & e) {
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 5000,
+        "Collision pointcloud transform failed: %s", e.what());
+      return;
+    }
+  }
+
+  sensor_msgs::PointCloud2ConstIterator<float> iter_x(*msg, "x");
+  sensor_msgs::PointCloud2ConstIterator<float> iter_y(*msg, "y");
+  sensor_msgs::PointCloud2ConstIterator<float> iter_z(*msg, "z");
+  for (; iter_x != iter_x.end(); ++iter_x, ++iter_y, ++iter_z) {
+    if (!std::isfinite(*iter_x) || !std::isfinite(*iter_y) || !std::isfinite(*iter_z)) {
+      continue;
+    }
+
+    tf2::Vector3 point_xyz(*iter_x, *iter_y, *iter_z);
+    if (have_tf && msg->header.frame_id != base_frame_id_) {
+      point_xyz = transform * point_xyz;
+    }
+
+    if (point_xyz.z() < cfg.pointcloud_min_height || point_xyz.z() > cfg.pointcloud_max_height) {
+      continue;
+    }
+
+    points.push_back(CollisionPoint{point_xyz.x(), point_xyz.y()});
+  }
+
+  const auto stamp = (msg->header.stamp.sec != 0 || msg->header.stamp.nanosec != 0) ?
+    rclcpp::Time(msg->header.stamp) : this->now();
+  std::lock_guard<std::mutex> lock(mtx_);
+  data_store_.set_collision_points("pointcloud", points, stamp);
 }
 
 void Nav2MonitorNode::try_subscribe_moto_topic()
@@ -339,7 +479,7 @@ void Nav2MonitorNode::try_subscribe_moto_topic()
       const auto now = this->now();
       {
         std::lock_guard<std::mutex> lock(mtx_);
-        fault_detector_.update_moto_speed(left_speed, right_speed, now, ok);
+        data_store_.set_moto_speed(left_speed, right_speed, ok, now);
       }
       if (!ok) {
         RCLCPP_WARN_THROTTLE(
@@ -359,7 +499,7 @@ void Nav2MonitorNode::on_algorithm_feedback(const msg::AlgorithmFeedback::Shared
   const bool has_stamp = (msg->stamp.sec != 0) || (msg->stamp.nanosec != 0);
   rclcpp::Time stamp = has_stamp ? rclcpp::Time(msg->stamp) : this->now();
   std::lock_guard<std::mutex> lock(mtx_);
-  fault_detector_.update_feedback_sample(
+  data_store_.add_feedback_sample(
     msg->module_name, msg->topic_name, msg->metric_name, msg->value, msg->valid, stamp);
 }
 
@@ -383,10 +523,10 @@ bool Nav2MonitorNode::should_publish_action(
   return true;
 }
 
-void Nav2MonitorNode::subscribe_topics()
+void Nav2MonitorNode::subscribe_watch_topics()
 {
   auto topics = this->get_topic_names_and_types();
-  for (const auto & topic : target_topics_) {
+  for (const auto & topic : watch_topics_) {
     if (topic_subs_.count(topic) || !topics.count(topic) || topics[topic].empty()) {
       continue;
     }
@@ -394,12 +534,7 @@ void Nav2MonitorNode::subscribe_topics()
     std::string type = topics[topic][0];
     {
       std::lock_guard<std::mutex> lock(mtx_);
-      auto & info = topic_info_[topic];
-      info.type = type;
-      info.has_publisher = this->count_publishers(topic) > 0;
-      info.frequency = 0.0;
-      info.has_valid_data = false;
-      info.empty_msg_count = 0;
+      topic_info_[topic].type = type;
     }
 
     auto sub = this->create_generic_subscription(
@@ -407,29 +542,18 @@ void Nav2MonitorNode::subscribe_topics()
       [this, topic](std::shared_ptr<rclcpp::SerializedMessage> msg) {
         if (msg->size() == 0) {
           std::lock_guard<std::mutex> lock(mtx_);
-          topic_info_[topic].empty_msg_count++;
+          data_store_.add_watch_topic_sample(topic, this->now(), false);
+          const auto * state = data_store_.get_watch_topic_state(topic);
+          const size_t empty_count = state == nullptr ? 0U : state->empty_msg_count;
           RCLCPP_WARN_THROTTLE(
             get_logger(), *get_clock(), 5000,
-            "Topic '%s' empty msg (count: %zu)", topic.c_str(), topic_info_[topic].empty_msg_count);
+            "Topic '%s' empty msg (count: %zu)", topic.c_str(), empty_count);
           return;
         }
 
         auto now = this->now();
         std::lock_guard<std::mutex> lock(mtx_);
-        auto & info = topic_info_[topic];
-        info.has_valid_data = true;
-        info.last_seen = now;
-        info.msg_times.push_back(now);
-        if (info.msg_times.size() > 10) {
-          info.msg_times.pop_front();
-        }
-
-        if (info.msg_times.size() >= 2) {
-          double dt = (info.msg_times.back() - info.msg_times.front()).seconds();
-          if (dt > 0.0) {
-            info.frequency = (info.msg_times.size() - 1) / dt;
-          }
-        }
+        data_store_.add_watch_topic_sample(topic, now, true);
       });
     topic_subs_[topic] = sub;
   }
@@ -484,11 +608,11 @@ void Nav2MonitorNode::scan_topology()
         graph_node_names.count(normalized_target) > 0 ||
         graph_node_names.count(basename_target) > 0)
       {
-        node_last_seen_[node] = now;
+        data_store_.mark_node_seen(node, now);
       }
     }
-    for (const auto & topic : target_topics_) {
-      topic_info_[topic].has_publisher = this->count_publishers(topic) > 0;
+    for (const auto & topic : watch_topics_) {
+      data_store_.set_watch_topic_publisher(topic, this->count_publishers(topic) > 0);
     }
   }
 
@@ -502,7 +626,7 @@ void Nav2MonitorNode::scan_topology()
     }
   }
 
-  subscribe_topics();
+  subscribe_watch_topics();
   try_subscribe_moto_topic();
 }
 
@@ -522,10 +646,10 @@ void Nav2MonitorNode::check_health()
     std::lock_guard<std::mutex> lock(mtx_);
     status_msg.all_ok = true;
     status_msg.monitored_nodes = target_nodes_;
-    status_msg.monitored_topics = target_topics_;
+    status_msg.monitored_topics = watch_topics_;
 
     for (const auto & node : target_nodes_) {
-      if (node_last_seen_.count(node) && (now - node_last_seen_[node]).seconds() <= timeout_) {
+      if (data_store_.is_node_active(node, now, timeout_)) {
         status_msg.active_nodes.push_back(node);
       } else {
         status_msg.timeout_nodes.push_back(node);
@@ -533,17 +657,11 @@ void Nav2MonitorNode::check_health()
       }
     }
 
-    for (const auto & topic : target_topics_) {
-      if (topic_info_.count(topic)) {
-        auto & info = topic_info_[topic];
-        if (info.has_publisher && info.has_valid_data) {
-          status_msg.active_topics.push_back(topic);
-          status_msg.topic_frequencies.push_back(info.frequency);
-        } else {
-          status_msg.inactive_topics.push_back(topic);
-          status_msg.topic_frequencies.push_back(0.0);
-          status_msg.all_ok = false;
-        }
+    for (const auto & topic : watch_topics_) {
+      const auto * info = data_store_.get_watch_topic_state(topic);
+      if (info != nullptr && info->has_publisher && info->has_valid_data) {
+        status_msg.active_topics.push_back(topic);
+        status_msg.topic_frequencies.push_back(static_cast<float>(info->frequency));
       } else {
         status_msg.inactive_topics.push_back(topic);
         status_msg.topic_frequencies.push_back(0.0);
@@ -579,28 +697,16 @@ void Nav2MonitorNode::check_health()
     status_msg.vehicle_simple_status = vehicle_status.simple_status;
     status_msg.vehicle_error_message = vehicle_status.error_message;
 
+    const auto & battery_state = data_store_.get_battery_state();
     if (
-      battery_state_.has_data &&
-      (now - battery_state_.last_seen).seconds() <= battery_state_timeout_s_)
+      battery_state.has_data &&
+      (now - battery_state.last_seen).seconds() <= battery_state_timeout_s_)
     {
-      status_msg.battery_temperature = battery_state_.temperature;
-      status_msg.battery_percentage = battery_state_.percentage;
+      status_msg.battery_temperature = battery_state.temperature;
+      status_msg.battery_percentage = battery_state.percentage;
     }
 
-    std::map<std::string, bool> node_active;
-    for (const auto & node : target_nodes_) {
-      node_active[node] = node_last_seen_.count(node) && (now - node_last_seen_[node]).seconds() <= timeout_;
-    }
-
-    std::map<std::string, double> topic_freq;
-    for (const auto & topic : target_topics_) {
-      topic_freq[topic] = topic_info_.count(topic) ? topic_info_[topic].frequency : 0.0;
-    }
-
-    fault_detector_.update_node_status(node_active);
-    fault_detector_.update_topic_freq(topic_freq);
-
-    faults = fault_detector_.detect_faults();
+    faults = fault_detector_.detect_faults(data_store_, now);
     for (const auto & fault : faults) {
       if (fault.action == ActionType::SUPERVISOR && should_publish_action(fault.module_name, fault.action, now)) {
         pending_faults.push_back(fault);
@@ -613,6 +719,7 @@ void Nav2MonitorNode::check_health()
   safety_update = std::move(state_update.safety_update);
 
   pub_->publish(status_msg);
+  publish_collision_zones();
 
   if (safety_update.has_value()) {
     if (!safety_update->active) {
@@ -649,6 +756,38 @@ void Nav2MonitorNode::check_health()
   }
 }
 
+void Nav2MonitorNode::publish_collision_zones()
+{
+  if (!fault_detector_.collision_detection_enabled()) {
+    return;
+  }
+
+  const auto & cfg = fault_detector_.get_collision_detection_config();
+  for (const auto & zone : cfg.zones) {
+    if (!zone.visualize || zone.points.size() < 3) {
+      continue;
+    }
+
+    const auto pub_it = collision_zone_pubs_.find(zone.name);
+    if (pub_it == collision_zone_pubs_.end()) {
+      continue;
+    }
+
+    geometry_msgs::msg::PolygonStamped polygon_msg;
+    polygon_msg.header.stamp = now();
+    polygon_msg.header.frame_id = base_frame_id_;
+    polygon_msg.polygon.points.reserve(zone.points.size());
+    for (const auto & point : zone.points) {
+      geometry_msgs::msg::Point32 p;
+      p.x = static_cast<float>(point.x);
+      p.y = static_cast<float>(point.y);
+      p.z = 0.0F;
+      polygon_msg.polygon.points.push_back(p);
+    }
+    pub_it->second->publish(polygon_msg);
+  }
+}
+
 rcl_interfaces::msg::SetParametersResult Nav2MonitorNode::on_parameter_change(
   const std::vector<rclcpp::Parameter> & params)
 {
@@ -665,13 +804,13 @@ rcl_interfaces::msg::SetParametersResult Nav2MonitorNode::on_parameter_change(
         target_nodes_ = fallback_target_nodes_;
         RCLCPP_INFO(get_logger(), "Updated target_nodes: %zu nodes", target_nodes_.size());
       }
-    } else if (param.get_name() == "target_topics") {
-      fallback_target_topics_ = param.as_string_array();
+    } else if (param.get_name() == "watch_topics") {
+      fallback_watch_topics_ = param.as_string_array();
       if (monitor_targets_from_fault_config_) {
-        RCLCPP_WARN(get_logger(), "Ignore target_topics update: monitor targets are from fault_config modules");
+        RCLCPP_WARN(get_logger(), "Ignore watch_topics update: monitor targets are from fault_config modules");
       } else {
-        target_topics_ = fallback_target_topics_;
-        RCLCPP_INFO(get_logger(), "Updated target_topics: %zu topics", target_topics_.size());
+        watch_topics_ = fallback_watch_topics_;
+        RCLCPP_INFO(get_logger(), "Updated watch_topics: %zu topics", watch_topics_.size());
       }
     } else if (param.get_name() == "target_transforms") {
       target_transforms_.clear();

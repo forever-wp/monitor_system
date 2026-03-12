@@ -55,7 +55,7 @@ nav2_monitor:
     #   # 指令转换
     #   - "cmd_vel_to_command_node"
 
-    # target_topics:
+    # watch_topics:
     #   # 底盘
     #   - "/moto_info"
     #   - "/encoder_info"

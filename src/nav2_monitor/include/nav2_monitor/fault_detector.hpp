@@ -1,14 +1,22 @@
 #ifndef NAV2_MONITOR__FAULT_DETECTOR_HPP_
 #define NAV2_MONITOR__FAULT_DETECTOR_HPP_
 
-#include <rclcpp/rclcpp.hpp>
-#include <deque>
-#include <string>
 #include <map>
+#include <memory>
+#include <string>
 #include <vector>
+
+#include <rclcpp/rclcpp.hpp>
+
+#include "nav2_monitor/monitor_data_store.hpp"
 
 namespace nav2_monitor
 {
+
+class WatchTopicEvaluator;
+class FeedbackRuleEvaluator;
+class ChassisEvaluator;
+class CollisionEvaluator;
 
 enum class FaultLevel
 {
@@ -21,8 +29,8 @@ enum class FaultLevel
 enum class ActionType
 {
   NONE = 0,
-  SUPERVISOR = 1,      // 软重启
-  SAFETY_SYSTEM = 2    // 应急措施
+  SUPERVISOR = 1,
+  SAFETY_SYSTEM = 2
 };
 
 enum class SafetyCommandType
@@ -40,10 +48,11 @@ struct ModuleConfig
   SafetyCommandType safety_command;
   double safety_slow_down_percentage;
   std::vector<std::string> nodes;
-  std::map<std::string, double> topic_min_hz;
+  std::map<std::string, double> watch_topic_min_hz;
+
   struct FeedbackRule
   {
-    std::string topic_name;
+    std::string source_topic;
     std::string metric_name;
     bool has_min_value;
     bool has_max_value;
@@ -58,7 +67,44 @@ struct ModuleConfig
     double safety_slow_down_percentage;
     std::vector<ActionType> actions;
   };
+
   std::vector<FeedbackRule> feedback_rules;
+};
+
+
+enum class CollisionModelType
+{
+  ZONE = 0,
+  APPROACH = 1
+};
+
+struct CollisionZoneConfig
+{
+  std::string name;
+  CollisionModelType model{CollisionModelType::ZONE};
+  std::vector<CollisionPoint> points;
+  size_t min_points{1};
+  FaultLevel level{FaultLevel::ERROR};
+  SafetyCommandType safety_command{SafetyCommandType::SOFT_STOP};
+  double safety_slow_down_percentage{50.0};
+  std::vector<ActionType> actions;
+  bool enabled{true};
+  bool visualize{true};
+  std::string polygon_pub_topic;
+  double time_before_collision{1.0};
+  double simulation_time_step{0.1};
+};
+
+struct CollisionDetectionConfig
+{
+  bool enabled{false};
+  std::string module_name{"collision_detection"};
+  std::string scan_topic{"/scan"};
+  std::string pointcloud_topic{""};
+  double pointcloud_min_height{0.0};
+  double pointcloud_max_height{2.0};
+  double source_timeout_s{0.5};
+  std::vector<CollisionZoneConfig> zones;
 };
 
 struct ChassisStationaryConfig
@@ -102,96 +148,53 @@ struct FaultInfo
 class FaultDetector
 {
 public:
-  FaultDetector(rclcpp::Node* node);
+  explicit FaultDetector(rclcpp::Node * node);
+  ~FaultDetector();
 
-  void load_config(const std::string& config_file);
+  void load_config(const std::string & config_file);
 
-  // 从监控模块获取数据
-  void update_node_status(const std::map<std::string, bool>& node_active);
-  void update_topic_freq(const std::map<std::string, double>& topic_freq);
+  void update_node_status(const std::map<std::string, bool> & node_active);
+  void update_topic_freq(const std::map<std::string, double> & topic_freq);
   void update_feedback_sample(
     const std::string & module_name, const std::string & topic_name,
     const std::string & metric_name, double value, bool valid, const rclcpp::Time & stamp);
   void set_feedback_default_max_stale(double default_max_stale_s);
   void update_command_speed(double speed, const rclcpp::Time & stamp);
-  void update_moto_speed(double left_speed_rad, double right_speed_rad, const rclcpp::Time & stamp, bool valid);
+  void update_moto_speed(
+    double left_speed_rad, double right_speed_rad, const rclcpp::Time & stamp, bool valid);
   void update_odom_speed(double linear_speed, const rclcpp::Time & stamp);
   bool chassis_stationary_enabled() const;
   const ChassisStationaryConfig & get_chassis_stationary_config() const;
   bool has_module_configs() const;
   const std::vector<std::string> & get_monitored_nodes() const;
-  const std::vector<std::string> & get_monitored_topics() const;
+  const std::vector<std::string> & get_watched_topics() const;
   const MultiValueJudgeConfig & get_multi_value_judge_config() const;
+  bool collision_detection_enabled() const;
+  const CollisionDetectionConfig & get_collision_detection_config() const;
 
-  // 判断逻辑
   std::vector<FaultInfo> detect_faults();
+  std::vector<FaultInfo> detect_faults(const MonitorDataStore & store, const rclcpp::Time & now);
 
 private:
-  struct FeedbackState
-  {
-    double last_value;
-    bool last_valid;
-    bool received;
-    rclcpp::Time first_seen;
-    rclcpp::Time last_seen;
-    std::deque<rclcpp::Time> msg_times;
-  };
+  bool check_module_nodes(
+    const ModuleConfig & module,
+    const MonitorDataStore & store,
+    const rclcpp::Time & now) const;
 
-  struct ChassisState
-  {
-    bool command_received;
-    double command_speed;
-    rclcpp::Time command_stamp;
-    bool moto_received;
-    bool moto_valid;
-    double left_speed_rad;
-    double right_speed_rad;
-    rclcpp::Time moto_stamp;
-    bool odom_received;
-    double odom_speed;
-    rclcpp::Time odom_stamp;
-    bool idle_tracking;
-    rclcpp::Time idle_start_time;
-  };
-
-  struct RuleJudgeState
-  {
-    size_t abnormal_count{0};
-    size_t normal_count{0};
-    bool latched{false};
-    std::string last_reason;
-  };
-
-  rclcpp::Node* node_;
+  rclcpp::Node * node_;
   std::vector<ModuleConfig> modules_;
+  CollisionDetectionConfig collision_cfg_;
   ChassisStationaryConfig chassis_cfg_;
   MultiValueJudgeConfig multi_value_cfg_;
   std::vector<std::string> monitored_nodes_;
-  std::vector<std::string> monitored_topics_;
-
-  std::map<std::string, bool> node_status_;
-  std::map<std::string, double> topic_freq_;
-  std::map<std::string, FeedbackState> feedback_state_;
-  std::map<std::string, RuleJudgeState> feedback_judge_state_;
-  std::map<std::string, RuleJudgeState> topic_judge_state_;
-  std::map<std::string, RuleJudgeState> chassis_judge_state_;
-  ChassisState chassis_state_;
+  std::vector<std::string> watched_topics_;
   rclcpp::Time config_loaded_time_;
   double feedback_default_max_stale_s_;
-
-  bool check_module_nodes(const ModuleConfig& module);
-  void append_feedback_faults(
-    const ModuleConfig & module, const ModuleConfig::FeedbackRule & rule,
-    const std::string & reason, std::vector<FaultInfo> & faults, const rclcpp::Time & now);
-  void append_chassis_faults(
-    const std::string & fault_key_prefix, FaultLevel level,
-    const std::vector<ActionType> & actions, const std::string & reason,
-    std::vector<FaultInfo> & faults, const rclcpp::Time & now);
-  bool update_multi_value_state(
-    const std::string & key, bool abnormal, const std::string & reason,
-    std::map<std::string, RuleJudgeState> & states, std::string & active_reason);
-  std::string feedback_key(
-    const std::string & module_name, const std::string & topic_name, const std::string & metric_name) const;
+  MonitorDataStore compatibility_store_;
+  std::unique_ptr<WatchTopicEvaluator> watch_topic_evaluator_;
+  std::unique_ptr<FeedbackRuleEvaluator> feedback_rule_evaluator_;
+  std::unique_ptr<ChassisEvaluator> chassis_evaluator_;
+  std::unique_ptr<CollisionEvaluator> collision_evaluator_;
 };
 
 }  // namespace nav2_monitor

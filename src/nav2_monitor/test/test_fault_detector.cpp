@@ -10,6 +10,7 @@
 #include <rclcpp/rclcpp.hpp>
 
 #include "nav2_monitor/fault_detector.hpp"
+#include "nav2_monitor/monitor_data_store.hpp"
 #include "nav2_monitor/fault_state_coordinator.hpp"
 
 namespace
@@ -82,7 +83,7 @@ modules:
     safety_system: 1
     nodes:
       - "controller_server"
-    topics:
+    watch_topics:
       - name: "/cmd_vel"
         min_hz: 5.0
 )";
@@ -123,7 +124,7 @@ modules:
     safety_system: 0
     nodes:
       - "controller_server"
-    topics:
+    watch_topics:
       - name: "/cmd_vel"
         min_hz: 5.0
       - name: "/plan"
@@ -159,7 +160,7 @@ modules:
     safety_system: 1
     nodes:
       - "controller_server"
-    topics:
+    watch_topics:
       - name: "/cmd_vel"
         min_hz: 5.0
 )";
@@ -191,7 +192,7 @@ modules:
     nodes:
       - "controller_server"
       - "planner_server"
-    topics:
+    watch_topics:
       - name: "/cmd_vel"
         min_hz: 5.0
   - name: "localization"
@@ -200,7 +201,7 @@ modules:
     nodes:
       - "planner_server"
       - "amcl"
-    topics:
+    watch_topics:
       - name: "/amcl_pose"
         min_hz: 10.0
       - name: "/cmd_vel"
@@ -219,7 +220,7 @@ modules:
     detector.get_monitored_nodes(),
     (std::vector<std::string>{"controller_server", "planner_server", "amcl"}));
   EXPECT_EQ(
-    detector.get_monitored_topics(),
+    detector.get_watched_topics(),
     (std::vector<std::string>{"/cmd_vel", "/amcl_pose"}));
 
   std::remove(config_path.c_str());
@@ -234,7 +235,7 @@ modules:
     safety_system: 1
     nodes:
       - "controller_server"
-    topics:
+    watch_topics:
       - name: "/cmd_vel"
         min_hz: 5.0
 )";
@@ -246,18 +247,81 @@ modules:
 
   EXPECT_TRUE(detector.has_module_configs());
   EXPECT_EQ(detector.get_monitored_nodes(), (std::vector<std::string>{"controller_server"}));
-  EXPECT_EQ(detector.get_monitored_topics(), (std::vector<std::string>{"/cmd_vel"}));
+  EXPECT_EQ(detector.get_watched_topics(), (std::vector<std::string>{"/cmd_vel"}));
 
   detector.load_config("/tmp/this_config_file_should_not_exist_12345.yaml");
 
   EXPECT_TRUE(detector.has_module_configs());
   EXPECT_EQ(detector.get_monitored_nodes(), (std::vector<std::string>{"controller_server"}));
-  EXPECT_EQ(detector.get_monitored_topics(), (std::vector<std::string>{"/cmd_vel"}));
+  EXPECT_EQ(detector.get_watched_topics(), (std::vector<std::string>{"/cmd_vel"}));
 
   detector.update_node_status({{"controller_server", false}});
   detector.update_topic_freq({{"/cmd_vel", 10.0}});
   auto faults = detector.detect_faults();
   EXPECT_FALSE(faults.empty());
+
+  std::remove(config_path.c_str());
+}
+
+TEST_F(FaultDetectorTest, DeprecatedTopicsFieldIsIgnored)
+{
+  const std::string config_text = R"(
+modules:
+  - name: "navigation"
+    supervisor: 1
+    safety_system: 0
+    nodes:
+      - "controller_server"
+    topics:
+      - name: "/cmd_vel"
+        min_hz: 5.0
+)";
+  const std::string config_path = write_temp_config(config_text, "deprecated_topics_field");
+
+  auto node = std::make_shared<rclcpp::Node>("fault_detector_test_deprecated_topics_field");
+  nav2_monitor::FaultDetector detector(node.get());
+  detector.load_config(config_path);
+
+  EXPECT_TRUE(detector.get_watched_topics().empty());
+  detector.update_node_status({{"controller_server", true}});
+  detector.update_topic_freq({{"/cmd_vel", 0.0}});
+  auto faults = detector.detect_faults();
+  EXPECT_TRUE(faults.empty());
+
+  std::remove(config_path.c_str());
+}
+
+TEST_F(FaultDetectorTest, DeprecatedFeedbackFieldsAreIgnored)
+{
+  const std::string config_text = R"(
+modules:
+  - name: "navigation"
+    supervisor: 1
+    safety_system: 1
+    nodes:
+      - "controller_server"
+    feedback_topics:
+      - topic_name: "/controller/feedback"
+        metric_name: "tracking_error"
+        min_value: 0.0
+        max_value: 0.5
+        level: "CRITICAL"
+        actions: ["safety_system"]
+)";
+  const std::string config_path = write_temp_config(config_text, "deprecated_feedback_fields");
+
+  auto node = std::make_shared<rclcpp::Node>("fault_detector_test_deprecated_feedback_fields");
+  nav2_monitor::FaultDetector detector(node.get());
+  detector.load_config(config_path);
+
+  detector.update_node_status({{"controller_server", true}});
+  detector.update_topic_freq({});
+  detector.update_feedback_sample(
+    "navigation", "/controller/feedback", "tracking_error", 0.9, true, node->now());
+  auto faults_first = detector.detect_faults();
+  auto faults_second = detector.detect_faults();
+  EXPECT_TRUE(faults_first.empty());
+  EXPECT_TRUE(faults_second.empty());
 
   std::remove(config_path.c_str());
 }
@@ -271,8 +335,8 @@ modules:
     safety_system: 1
     nodes:
       - "controller_server"
-    feedback_topics:
-      - topic_name: "/controller/feedback"
+    feedback_rules:
+      - source_topic: "/controller/feedback"
         metric_name: "tracking_error"
         min_value: 0.0
         max_value: 0.5
@@ -302,6 +366,7 @@ modules:
   EXPECT_EQ(faults[1].level, nav2_monitor::FaultLevel::CRITICAL);
   EXPECT_EQ(faults[0].action, nav2_monitor::ActionType::SAFETY_SYSTEM);
   EXPECT_EQ(faults[1].action, nav2_monitor::ActionType::SUPERVISOR);
+  EXPECT_NE(faults[0].fault_key.find("feedback:/controller/feedback:tracking_error"), std::string::npos);
 
   detector.update_feedback_sample(
     "navigation", "/controller/feedback", "tracking_error", 0.1, true, node->now());
@@ -325,8 +390,8 @@ modules:
     safety_system: 1
     nodes:
       - "controller_server"
-    feedback_topics:
-      - topic_name: "/controller/feedback"
+    feedback_rules:
+      - source_topic: "/controller/feedback"
         metric_name: "health_score"
         min_value: 0.0
         max_value: 1.0
@@ -379,12 +444,12 @@ modules:
     safety_system: 1
     nodes:
       - "controller_server"
-    feedback_topics:
-      - topic_name: "/controller/feedback"
+    feedback_rules:
+      - source_topic: "/controller/feedback"
         metric_name: "health_score"
         level: "ERROR"
         actions: []
-      - topic_name: "/controller/feedback"
+      - source_topic: "/controller/feedback"
         metric_name: "health_score2"
         min_value: 1.0
         max_value: 0.0
@@ -414,8 +479,8 @@ modules:
     safety_system: 1
     nodes:
       - "controller_server"
-    feedback_topics:
-      - topic_name: "/controller/feedback"
+    feedback_rules:
+      - source_topic: "/controller/feedback"
         metric_name: "health_score"
         min_value: 0.0
         max_value: 1.0
@@ -454,15 +519,15 @@ modules:
     safety_system: 1
     nodes:
       - "controller_server"
-    feedback_topics:
-      - topic_name: "/controller/feedback"
+    feedback_rules:
+      - source_topic: "/controller/feedback"
         metric_name: "metric_a"
         min_value: 0.0
         max_value: 1.0
         max_stale_s: 5.0
         level: "ERROR"
         actions: ["supervisor"]
-      - topic_name: "/controller/feedback"
+      - source_topic: "/controller/feedback"
         metric_name: "metric_b"
         min_value: 0.0
         max_value: 1.0
@@ -491,6 +556,194 @@ modules:
   EXPECT_EQ(faults[1].action, nav2_monitor::ActionType::SUPERVISOR);
   EXPECT_EQ(faults[0].level, nav2_monitor::FaultLevel::CRITICAL);
   EXPECT_EQ(faults[1].level, nav2_monitor::FaultLevel::CRITICAL);
+
+  std::remove(config_path.c_str());
+}
+
+TEST_F(FaultDetectorTest, CollisionDetectionApproachTriggersSlowDownByTTC)
+{
+  const std::string config_text = R"(
+collision_detection:
+  enabled: 1
+  module_name: "collision_detection"
+  scan_topic: "/scan"
+  source_timeout_s: 1.0
+  zones:
+    - name: "front_approach"
+      enabled: 1
+      model: "approach"
+      points: [1.2, 0.4, 1.2, -0.4, 0.2, -0.4, 0.2, 0.4]
+      level: "WARNING"
+      safety_system: 1
+      safety_slow_down_percentage: 40.0
+      time_before_collision: 1.0
+      actions: ["safety_system"]
+modules:
+  - name: "dummy"
+    supervisor: 0
+    safety_system: 0
+)";
+  const std::string config_path = write_temp_config(config_text, "collision_detection_approach");
+
+  auto node = std::make_shared<rclcpp::Node>("fault_detector_test_collision_approach");
+  nav2_monitor::FaultDetector detector(node.get());
+  nav2_monitor::MonitorDataStore store;
+  detector.load_config(config_path);
+
+  const auto now = node->now();
+  store.set_command_speed(1.0, now);
+  store.set_collision_points("scan", {
+    nav2_monitor::CollisionPoint{0.5, 0.0},
+    nav2_monitor::CollisionPoint{0.6, 0.1}
+  }, now);
+
+  auto faults_first = detector.detect_faults(store, now);
+  EXPECT_TRUE(faults_first.empty());
+
+  auto faults = detector.detect_faults(store, now);
+  ASSERT_EQ(faults.size(), 1u);
+  EXPECT_EQ(faults[0].safety_command, nav2_monitor::SafetyCommandType::SLOW_DOWN);
+  EXPECT_NE(faults[0].reason.find("ttc="), std::string::npos);
+
+  std::remove(config_path.c_str());
+}
+
+TEST_F(FaultDetectorTest, CollisionDetectionSlowdownZoneTriggersSlowDown)
+{
+  const std::string config_text = R"(
+collision_detection:
+  enabled: 1
+  module_name: "collision_detection"
+  scan_topic: "/scan"
+  source_timeout_s: 1.0
+  zones:
+    - name: "front_slow"
+      enabled: 1
+      points: [1.0, 0.3, 1.0, -0.3, 0.0, -0.3, 0.0, 0.3]
+      min_points: 2
+      level: "ERROR"
+      safety_system: 1
+      safety_slow_down_percentage: 35.0
+      actions: ["safety_system"]
+modules:
+  - name: "dummy"
+    supervisor: 0
+    safety_system: 0
+)";
+  const std::string config_path = write_temp_config(config_text, "collision_detection_slowdown_zone");
+
+  auto node = std::make_shared<rclcpp::Node>("fault_detector_test_collision_slowdown_zone");
+  nav2_monitor::FaultDetector detector(node.get());
+  nav2_monitor::MonitorDataStore store;
+  detector.load_config(config_path);
+
+  const auto now = node->now();
+  store.set_collision_points("scan", {
+    nav2_monitor::CollisionPoint{0.3, 0.0},
+    nav2_monitor::CollisionPoint{0.6, 0.1}
+  }, now);
+
+  auto faults_first = detector.detect_faults(store, now);
+  EXPECT_TRUE(faults_first.empty());
+
+  auto faults = detector.detect_faults(store, now);
+  ASSERT_EQ(faults.size(), 1u);
+  EXPECT_EQ(faults[0].safety_command, nav2_monitor::SafetyCommandType::SLOW_DOWN);
+  EXPECT_DOUBLE_EQ(faults[0].safety_slow_down_percentage, 35.0);
+
+  std::remove(config_path.c_str());
+}
+
+TEST_F(FaultDetectorTest, CollisionDetectionAggregatesPointCloudSource)
+{
+  const std::string config_text = R"(
+collision_detection:
+  enabled: 1
+  module_name: "collision_detection"
+  pointcloud_topic: "/points"
+  pointcloud_min_height: 0.0
+  pointcloud_max_height: 1.0
+  source_timeout_s: 1.0
+  zones:
+    - name: "front_stop"
+      enabled: 1
+      points: [0.5, 0.2, 0.5, -0.2, 0.0, -0.2, 0.0, 0.2]
+      min_points: 2
+      level: "CRITICAL"
+      safety_system: 2
+      actions: ["safety_system"]
+modules:
+  - name: "dummy"
+    supervisor: 0
+    safety_system: 0
+)";
+  const std::string config_path = write_temp_config(config_text, "collision_detection_pointcloud");
+
+  auto node = std::make_shared<rclcpp::Node>("fault_detector_test_collision_pointcloud");
+  nav2_monitor::FaultDetector detector(node.get());
+  nav2_monitor::MonitorDataStore store;
+  detector.load_config(config_path);
+
+  const auto now = node->now();
+  store.set_collision_points("pointcloud", {
+    nav2_monitor::CollisionPoint{0.1, 0.0},
+    nav2_monitor::CollisionPoint{0.2, 0.1}
+  }, now);
+
+  auto faults_first = detector.detect_faults(store, now);
+  EXPECT_TRUE(faults_first.empty());
+
+  auto faults = detector.detect_faults(store, now);
+  ASSERT_EQ(faults.size(), 1u);
+  EXPECT_EQ(faults[0].safety_command, nav2_monitor::SafetyCommandType::SOFT_STOP);
+
+  std::remove(config_path.c_str());
+}
+
+TEST_F(FaultDetectorTest, CollisionDetectionZoneHitTriggersSafety)
+{
+  const std::string config_text = R"(
+collision_detection:
+  enabled: 1
+  module_name: "collision_detection"
+  scan_topic: "/scan"
+  source_timeout_s: 1.0
+  zones:
+    - name: "front_stop"
+      enabled: 1
+      points: [0.5, 0.2, 0.5, -0.2, 0.0, -0.2, 0.0, 0.2]
+      min_points: 2
+      level: "CRITICAL"
+      safety_system: 2
+      actions: ["safety_system"]
+modules:
+  - name: "dummy"
+    supervisor: 0
+    safety_system: 0
+)";
+  const std::string config_path = write_temp_config(config_text, "collision_detection_zone");
+
+  auto node = std::make_shared<rclcpp::Node>("fault_detector_test_collision_zone");
+  nav2_monitor::FaultDetector detector(node.get());
+  nav2_monitor::MonitorDataStore store;
+  detector.load_config(config_path);
+
+  const auto now = node->now();
+  store.set_collision_points({
+    nav2_monitor::CollisionPoint{0.1, 0.0},
+    nav2_monitor::CollisionPoint{0.2, 0.1},
+    nav2_monitor::CollisionPoint{1.0, 1.0}
+  }, now);
+
+  auto faults_first = detector.detect_faults(store, now);
+  EXPECT_TRUE(faults_first.empty());
+
+  auto faults = detector.detect_faults(store, now);
+  ASSERT_EQ(faults.size(), 1u);
+  EXPECT_EQ(faults[0].module_name, "collision_detection");
+  EXPECT_EQ(faults[0].action, nav2_monitor::ActionType::SAFETY_SYSTEM);
+  EXPECT_EQ(faults[0].safety_command, nav2_monitor::SafetyCommandType::SOFT_STOP);
+  EXPECT_NE(faults[0].fault_key.find("collision:front_stop"), std::string::npos);
 
   std::remove(config_path.c_str());
 }
@@ -691,8 +944,8 @@ modules:
     safety_system: 2
     nodes:
       - "controller_server"
-    feedback_topics:
-      - topic_name: "/controller/feedback"
+    feedback_rules:
+      - source_topic: "/controller/feedback"
         metric_name: "tracking_error"
         min_value: 0.0
         max_value: 0.5
@@ -736,8 +989,8 @@ modules:
     safety_system: 3
     nodes:
       - "controller_server"
-    feedback_topics:
-      - topic_name: "/controller/feedback"
+    feedback_rules:
+      - source_topic: "/controller/feedback"
         metric_name: "tracking_error"
         min_value: 0.0
         max_value: 0.5
@@ -805,6 +1058,82 @@ modules:
   EXPECT_EQ(faults[0].action, nav2_monitor::ActionType::SAFETY_SYSTEM);
   EXPECT_EQ(faults[0].safety_command, nav2_monitor::SafetyCommandType::EMERGENCY_STOP);
   EXPECT_DOUBLE_EQ(faults[0].safety_slow_down_percentage, 50.0);
+
+  std::remove(config_path.c_str());
+}
+
+TEST_F(FaultDetectorTest, StoreBackedWatchTopicDetectionWorks)
+{
+  const std::string config_text = R"(
+modules:
+  - name: "navigation"
+    supervisor: 1
+    safety_system: 0
+    nodes:
+      - "controller_server"
+    watch_topics:
+      - name: "/cmd_vel"
+        min_hz: 5.0
+)";
+  const std::string config_path = write_temp_config(config_text, "store_watch_topic");
+
+  auto node = std::make_shared<rclcpp::Node>("fault_detector_test_store_watch_topic");
+  nav2_monitor::FaultDetector detector(node.get());
+  nav2_monitor::MonitorDataStore store;
+  detector.load_config(config_path);
+
+  const auto now = node->now();
+  store.mark_node_seen("controller_server", now);
+  store.set_watch_topic_publisher("/cmd_vel", true);
+
+  auto faults_first = detector.detect_faults(store, now);
+  EXPECT_TRUE(faults_first.empty());
+
+  auto faults = detector.detect_faults(store, now);
+  ASSERT_EQ(faults.size(), 1u);
+  EXPECT_EQ(faults[0].action, nav2_monitor::ActionType::SUPERVISOR);
+  EXPECT_NE(faults[0].fault_key.find("topic_legacy:/cmd_vel"), std::string::npos);
+
+  std::remove(config_path.c_str());
+}
+
+TEST_F(FaultDetectorTest, StoreBackedFeedbackDetectionWorks)
+{
+  const std::string config_text = R"(
+modules:
+  - name: "navigation"
+    supervisor: 1
+    safety_system: 1
+    nodes:
+      - "controller_server"
+    feedback_rules:
+      - source_topic: "/controller/feedback"
+        metric_name: "tracking_error"
+        min_value: 0.0
+        max_value: 0.5
+        max_stale_s: 2.0
+        level: "CRITICAL"
+        actions: ["safety_system", "supervisor"]
+)";
+  const std::string config_path = write_temp_config(config_text, "store_feedback");
+
+  auto node = std::make_shared<rclcpp::Node>("fault_detector_test_store_feedback");
+  nav2_monitor::FaultDetector detector(node.get());
+  nav2_monitor::MonitorDataStore store;
+  detector.set_feedback_default_max_stale(2.0);
+  detector.load_config(config_path);
+
+  const auto now = node->now();
+  store.mark_node_seen("controller_server", now);
+  store.add_feedback_sample(
+    "navigation", "/controller/feedback", "tracking_error", 0.9, true, now);
+
+  auto faults_first = detector.detect_faults(store, now);
+  EXPECT_TRUE(faults_first.empty());
+
+  auto faults = detector.detect_faults(store, now);
+  ASSERT_EQ(faults.size(), 2u);
+  EXPECT_NE(faults[0].fault_key.find("feedback:/controller/feedback:tracking_error"), std::string::npos);
 
   std::remove(config_path.c_str());
 }

@@ -8,7 +8,7 @@ flowchart TD
     B --> C[加载 fault_config 到 FaultDetector]
     C --> D{modules 有效?}
     D -- 是 --> E[监控目标=modules 汇总 nodes/topics]
-    D -- 否 --> F[回退 target_nodes/target_topics]
+    D -- 否 --> F[回退 target_nodes/watch_topics]
     E --> G[初始化发布器/订阅器/定时器]
     F --> G
     G --> H[scan_topology 定时循环]
@@ -97,7 +97,7 @@ flowchart TB
     M1 --> M15[输入接入<br/>algorithm_feedback + command/moto/odom]
 
     M2 --> M21[节点存活判断<br/>快速路径]
-    M2 --> M22[feedback_topics 阈值判断]
+    M2 --> M22[feedback_rules 阈值判断]
     M2 --> M23[legacy topics 频率判断]
     M2 --> M24[chassis_stationary 判断]
     M2 --> M25[连续计数防误报<br/>trigger_count / recover_count]
@@ -109,4 +109,3 @@ flowchart TB
     M4 --> M41[CPU/内存/磁盘/温度]
     M4 --> M42[GPU 使用率/温度/显存]
 ```
-
