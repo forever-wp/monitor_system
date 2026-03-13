@@ -10,6 +10,7 @@
 #include <sensor_msgs/msg/battery_state.hpp>
 #include <sensor_msgs/msg/laser_scan.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
+#include <sensor_msgs/msg/imu.hpp>
 #include <geometry_msgs/msg/polygon_stamped.hpp>
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
@@ -20,10 +21,10 @@
 #include <deque>
 #include "nav2_monitor/system_monitor.hpp"
 #include "nav2_monitor/monitor_data_store.hpp"
+#include "nav2_monitor/monitor_reporter.hpp"
 #include "nav2_monitor/fault_detector.hpp"
 #include "nav2_monitor/fault_state_coordinator.hpp"
 #include "nav2_monitor/vehicle_status_monitor.hpp"
-#include <nav2_monitor/msg/supervisor_cmd.hpp>
 #include <nav2_monitor/msg/safety_cmd.hpp>
 
 namespace nav2_monitor
@@ -61,6 +62,8 @@ private:
   rcl_interfaces::msg::SetParametersResult on_parameter_change(const std::vector<rclcpp::Parameter>& params);
   void subscribe_watch_topics();
   void publish_collision_zones();
+  rclcpp::QoS build_watch_topic_qos(const std::string & topic, const std::string & type) const;
+  rclcpp::QoS build_topic_subscription_qos(const std::string & topic, const rclcpp::QoS & fallback, size_t max_depth) const;
 
   rclcpp::TimerBase::SharedPtr scan_timer_;
   rclcpp::TimerBase::SharedPtr check_timer_;
@@ -82,7 +85,7 @@ private:
   std::vector<std::string> fallback_watch_topics_;
   bool monitor_targets_from_fault_config_{false};
   std::map<std::string, TopicInfo> topic_info_;
-  std::map<std::string, rclcpp::GenericSubscription::SharedPtr> topic_subs_;
+  std::map<std::string, rclcpp::SubscriptionBase::SharedPtr> topic_subs_;
 
   std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
   std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
@@ -104,11 +107,12 @@ private:
   SystemMonitor sys_monitor_;
   MonitorDataStore data_store_;
   FaultDetector fault_detector_;
+  MonitorReporter monitor_reporter_;
   FaultStateCoordinator fault_state_coordinator_;
   std::unique_ptr<VehicleStatusMonitor> vehicle_monitor_;
   std::map<std::string, rclcpp::Time> last_action_publish_time_;
 
-  rclcpp::Publisher<msg::SupervisorCmd>::SharedPtr supervisor_pub_;
+  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr supervisor_pub_;
 };
 
 }  // namespace nav2_monitor
