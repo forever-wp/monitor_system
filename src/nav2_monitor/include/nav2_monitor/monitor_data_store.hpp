@@ -3,6 +3,7 @@
 
 #include <deque>
 #include <map>
+#include <mutex>
 #include <string>
 
 #include <rclcpp/rclcpp.hpp>
@@ -95,11 +96,13 @@ public:
   std::vector<CollisionPoint> get_collision_points(const rclcpp::Time & now, double timeout_s) const;
 
 private:
+  mutable std::mutex mtx_;
   static std::string make_feedback_key(
     const std::string & module_name, const std::string & source_topic,
     const std::string & metric_name);
   static void trim_time_window(std::deque<rclcpp::Time> & msg_times, size_t max_size);
   static double calc_frequency(const std::deque<rclcpp::Time> & msg_times);
+  std::vector<CollisionPoint> collect_collision_points_locked(const rclcpp::Time & now, double timeout_s) const;
 
   std::map<std::string, rclcpp::Time> node_last_seen_;
   std::map<std::string, TopicRuntimeState> watch_topics_;

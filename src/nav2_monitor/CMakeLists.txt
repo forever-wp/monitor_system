@@ -34,6 +34,7 @@ add_executable(nav2_monitor_node
   src/fault_detector.cpp
   src/fault_state_coordinator.cpp
   src/monitor_data_store.cpp
+  src/monitor_reporter.cpp
   src/chassis_evaluator.cpp
   src/collision_evaluator.cpp
   src/feedback_rule_evaluator.cpp
@@ -56,6 +57,8 @@ if(BUILD_TESTING)
     src/fault_detector.cpp
     src/fault_state_coordinator.cpp
     src/monitor_data_store.cpp
+    src/monitor_reporter.cpp
+  src/monitor_reporter.cpp
   src/chassis_evaluator.cpp
   src/collision_evaluator.cpp
   src/feedback_rule_evaluator.cpp

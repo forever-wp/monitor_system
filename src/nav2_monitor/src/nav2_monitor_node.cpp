@@ -166,8 +166,9 @@ Nav2MonitorNode::Nav2MonitorNode()
   tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
   pub_ = this->create_publisher<msg::MonitorStatus>("/nav2_monitor/status", 10);
   fault_event_pub_ = this->create_publisher<msg::FaultEvent>("/nav2_monitor/fault_event", 10);
-  supervisor_pub_ = this->create_publisher<msg::SupervisorCmd>("/supervisor/cmd", 10);
+  supervisor_pub_ = this->create_publisher<std_msgs::msg::String>("/supervisor/cmd", 10);
   fault_state_coordinator_.configure(this, "/safety_system/cmd");
+  monitor_reporter_.configure(this);
 
   std::string config_file = this->declare_parameter<std::string>("fault_config", "");
   const std::string resolved_config_file = resolve_config_path(config_file);
@@ -227,13 +228,19 @@ Nav2MonitorNode::Nav2MonitorNode()
   if (fault_detector_.collision_detection_enabled()) {
     const auto & cfg = fault_detector_.get_collision_detection_config();
     if (!cfg.scan_topic.empty()) {
+      auto scan_fallback = rclcpp::SensorDataQoS();
+      scan_fallback.keep_last(10);
+      const auto scan_qos = build_topic_subscription_qos(cfg.scan_topic, scan_fallback, 10);
       collision_scan_sub_ = this->create_subscription<sensor_msgs::msg::LaserScan>(
-        cfg.scan_topic, rclcpp::SensorDataQoS(),
+        cfg.scan_topic, scan_qos,
         std::bind(&Nav2MonitorNode::on_collision_scan, this, std::placeholders::_1));
     }
     if (!cfg.pointcloud_topic.empty()) {
+      auto pointcloud_fallback = rclcpp::SensorDataQoS();
+      pointcloud_fallback.keep_last(50);
+      const auto pointcloud_qos = build_topic_subscription_qos(cfg.pointcloud_topic, pointcloud_fallback, 3);
       collision_pointcloud_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
-        cfg.pointcloud_topic, rclcpp::SensorDataQoS(),
+        cfg.pointcloud_topic, pointcloud_qos,
         std::bind(&Nav2MonitorNode::on_collision_pointcloud, this, std::placeholders::_1));
     }
     for (const auto & zone : cfg.zones) {
@@ -253,6 +260,8 @@ Nav2MonitorNode::Nav2MonitorNode()
   std::string vehicle_status_file = this->declare_parameter<std::string>(
     "vehicle_status_file", "/home/ry/.ros/navigate_status/navigate_todoor_status.json");
   vehicle_monitor_ = std::make_unique<VehicleStatusMonitor>(vehicle_status_file);
+
+  scan_topology();
 
   scan_timer_ = this->create_wall_timer(
     std::chrono::milliseconds(static_cast<int>(1000.0 / scan_rate)),
@@ -325,7 +334,6 @@ void Nav2MonitorNode::on_command(const std_msgs::msg::String::SharedPtr msg)
 {
   const double speed = parse_command_speed(msg->data);
   const auto now = this->now();
-  std::lock_guard<std::mutex> lock(mtx_);
   data_store_.set_command_speed(speed, now);
 }
 
@@ -335,7 +343,6 @@ void Nav2MonitorNode::on_odom(const nav_msgs::msg::Odometry::SharedPtr msg)
   const double speed = std::sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
   const auto stamp = (msg->header.stamp.sec != 0 || msg->header.stamp.nanosec != 0) ?
     rclcpp::Time(msg->header.stamp) : this->now();
-  std::lock_guard<std::mutex> lock(mtx_);
   data_store_.set_odom_speed(speed, stamp);
 }
 
@@ -343,7 +350,6 @@ void Nav2MonitorNode::on_battery_state(const sensor_msgs::msg::BatteryState::Sha
 {
   const auto has_stamp = (msg->header.stamp.sec != 0) || (msg->header.stamp.nanosec != 0);
   const auto stamp = has_stamp ? rclcpp::Time(msg->header.stamp) : this->now();
-  std::lock_guard<std::mutex> lock(mtx_);
   data_store_.set_battery_state(msg->temperature, msg->percentage, stamp);
 }
 
@@ -401,7 +407,6 @@ void Nav2MonitorNode::on_collision_scan(const sensor_msgs::msg::LaserScan::Share
 
   const auto stamp = (msg->header.stamp.sec != 0 || msg->header.stamp.nanosec != 0) ?
     rclcpp::Time(msg->header.stamp) : this->now();
-  std::lock_guard<std::mutex> lock(mtx_);
   data_store_.set_collision_points("scan", points, stamp);
 }
 
@@ -453,7 +458,6 @@ void Nav2MonitorNode::on_collision_pointcloud(const sensor_msgs::msg::PointCloud
 
   const auto stamp = (msg->header.stamp.sec != 0 || msg->header.stamp.nanosec != 0) ?
     rclcpp::Time(msg->header.stamp) : this->now();
-  std::lock_guard<std::mutex> lock(mtx_);
   data_store_.set_collision_points("pointcloud", points, stamp);
 }
 
@@ -470,8 +474,11 @@ void Nav2MonitorNode::try_subscribe_moto_topic()
   }
 
   moto_topic_type_ = it->second.front();
+  auto moto_fallback = rclcpp::SensorDataQoS();
+  moto_fallback.keep_last(10);
+  const auto moto_qos = build_topic_subscription_qos(moto_topic_, moto_fallback, 10);
   moto_sub_ = this->create_generic_subscription(
-    moto_topic_, moto_topic_type_, rclcpp::QoS(50),
+    moto_topic_, moto_topic_type_, moto_qos,
     [this](std::shared_ptr<rclcpp::SerializedMessage> msg) {
       double left_speed = 0.0;
       double right_speed = 0.0;
@@ -498,9 +505,76 @@ void Nav2MonitorNode::on_algorithm_feedback(const msg::AlgorithmFeedback::Shared
 {
   const bool has_stamp = (msg->stamp.sec != 0) || (msg->stamp.nanosec != 0);
   rclcpp::Time stamp = has_stamp ? rclcpp::Time(msg->stamp) : this->now();
-  std::lock_guard<std::mutex> lock(mtx_);
   data_store_.add_feedback_sample(
     msg->module_name, msg->topic_name, msg->metric_name, msg->value, msg->valid, stamp);
+}
+
+rclcpp::QoS Nav2MonitorNode::build_topic_subscription_qos(
+  const std::string & topic, const rclcpp::QoS & fallback, size_t max_depth) const
+{
+  auto qos = rclcpp::QoS(std::max<size_t>(1, std::min<size_t>(fallback.get_rmw_qos_profile().depth, max_depth)));
+  qos.history(rclcpp::HistoryPolicy::KeepLast);
+  qos.reliability(fallback.reliability());
+  qos.durability(fallback.durability());
+
+  try {
+    auto infos = this->get_publishers_info_by_topic(topic);
+    if (infos.empty()) {
+      return qos;
+    }
+
+    size_t depth = std::max<size_t>(1, qos.get_rmw_qos_profile().depth);
+    bool use_reliable = qos.reliability() == rclcpp::ReliabilityPolicy::Reliable;
+    bool use_transient_local = qos.durability() == rclcpp::DurabilityPolicy::TransientLocal;
+
+    for (const auto & info : infos) {
+      const auto & profile = info.qos_profile();
+      depth = std::max<size_t>(depth, std::max<size_t>(1, profile.depth()));
+      if (profile.reliability() == rclcpp::ReliabilityPolicy::Reliable) {
+        use_reliable = true;
+      } else {
+        use_reliable = false;
+      }
+      if (profile.durability() == rclcpp::DurabilityPolicy::TransientLocal) {
+        use_transient_local = true;
+      } else {
+        use_transient_local = false;
+      }
+    }
+
+    depth = std::max<size_t>(1, std::min<size_t>(depth, max_depth));
+    qos = rclcpp::QoS(depth);
+    qos.history(rclcpp::HistoryPolicy::KeepLast);
+    qos.reliability(use_reliable ? rclcpp::ReliabilityPolicy::Reliable : rclcpp::ReliabilityPolicy::BestEffort);
+    qos.durability(use_transient_local ? rclcpp::DurabilityPolicy::TransientLocal : rclcpp::DurabilityPolicy::Volatile);
+  } catch (const std::exception &) {
+  }
+
+  return qos;
+}
+
+rclcpp::QoS Nav2MonitorNode::build_watch_topic_qos(const std::string & topic, const std::string & type) const
+{
+  const bool is_imu = type == "sensor_msgs/msg/Imu" || topic.find("/imu") != std::string::npos;
+  const bool is_scan = type == "sensor_msgs/msg/LaserScan" || topic == "/scan";
+  const bool is_pointcloud = type == "sensor_msgs/msg/PointCloud2";
+  const bool is_range = type == "sensor_msgs/msg/Range";
+  const bool is_image = type == "sensor_msgs/msg/Image" || type == "sensor_msgs/msg/CompressedImage";
+
+  if (is_imu || is_scan || is_pointcloud || is_range) {
+    auto qos = rclcpp::SensorDataQoS();
+    const size_t max_depth = is_imu ? 5 : (is_scan ? 10 : (is_pointcloud ? 3 : 5));
+    qos.keep_last(max_depth);
+    return build_topic_subscription_qos(topic, qos, max_depth);
+  }
+
+  if (is_image) {
+    auto qos = rclcpp::SensorDataQoS();
+    qos.keep_last(2);
+    return build_topic_subscription_qos(topic, qos, 2);
+  }
+
+  return build_topic_subscription_qos(topic, rclcpp::QoS(10), 10);
 }
 
 bool Nav2MonitorNode::should_publish_action(
@@ -537,11 +611,42 @@ void Nav2MonitorNode::subscribe_watch_topics()
       topic_info_[topic].type = type;
     }
 
+    const auto qos = build_watch_topic_qos(topic, type);
+
+    if (type == "sensor_msgs/msg/Imu") {
+      auto sub = this->create_subscription<sensor_msgs::msg::Imu>(
+        topic, qos,
+        [this, topic](const sensor_msgs::msg::Imu::SharedPtr) {
+          data_store_.add_watch_topic_sample(topic, this->now(), true);
+        });
+      topic_subs_[topic] = sub;
+      continue;
+    }
+
+    if (type == "sensor_msgs/msg/LaserScan") {
+      auto sub = this->create_subscription<sensor_msgs::msg::LaserScan>(
+        topic, qos,
+        [this, topic](const sensor_msgs::msg::LaserScan::SharedPtr) {
+          data_store_.add_watch_topic_sample(topic, this->now(), true);
+        });
+      topic_subs_[topic] = sub;
+      continue;
+    }
+
+    if (type == "sensor_msgs/msg/PointCloud2") {
+      auto sub = this->create_subscription<sensor_msgs::msg::PointCloud2>(
+        topic, qos,
+        [this, topic](const sensor_msgs::msg::PointCloud2::SharedPtr) {
+          data_store_.add_watch_topic_sample(topic, this->now(), true);
+        });
+      topic_subs_[topic] = sub;
+      continue;
+    }
+
     auto sub = this->create_generic_subscription(
-      topic, type, rclcpp::QoS(10),
+      topic, type, qos,
       [this, topic](std::shared_ptr<rclcpp::SerializedMessage> msg) {
         if (msg->size() == 0) {
-          std::lock_guard<std::mutex> lock(mtx_);
           data_store_.add_watch_topic_sample(topic, this->now(), false);
           const auto * state = data_store_.get_watch_topic_state(topic);
           const size_t empty_count = state == nullptr ? 0U : state->empty_msg_count;
@@ -552,7 +657,6 @@ void Nav2MonitorNode::subscribe_watch_topics()
         }
 
         auto now = this->now();
-        std::lock_guard<std::mutex> lock(mtx_);
         data_store_.add_watch_topic_sample(topic, now, true);
       });
     topic_subs_[topic] = sub;
@@ -719,9 +823,21 @@ void Nav2MonitorNode::check_health()
   safety_update = std::move(state_update.safety_update);
 
   pub_->publish(status_msg);
+  monitor_reporter_.publish_heartbeat(status_msg, now);
   publish_collision_zones();
 
   if (safety_update.has_value()) {
+    nav2_monitor::msg::SafetyCmd reporter_safety_cmd;
+    if (safety_update->active) {
+      reporter_safety_cmd.action = static_cast<uint8_t>(safety_update->command);
+      reporter_safety_cmd.slow_down_percentage = static_cast<float>(safety_update->slow_down_percentage);
+      reporter_safety_cmd.reason = safety_update->reason;
+    } else {
+      reporter_safety_cmd.action = nav2_monitor::msg::SafetyCmd::RESUME;
+      reporter_safety_cmd.slow_down_percentage = 0.0F;
+      reporter_safety_cmd.reason = safety_update->reason;
+    }
+    monitor_reporter_.cache_safety_cmd(reporter_safety_cmd, now);
     if (!safety_update->active) {
       RCLCPP_WARN(get_logger(), "Safety state recovered: %s", safety_update->reason.c_str());
     } else {
@@ -742,13 +858,20 @@ void Nav2MonitorNode::check_health()
     event.edge = edge_event.edge == FaultEdgeType::TRIGGER ?
       msg::FaultEvent::EDGE_TRIGGER : msg::FaultEvent::EDGE_RECOVER;
     fault_event_pub_->publish(event);
+    monitor_reporter_.publish_fault_event_json(event, now);
   }
 
   for (const auto & fault : pending_faults) {
     if (fault.action == ActionType::SUPERVISOR) {
-      msg::SupervisorCmd cmd;
-      cmd.module_name = fault.module_name;
+      std_msgs::msg::String cmd;
+      std::ostringstream oss;
+      oss << '{'
+          << "\"module_name\":\"" << fault.module_name << "\","
+          << "\"nodes_to_restart\":[],"
+          << "\"reason\":\"" << fault.reason << "\"}";
+      cmd.data = oss.str();
       supervisor_pub_->publish(cmd);
+      monitor_reporter_.cache_supervisor_json(cmd.data, now);
       RCLCPP_WARN(
         get_logger(), "Supervisor restart: %s - %s",
         fault.module_name.c_str(), fault.reason.c_str());

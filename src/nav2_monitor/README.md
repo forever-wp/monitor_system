@@ -1,8 +1,8 @@
 # nav2_monitor
 
-- 名称：nav2_monitor v2
-- 版本：v2
-- 时间：2026-03-12
+- 名称：Nav2_Monitor v2.1
+- 版本：v2.1
+- 时间：2026-03-13
 - 作者：ToTo
 
 轻量级 Nav2 监控、故障检测与安全联动系统。
@@ -15,8 +15,10 @@
 
 ## 文档入口
 
+- 变更记录：`CHANGELOG.md`
 - 设计说明：`src/nav2_monitor/docs/architecture.md`
 - 流程图 / 数据流图：`src/nav2_monitor/docs/architecture_diagrams.md`
+- 上报器类：`src/nav2_monitor/include/nav2_monitor/monitor_reporter.hpp`
 
 ## 功能概览
 
@@ -114,6 +116,133 @@ ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
 
 > 旧字段 `topics`、`feedback_topics`、`topic_name` 已不再接受。
 
+## 发布 Topic 总表
+
+下表按“当前系统涉及的功能模块”整理所有**对外发布**的 topic，包含：`nav2_monitor`、包内 `MonitorReporter`、`safety_emergency_executor`。
+
+| 名称 | 类型 | 作用 | 方式 | 示例 |
+|---|---|---|---|---|
+| `/nav2_monitor/status` | `nav2_monitor/msg/MonitorStatus` | 周期发布整体监控状态 | 周期发布（`check_rate`） | `all_ok=true`, `cpu_usage=12.3`, `battery_percentage=0.86` |
+| `/nav2_monitor/fault_event` | `nav2_monitor/msg/FaultEvent` | 发布故障触发/恢复边沿事件 | 边沿发布（触发 / 恢复） | `module_name=navigation`, `fault_level=ERROR`, `edge=TRIGGER` |
+| `/supervisor/cmd` | `std_msgs/msg/String` | 向 supervisor 下发重启命令 | 故障触发后按 cooldown 发布 | `{"module_name":"navigation","nodes_to_restart":[],"reason":"Node inactive"}` |
+| `/safety_system/cmd` | `nav2_monitor/msg/SafetyCmd` | 向安全执行链路下发动作 | 安全状态变化时发布 | `action=2`, `slow_down_percentage=0.0`, `reason="Node inactive"` |
+| `/nav2_monitor/reporter/heartbeat_json` | `std_msgs/msg/String` | 发布系统心跳 JSON，上报系统资源/电池/导航状态 | 周期发布（随 `/nav2_monitor/status`） | `{"all_ok":true,"system":{"cpu_usage":12.3},"battery":{"percentage":0.86},"navigation":{"active":true}}` |
+| `/nav2_monitor/reporter/event_json` | `std_msgs/msg/String` | 发布异常/恢复事件 JSON | 边沿发布（随 `/nav2_monitor/fault_event`） | `{"edge":"TRIGGER","fault_type":"node_inactive","fault_module":"navigation","fault_level":"CRITICAL"}` |
+| `collision_detection.zones[*].polygon_pub_topic` | `geometry_msgs/msg/PolygonStamped` | 发布碰撞区可视化轮廓 | 周期发布（随 `check_health()`） | `/nav2_monitor/collision_zone/front_stop` |
+| `/command` | `std_msgs/msg/String` | 执行器输出到底盘协议命令 | 动作触发后透传/限速/制动发布 | `{"speed":0.000,"angle":0.0,"press":1000,"acc":1000,"place":-1,"ulock":-1}` |
+
+**说明**
+
+- `/nav2_monitor/reporter/heartbeat_json` 至少包含：系统信息、电池电量、小车导航状态信息。
+- `/nav2_monitor/reporter/event_json` 至少包含：错误类型、错误模块、错误等级、错误信息、措施执行；恢复事件同样上报。
+- `/command` 由 `safety_emergency_executor` 发布，不是 `nav2_monitor` 主节点直接发布。
+- `collision_detection.zones[*].polygon_pub_topic` 是按配置动态创建的 topic，不是固定单一名称。
+
+## JSON 字段说明
+
+### `/supervisor/cmd` JSON 字段
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `module_name` | string | 触发 supervisor 重启的模块名 |
+| `nodes_to_restart` | array | 预留字段，当前通常为空数组 |
+| `reason` | string | 触发该次重启的原因说明 |
+
+### `/nav2_monitor/reporter/heartbeat_json` 字段
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `timestamp` | string | 上报时刻 |
+| `all_ok` | bool | 当前总体状态 |
+| `system.cpu_usage` | number | CPU 使用率 |
+| `system.mem_usage` | number | 内存使用率 |
+| `system.disk_usage` | number | 磁盘使用率 |
+| `system.cpu_temp` | number | CPU 温度 |
+| `system.gpu_usage` | number | GPU 使用率，无 GPU 时可能为 -1 |
+| `system.gpu_temp` | number | GPU 温度，无 GPU 时可能为 -1 |
+| `system.gpu_mem_usage` | number | GPU 显存使用率，无 GPU 时可能为 -1 |
+| `battery.temperature` | number | 电池温度 |
+| `battery.percentage` | number | 电池电量百分比 |
+| `navigation.status_valid` | bool | 导航状态文件是否有效 |
+| `navigation.active` | bool | 导航是否激活 |
+| `navigation.succeeded` | bool | 导航是否成功 |
+| `navigation.progress_percentage` | number | 导航进度 |
+| `navigation.simple_status` | string | 简化导航状态 |
+| `navigation.error_message` | string | 导航错误信息 |
+| `summary.active_nodes` | number | 当前活跃节点数 |
+| `summary.timeout_nodes` | number | 当前超时节点数 |
+| `summary.active_topics` | number | 当前活跃监控 topic 数 |
+| `summary.inactive_topics` | number | 当前失活监控 topic 数 |
+
+### `/nav2_monitor/reporter/event_json` 字段
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `timestamp` | string | 故障事件时间戳 |
+| `edge` | string | 事件边沿，`TRIGGER` 或 `RECOVER` |
+| `fault_type` | string | 错误类型分类，如 `node_inactive` / `feedback_rule` / `collision_detection` |
+| `fault_module` | string | 错误所属模块 |
+| `fault_level` | string | 错误等级，`NORMAL/WARNING/ERROR/CRITICAL` |
+| `fault_message` | string | 详细错误信息 |
+| `measure_execution.action_type` | string | 措施类型，`SUPERVISOR / SAFETY_SYSTEM / NONE` |
+| `measure_execution.supervisor_module` | string | 若为 supervisor 动作，对应模块名 |
+| `measure_execution.nodes_to_restart_count` | number | 若为 supervisor 动作，对应节点数量 |
+| `measure_execution.safety_action` | string | 若为 safety 动作，对应 `SLOW_DOWN / SOFT_STOP / EMERGENCY_STOP / RESUME` |
+| `measure_execution.slow_down_percentage` | number | 若为减速动作，对应减速百分比 |
+| `measure_execution.details` | string | 若无关联动作细节，则为 `none` |
+
+### `/safety_system/cmd` 字段
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `action` | uint8 | 动作类型：`1=SLOW_DOWN`，`2=SOFT_STOP`，`3=EMERGENCY_STOP`，`4=RESUME` |
+| `slow_down_percentage` | float32 | 减速百分比，仅 `action=1` 时有意义 |
+| `reason` | string | 动作触发原因 |
+
+### `/nav2_monitor/fault_event` 字段
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `stamp` | builtin_interfaces/Time | 故障事件时间戳 |
+| `module_name` | string | 故障所属模块名 |
+| `fault_level` | uint8 | 故障等级：`0=NORMAL`，`1=WARNING`，`2=ERROR`，`3=CRITICAL` |
+| `action` | uint8 | 对应动作：`0=NONE`，`1=SUPERVISOR`，`2=SAFETY_SYSTEM` |
+| `edge` | uint8 | 边沿类型：`0=NONE`，`1=TRIGGER`，`2=RECOVER` |
+| `reason` | string | 故障或恢复原因 |
+
+### `/nav2_monitor/status` 字段
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `all_ok` | bool | 当前总体是否正常 |
+| `monitored_nodes` | string[] | 监控节点列表 |
+| `active_nodes` | string[] | 当前活跃节点 |
+| `timeout_nodes` | string[] | 当前超时节点 |
+| `monitored_topics` | string[] | 当前监控 topic 列表 |
+| `active_topics` | string[] | 当前活跃 topic |
+| `inactive_topics` | string[] | 当前失活 topic |
+| `topic_frequencies` | float32[] | 与 `monitored_topics` 对齐的频率数组 |
+| `cpu_usage` | float32 | CPU 使用率 |
+| `mem_usage` | float32 | 内存使用率 |
+| `disk_usage` | float32 | 磁盘使用率 |
+| `cpu_temp` | float32 | CPU 温度 |
+| `gpu_usage` | float32 | GPU 使用率 |
+| `gpu_temp` | float32 | GPU 温度 |
+| `gpu_mem_usage` | float32 | GPU 显存使用率 |
+| `vehicle_status_valid` | bool | 导航状态是否有效 |
+| `vehicle_navigation_active` | bool | 导航是否激活 |
+| `vehicle_navigation_succeeded` | bool | 导航是否成功 |
+| `vehicle_progress_percentage` | float32 | 导航进度 |
+| `vehicle_simple_status` | string | 简化导航状态 |
+| `vehicle_error_message` | string | 导航错误信息 |
+| `battery_temperature` | float32 | 电池温度 |
+| `battery_percentage` | float32 | 电池电量百分比 |
+| `monitored_transforms` | string[] | 监控的 TF 列表 |
+| `available_transforms` | string[] | 当前可用 TF |
+| `stale_transforms` | string[] | 当前超时 TF |
+| `transform_latencies_ms` | float32[] | TF 延迟 |
+| `topic_latencies_ms` | float32[] | 预留字段，当前未重点使用 |
+
 ## 输入 / 输出
 
 ### 输入
@@ -130,7 +259,8 @@ ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
 
 - `/nav2_monitor/status`
 - `/nav2_monitor/fault_event`
-- `/supervisor/cmd`
+- `/supervisor/cmd`（JSON 字符串）
+  - 示例：`{"module_name":"navigation","nodes_to_restart":[],"reason":"Node inactive"}`
 - `/safety_system/cmd`
 - `collision_detection.zones[*].polygon_pub_topic`
 
@@ -180,6 +310,22 @@ ros2 topic echo /supervisor/cmd
 ```bash
 ros2 topic pub /nav2_monitor/algorithm_feedback nav2_monitor/msg/AlgorithmFeedback \
   "{module_name: navigation, topic_name: /controller/feedback, metric_name: tracking_error, value: 0.95, valid: true}"
+```
+
+## IMU 频率复现实验
+
+已提供脚本：`src/nav2_monitor/scripts/imu_frequency_repro.py`
+
+用途：
+
+- 自动启动 `nav2_monitor`
+- 自动回放指定 rosbag 中的 IMU topic
+- 对比实际接收频率与 `/nav2_monitor/status` 中上报的频率
+
+示例：
+
+```bash
+python3 src/nav2_monitor/scripts/imu_frequency_repro.py   /home/tokou/claude/rosbag2_2026_03_12-20_15_08/rosbag2_2026_03_12-20_15_08   --topic /livox/imu
 ```
 
 ## 测试

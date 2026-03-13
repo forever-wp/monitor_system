@@ -11,9 +11,9 @@ multi_value_judge:
 # 碰撞检测（轻量版 LaserScan + 区域）
 # ============================================================
 collision_detection:
-  enabled: 0
+  enabled: 1
   module_name: "collision_detection"
-  scan_topic: "/scan"
+  scan_topic: ""
   pointcloud_topic: "/livox/points"
   pointcloud_min_height: 0.0
   pointcloud_max_height: 1.5
@@ -122,7 +122,7 @@ modules:
       - "battery_node"
     watch_topics:
       - name: "/battery_state"
-        min_hz: 0.01
+        min_hz: 0.001
     feedback_rules:
       - source_topic: "/battery_state"
         metric_name: "voltage"
@@ -165,17 +165,17 @@ modules:
     nodes:
       - "front_camera"
       - "back_camera"
-      - "left_camera"
-      - "right_camera"
+      #- "left_camera"
+      #- "right_camera"
     watch_topics:
       - name: "/front_camera/image_raw"
-        min_hz: 10.0
+        min_hz: 5.0
       - name: "/back_camera/image_raw"
-        min_hz: 10.0
-      - name: "/left_camera/image_raw"
-        min_hz: 10.0
-      - name: "/right_camera/image_raw"
-        min_hz: 10.0
+        min_hz: 5.0
+      #- name: "/left_camera/image_raw"
+      #  min_hz: 5.0
+      #- name: "/right_camera/image_raw"
+      #  min_hz: 5.0
 
   # ----------------------------------------------------------
   # 6. rgbd_cam — RGBD 深度相机 (Orbbec)
@@ -189,9 +189,9 @@ modules:
       - "camera/camera"
     watch_topics:
       - name: "/camera/color/image_raw"
-        min_hz: 10.0
+        min_hz: 5.0
       - name: "/camera/depth/image_raw"
-        min_hz: 10.0
+        min_hz: 5.0
 
   # ----------------------------------------------------------
   # 7. uitrasonic — 超声波传感器 (8路)
@@ -204,19 +204,19 @@ modules:
     safety_system: 0
     nodes:
       - "uss_driver_publisher"
-    watch_topics:
-      - name: "/ultrasonic_1"
-        min_hz: 5.0
-      - name: "/ultrasonic_2"
-        min_hz: 5.0
-      - name: "/ultrasonic_4"
-        min_hz: 5.0
-      - name: "/ultrasonic_5"
-        min_hz: 5.0
-      - name: "/ultrasonic_7"
-        min_hz: 5.0
-      - name: "/ultrasonic_8"
-        min_hz: 5.0
+    watch_topics: []
+      # - name: "/ultrasonic_1"
+      #   min_hz: 5.0
+      # - name: "/ultrasonic_2"
+      #   min_hz: 5.0
+      # - name: "/ultrasonic_4"
+      #   min_hz: 5.0
+      # - name: "/ultrasonic_5"
+      #   min_hz: 5.0
+      # - name: "/ultrasonic_7"
+      #   min_hz: 5.0
+      #- name: "/ultrasonic_8"
+      #  min_hz: 5.0
 
   # ----------------------------------------------------------
   # 8. navigation — Nav2 导航核心 + 辅助
@@ -254,9 +254,9 @@ modules:
       - name: "/plan"
         min_hz: 0.5
       - name: "/map"
-        min_hz: 0.01
+        min_hz: 0.001
       - name: "/global_costmap/costmap"
-        min_hz: 0.5
+        min_hz: 0.05
       - name: "/local_costmap/costmap"
         min_hz: 2.0
 

@@ -1,5 +1,30 @@
 # Changelog
 
+## v2.1 - 2026-03-13
+
+作者：ToTo
+
+### 新增
+
+- 新增包内 `MonitorReporter` 类，负责系统心跳 JSON 与异常/恢复 JSON 上报
+- `/supervisor/cmd` 改为 JSON 字符串发布
+- 新增 `LaserScan` / `PointCloud2` 碰撞检测输入
+- 新增 `slowdown zone`、`stop zone`、`approach / TTC`
+- 新增碰撞区域可视化 `PolygonStamped`
+- 新增 IMU 频率复现实验脚本
+
+### 优化
+
+- `MonitorDataStore` 加锁与重复缓存收敛
+- 高频 topic 订阅改为更轻量的 QoS 适配策略
+- `watch_topics` 对高频常见消息优先使用强类型订阅
+- README 增加 topic 总表与 JSON 字段说明
+
+### 说明
+
+- 当前碰撞检测与上报器均已并入 `nav2_monitor` 包内部
+- 保持低占用 / 小内存 / 快响应原则
+
 ## v2 - 2026-03-12
 
 作者：ToTo
