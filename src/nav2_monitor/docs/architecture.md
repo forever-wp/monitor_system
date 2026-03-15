@@ -1,8 +1,8 @@
 # nav2_monitor 架构设计说明
 
-- 名称：nav2_monitor v2
-- 版本：v2
-- 时间：2026-03-12
+- 名称：nav2_monitor v2.2
+- 版本：v2.2
+- 时间：2026-03-15
 - 作者：ToTo
 
 ## 1. 版本目标
@@ -137,6 +137,7 @@
 
 - `LaserScan`
 - `PointCloud2`
+- `ultrasonic_eight(JSON)`
 - polygon zone
 - slowdown zone
 - stop zone
@@ -264,6 +265,8 @@
 
 - `scan_topic`
 - `pointcloud_topic`
+- `ultrasonic_topic`
+- `ultrasonic_widget`
 - `pointcloud_min_height`
 - `pointcloud_max_height`
 - `source_timeout_s`
@@ -301,12 +304,13 @@
 - 自动恢复与 `RESUME`
 - `LaserScan` 碰撞检测
 - `PointCloud2` 碰撞检测
+- 单 topic 八路超声波 JSON 加权碰撞检测
 - polygon 区域可视化
 - slowdown / stop / approach(TTC) 三类碰撞策略
 
 ### 尚未实现 / 未来优化点
 
-- `Range / Ultrasonic` 作为第三类碰撞 source
+- 更复杂的超声波场景策略（当前已支持单 topic 八路加权输入，推荐直接配 `ultrasonic_widget`）
 - 完整 footprint 前向离散仿真版 TTC
 - 碰撞 source 抽象层进一步统一
 - 多错误组合策略表配置化

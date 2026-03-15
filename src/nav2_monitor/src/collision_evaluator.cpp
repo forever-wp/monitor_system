@@ -156,17 +156,20 @@ std::vector<FaultInfo> CollisionEvaluator::evaluate(
         }
       }
     } else {
+      double inside_weight = 0.0;
       size_t inside_count = 0;
       for (const auto & point : points) {
-        if (is_point_inside_polygon(point, zone.points)) {
-          inside_count++;
+        if (!is_point_inside_polygon(point, zone.points)) {
+          continue;
         }
+        inside_count++;
+        inside_weight += std::max(0.0, point.weight);
       }
-      abnormal = inside_count >= zone.min_points;
+      abnormal = inside_weight >= zone.min_points;
       if (abnormal) {
         std::ostringstream oss;
-        oss << "Collision zone hit: zone=" << zone.name << " points=" << inside_count
-            << " min_points=" << zone.min_points;
+        oss << "Collision zone hit: zone=" << zone.name << " weighted_points=" << inside_weight
+            << " raw_points=" << inside_count << " min_points=" << zone.min_points;
         reason = oss.str();
       }
     }

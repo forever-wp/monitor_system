@@ -1,14 +1,20 @@
 nav2_monitor:
   ros__parameters:
     timeout: 5.0
-    scan_rate: 0.5
-    check_rate: 1.0
+    scan_rate: 5.0
+    check_rate: 10.0
     safety_cooldown_s: 2.0
     supervisor_cooldown_s: 5.0
     algorithm_feedback_topic: "/nav2_monitor/algorithm_feedback"
+    fault_event_topic: "/nav2_monitor/fault_event"
+    supervisor_cmd_topic: "/supervisor/cmd"
+    safety_cmd_topic: "/safety_system/cmd"
+    reporter.heartbeat_json_topic: "/nav2_monitor/reporter/heartbeat_json"
+    reporter.event_json_topic: "/nav2_monitor/reporter/event_json"
+    reporter.cmd_correlation_window_s: 2.0
     battery_state_topic: "/battery_state"
     battery_state_timeout_s: 90.0
-    fault_config: "/home/ry/ry_ws/modules/business_layer/business_layer_ws/src/nav2_monitor/config/fault_detector_config.yaml"
+    fault_config: "./src/nav2_monitor/config/fault_detector_config.yaml"
     vehicle_status_file: "/home/ry/.ros/navigate_status/navigate_todoor_status.json"
 
     # 兼容回退配置：当 fault_config 缺失或无 modules 时生效
@@ -75,14 +81,8 @@ nav2_monitor:
     #   - "/right_camera/image_raw"
     #   - "/camera/color/image_raw"
     #   - "/camera/depth/image_raw"
-    #   # 传感器 - 超声波
-    #   - "/ultrasonic_1"
-    #   - "/ultrasonic_2"
-    #   - "/ultrasonic_4"
-    #   - "/ultrasonic_5"
-    #   - "/ultrasonic_7"
-    #   - "/ultrasonic_8"
-    #   - "/ultrasonic_eight_distance"
+    #   # 传感器 - 超声波（8路聚合单 topic）
+    #   - "/ultrasonic_eight"
     #   # 导航
     #   - "/cmd_vel"
     #   - "/cmd_vel_nav"

@@ -1,5 +1,27 @@
 # Changelog
 
+## v2.2 - 2026-03-15
+
+作者：ToTo
+
+### 新增
+
+- 新增单 topic 八路超声波碰撞输入：`/ultrasonic_eight` JSON
+- 新增 `collision_detection.ultrasonic_widget` 8 路权重配置，默认偏向前视与前侧
+- 新增超声波权重与内置安装位姿映射逻辑，并统一进入现有碰撞检测链路
+
+### 优化
+
+- `watch_topics` 未配置 `min_hz` 时，仅检测有无，不做频率阈值判断
+- `chassis_stationary.odom_topic` 允许为空，底盘异常判断可不依赖 odom
+- `event_json` 固定 schema，`safety` / `supervisor` 字段始终存在
+- 修复碰撞点聚合路径中的死锁问题，降低碰撞开启时卡住的风险
+
+### 说明
+
+- 现在配置超声波权重时，推荐只写：`ultrasonic_widget: [0-1, ..., 0-1]`
+- 完整 8 路位姿使用内置默认布局，避免配置文件过长
+
 ## v2.1 - 2026-03-13
 
 作者：ToTo

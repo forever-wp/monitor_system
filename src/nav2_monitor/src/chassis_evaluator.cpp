@@ -7,6 +7,11 @@
 namespace nav2_monitor
 {
 
+void ChassisEvaluator::set_logger(const rclcpp::Logger & logger)
+{
+  logger_ = logger;
+}
+
 void ChassisEvaluator::set_multi_value_config(const MultiValueJudgeConfig & config)
 {
   multi_value_cfg_ = config;
@@ -17,6 +22,7 @@ void ChassisEvaluator::reset()
   judge_states_.clear();
   idle_tracking_ = false;
   idle_start_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+  last_idle_progress_bucket_ = -1;
 }
 
 bool ChassisEvaluator::update_multi_value_state(
@@ -105,11 +111,12 @@ std::vector<FaultInfo> ChassisEvaluator::evaluate(
 {
   std::vector<FaultInfo> faults;
   const auto & chassis_state = store.get_chassis_state();
+  const bool odom_enabled = !cfg.odom_topic.empty();
   const bool command_fresh = chassis_state.command_received &&
     (now - chassis_state.command_stamp).seconds() <= cfg.source_timeout_s;
   const bool moto_fresh = chassis_state.moto_received &&
     (now - chassis_state.moto_stamp).seconds() <= cfg.source_timeout_s;
-  const bool odom_fresh = chassis_state.odom_received &&
+  const bool odom_fresh = odom_enabled && chassis_state.odom_received &&
     (now - chassis_state.odom_stamp).seconds() <= cfg.source_timeout_s;
 
   const bool command_has = command_fresh &&
@@ -127,10 +134,12 @@ std::vector<FaultInfo> ChassisEvaluator::evaluate(
 
   if (command_has && !moto_has) {
     anomaly_abnormal = true;
-    if (odom_has) {
+    if (odom_enabled && odom_has) {
       anomaly_reason = "Command active, moto inactive but odom moving (moto feedback abnormal)";
-    } else {
+    } else if (odom_enabled) {
       anomaly_reason = "Command active, moto inactive and odom not moving (chassis may be stuck)";
+    } else {
+      anomaly_reason = "Command active, moto inactive (odom disabled, chassis may be stuck or moto feedback abnormal)";
     }
     idle_tracking_ = false;
   } else if (!command_has && moto_has) {
@@ -141,12 +150,38 @@ std::vector<FaultInfo> ChassisEvaluator::evaluate(
     if (!idle_tracking_) {
       idle_tracking_ = true;
       idle_start_time_ = now;
+      last_idle_progress_bucket_ = 0;
+      RCLCPP_INFO(
+        logger_,
+        "[chassis_idle] start counting: idle_timeout=%.1fs command_has=false moto_has=false odom_enabled=%s odom_has=%s",
+        cfg.idle_timeout_s, odom_enabled ? "true" : "false", odom_has ? "true" : "false");
     } else if ((now - idle_start_time_).seconds() >= cfg.idle_timeout_s) {
       idle_abnormal = true;
       idle_reason = "Command and moto inactive for too long (stationary timeout)";
+      last_idle_progress_bucket_ = static_cast<int>(cfg.idle_timeout_s);
+    } else {
+      const int bucket = static_cast<int>((now - idle_start_time_).seconds());
+      if (bucket > last_idle_progress_bucket_) {
+        last_idle_progress_bucket_ = bucket;
+        RCLCPP_INFO(
+          logger_,
+          "[chassis_idle] counting: elapsed=%ds / %.1fs command_has=false moto_has=false odom_enabled=%s odom_has=%s",
+          bucket, cfg.idle_timeout_s, odom_enabled ? "true" : "false", odom_has ? "true" : "false");
+      }
     }
   } else {
+    if (idle_tracking_) {
+      RCLCPP_INFO(
+        logger_,
+        "[chassis_idle] reset: command_has=%s moto_has=%s odom_enabled=%s odom_has=%s elapsed=%.2fs",
+        command_has ? "true" : "false",
+        moto_has ? "true" : "false",
+        odom_enabled ? "true" : "false",
+        odom_has ? "true" : "false",
+        (now - idle_start_time_).seconds());
+    }
     idle_tracking_ = false;
+    last_idle_progress_bucket_ = -1;
   }
 
   std::string active_reason;

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cctype>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -22,6 +23,8 @@
 #include <sensor_msgs/point_cloud2_iterator.hpp>
 #include <tf2/LinearMath/Matrix3x3.h>
 #include <limits>
+#include <sstream>
+#include <yaml-cpp/yaml.h>
 
 namespace nav2_monitor
 {
@@ -120,6 +123,98 @@ std::string resolve_config_path(const std::string & config_file)
 
   return config_file;
 }
+
+bool extract_ultrasonic_distances(const YAML::Node & node, std::vector<double> & distances)
+{
+  distances.clear();
+  if (!node || !node.IsSequence()) {
+    return false;
+  }
+
+  size_t numeric_count = 0;
+  for (const auto & item : node) {
+    try {
+      distances.push_back(item.as<double>());
+      ++numeric_count;
+    } catch (...) {
+      if (distances.empty() && item.IsScalar()) {
+        try {
+          (void)item.as<bool>();
+          continue;
+        } catch (...) {
+        }
+      }
+      distances.clear();
+      return false;
+    }
+  }
+  return numeric_count >= 8;
+}
+
+bool parse_ultrasonic_json_payload(
+  const std::string & payload,
+  const std::string & distances_key,
+  std::vector<double> & distances)
+{
+  distances.clear();
+  if (payload.empty()) {
+    return false;
+  }
+
+  try {
+    const auto root = YAML::Load(payload);
+    if (root.IsMap()) {
+      if (!distances_key.empty() && root[distances_key] &&
+        extract_ultrasonic_distances(root[distances_key], distances)) {
+        return true;
+      }
+      for (const auto & entry : root) {
+        if (extract_ultrasonic_distances(entry.second, distances)) {
+          return true;
+        }
+      }
+    } else if (extract_ultrasonic_distances(root, distances)) {
+      return true;
+    }
+  } catch (...) {
+  }
+
+  std::stringstream ss(payload);
+  std::string token;
+  std::vector<std::string> tokens;
+  while (std::getline(ss, token, ',')) {
+    const auto begin = token.find_first_not_of(" \t\r\n");
+    const auto end = token.find_last_not_of(" \t\r\n");
+    if (begin == std::string::npos) {
+      continue;
+    }
+    tokens.push_back(token.substr(begin, end - begin + 1));
+  }
+
+  size_t start_idx = 0;
+  if (!tokens.empty()) {
+    std::string lowered = tokens.front();
+    std::transform(lowered.begin(), lowered.end(), lowered.begin(), [](unsigned char c) {
+      return static_cast<char>(std::tolower(c));
+    });
+    if ((lowered == "true" || lowered == "false") && tokens.size() >= 9) {
+      start_idx = 1;
+    }
+  }
+  if (tokens.size() < start_idx + 8) {
+    return false;
+  }
+
+  try {
+    for (size_t idx = 0; idx < 8; ++idx) {
+      distances.push_back(std::stod(tokens[start_idx + idx]));
+    }
+    return true;
+  } catch (...) {
+    distances.clear();
+    return false;
+  }
+}
 }  // namespace
 
 Nav2MonitorNode::Nav2MonitorNode()
@@ -133,6 +228,12 @@ Nav2MonitorNode::Nav2MonitorNode()
   supervisor_cooldown_s_ = this->declare_parameter<double>("supervisor_cooldown_s", 5.0);
   algorithm_feedback_topic_ = this->declare_parameter<std::string>(
     "algorithm_feedback_topic", "/nav2_monitor/algorithm_feedback");
+  const auto fault_event_topic = this->declare_parameter<std::string>(
+    "fault_event_topic", "/nav2_monitor/fault_event");
+  const auto supervisor_cmd_topic = this->declare_parameter<std::string>(
+    "supervisor_cmd_topic", "/supervisor/cmd");
+  const auto safety_cmd_topic = this->declare_parameter<std::string>(
+    "safety_cmd_topic", "/safety_system/cmd");
   battery_state_topic_ = this->declare_parameter<std::string>(
     "battery_state_topic", "/battery_state");
   battery_state_timeout_s_ = std::max(
@@ -165,9 +266,9 @@ Nav2MonitorNode::Nav2MonitorNode()
   tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
   tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
   pub_ = this->create_publisher<msg::MonitorStatus>("/nav2_monitor/status", 10);
-  fault_event_pub_ = this->create_publisher<msg::FaultEvent>("/nav2_monitor/fault_event", 10);
-  supervisor_pub_ = this->create_publisher<std_msgs::msg::String>("/supervisor/cmd", 10);
-  fault_state_coordinator_.configure(this, "/safety_system/cmd");
+  fault_event_pub_ = this->create_publisher<msg::FaultEvent>(fault_event_topic, 10);
+  supervisor_pub_ = this->create_publisher<std_msgs::msg::String>(supervisor_cmd_topic, 10);
+  fault_state_coordinator_.configure(this, safety_cmd_topic);
   monitor_reporter_.configure(this);
 
   std::string config_file = this->declare_parameter<std::string>("fault_config", "");
@@ -210,12 +311,14 @@ Nav2MonitorNode::Nav2MonitorNode()
     command_sub_ = this->create_subscription<std_msgs::msg::String>(
       command_topic_, rclcpp::QoS(20),
       std::bind(&Nav2MonitorNode::on_command, this, std::placeholders::_1));
-    odom_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
-      odom_topic_, rclcpp::SensorDataQoS(),
-      std::bind(&Nav2MonitorNode::on_odom, this, std::placeholders::_1));
+    if (!odom_topic_.empty()) {
+      odom_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
+        odom_topic_, rclcpp::SensorDataQoS(),
+        std::bind(&Nav2MonitorNode::on_odom, this, std::placeholders::_1));
+    }
     RCLCPP_INFO(
       get_logger(), "Chassis stationary judge enabled: command=%s moto=%s odom=%s",
-      command_topic_.c_str(), moto_topic_.c_str(), odom_topic_.c_str());
+      command_topic_.c_str(), moto_topic_.c_str(), odom_topic_.empty() ? "<disabled>" : odom_topic_.c_str());
   }
 
   algorithm_feedback_sub_ = this->create_subscription<msg::AlgorithmFeedback>(
@@ -243,6 +346,14 @@ Nav2MonitorNode::Nav2MonitorNode()
         cfg.pointcloud_topic, pointcloud_qos,
         std::bind(&Nav2MonitorNode::on_collision_pointcloud, this, std::placeholders::_1));
     }
+    if (!cfg.ultrasonic_topic.empty()) {
+      auto ultrasonic_fallback = rclcpp::QoS(10);
+      ultrasonic_fallback.keep_last(10);
+      const auto ultrasonic_qos = build_topic_subscription_qos(cfg.ultrasonic_topic, ultrasonic_fallback, 10);
+      collision_ultrasonic_sub_ = this->create_subscription<std_msgs::msg::String>(
+        cfg.ultrasonic_topic, ultrasonic_qos,
+        std::bind(&Nav2MonitorNode::on_collision_ultrasonic, this, std::placeholders::_1));
+    }
     for (const auto & zone : cfg.zones) {
       if (!zone.visualize || zone.points.size() < 3) {
         continue;
@@ -253,8 +364,8 @@ Nav2MonitorNode::Nav2MonitorNode()
     }
     publish_collision_zones();
     RCLCPP_INFO(
-      get_logger(), "Collision detection enabled: scan=%s pointcloud=%s",
-      cfg.scan_topic.c_str(), cfg.pointcloud_topic.c_str());
+      get_logger(), "Collision detection enabled: scan=%s pointcloud=%s ultrasonic=%s",
+      cfg.scan_topic.c_str(), cfg.pointcloud_topic.c_str(), cfg.ultrasonic_topic.c_str());
   }
 
   std::string vehicle_status_file = this->declare_parameter<std::string>(
@@ -461,6 +572,45 @@ void Nav2MonitorNode::on_collision_pointcloud(const sensor_msgs::msg::PointCloud
   data_store_.set_collision_points("pointcloud", points, stamp);
 }
 
+void Nav2MonitorNode::on_collision_ultrasonic(const std_msgs::msg::String::SharedPtr msg)
+{
+  const auto & cfg = fault_detector_.get_collision_detection_config();
+  if (cfg.ultrasonic_sensors.empty()) {
+    return;
+  }
+
+  std::vector<double> distances;
+  if (!parse_ultrasonic_json_payload(msg->data, cfg.ultrasonic_distances_key, distances)) {
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *get_clock(), 5000,
+      "Collision ultrasonic parse failed: topic=%s payload='%s'",
+      cfg.ultrasonic_topic.c_str(), msg->data.c_str());
+    return;
+  }
+
+  std::vector<CollisionPoint> points;
+  points.reserve(cfg.ultrasonic_sensors.size());
+  for (const auto & sensor : cfg.ultrasonic_sensors) {
+    if (!sensor.enabled || sensor.index >= distances.size()) {
+      continue;
+    }
+
+    const double distance = distances[sensor.index];
+    if (!std::isfinite(distance) || distance <= 0.0 || distance > sensor.max_distance) {
+      continue;
+    }
+
+    constexpr double kDegToRad = 3.14159265358979323846 / 180.0;
+    const double yaw = sensor.yaw_deg * kDegToRad;
+    points.push_back(CollisionPoint{
+      sensor.x + distance * std::cos(yaw),
+      sensor.y + distance * std::sin(yaw),
+      sensor.weight});
+  }
+
+  data_store_.set_collision_points("ultrasonic", points, this->now());
+}
+
 void Nav2MonitorNode::try_subscribe_moto_topic()
 {
   if (!fault_detector_.chassis_stationary_enabled() || moto_topic_.empty() || moto_sub_) {
@@ -577,6 +727,12 @@ rclcpp::QoS Nav2MonitorNode::build_watch_topic_qos(const std::string & topic, co
   return build_topic_subscription_qos(topic, rclcpp::QoS(10), 10);
 }
 
+rclcpp::Time Nav2MonitorNode::stamp_or_now(const builtin_interfaces::msg::Time & stamp) const
+{
+  const bool has_stamp = (stamp.sec != 0) || (stamp.nanosec != 0);
+  return has_stamp ? rclcpp::Time(stamp) : this->now();
+}
+
 bool Nav2MonitorNode::should_publish_action(
   const std::string & module_name, ActionType action, const rclcpp::Time & now)
 {
@@ -616,8 +772,8 @@ void Nav2MonitorNode::subscribe_watch_topics()
     if (type == "sensor_msgs/msg/Imu") {
       auto sub = this->create_subscription<sensor_msgs::msg::Imu>(
         topic, qos,
-        [this, topic](const sensor_msgs::msg::Imu::SharedPtr) {
-          data_store_.add_watch_topic_sample(topic, this->now(), true);
+        [this, topic](const sensor_msgs::msg::Imu::SharedPtr msg) {
+          data_store_.add_watch_topic_sample(topic, stamp_or_now(msg->header.stamp), true);
         });
       topic_subs_[topic] = sub;
       continue;
@@ -626,8 +782,8 @@ void Nav2MonitorNode::subscribe_watch_topics()
     if (type == "sensor_msgs/msg/LaserScan") {
       auto sub = this->create_subscription<sensor_msgs::msg::LaserScan>(
         topic, qos,
-        [this, topic](const sensor_msgs::msg::LaserScan::SharedPtr) {
-          data_store_.add_watch_topic_sample(topic, this->now(), true);
+        [this, topic](const sensor_msgs::msg::LaserScan::SharedPtr msg) {
+          data_store_.add_watch_topic_sample(topic, stamp_or_now(msg->header.stamp), true);
         });
       topic_subs_[topic] = sub;
       continue;
@@ -636,8 +792,18 @@ void Nav2MonitorNode::subscribe_watch_topics()
     if (type == "sensor_msgs/msg/PointCloud2") {
       auto sub = this->create_subscription<sensor_msgs::msg::PointCloud2>(
         topic, qos,
-        [this, topic](const sensor_msgs::msg::PointCloud2::SharedPtr) {
-          data_store_.add_watch_topic_sample(topic, this->now(), true);
+        [this, topic](const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
+          data_store_.add_watch_topic_sample(topic, stamp_or_now(msg->header.stamp), true);
+        });
+      topic_subs_[topic] = sub;
+      continue;
+    }
+
+    if (type == "nav_msgs/msg/Odometry") {
+      auto sub = this->create_subscription<nav_msgs::msg::Odometry>(
+        topic, qos,
+        [this, topic](const nav_msgs::msg::Odometry::SharedPtr msg) {
+          data_store_.add_watch_topic_sample(topic, stamp_or_now(msg->header.stamp), true);
         });
       topic_subs_[topic] = sub;
       continue;
@@ -763,9 +929,13 @@ void Nav2MonitorNode::check_health()
 
     for (const auto & topic : watch_topics_) {
       const auto * info = data_store_.get_watch_topic_state(topic);
-      if (info != nullptr && info->has_publisher && info->has_valid_data) {
+      const bool require_frequency = fault_detector_.is_watch_topic_frequency_required(topic);
+      const bool topic_present = info != nullptr && info->has_publisher;
+      const bool topic_valid = topic_present && (!require_frequency || info->has_valid_data);
+      if (topic_valid) {
         status_msg.active_topics.push_back(topic);
-        status_msg.topic_frequencies.push_back(static_cast<float>(info->frequency));
+        status_msg.topic_frequencies.push_back(
+          info != nullptr ? static_cast<float>(info->frequency) : 0.0F);
       } else {
         status_msg.inactive_topics.push_back(topic);
         status_msg.topic_frequencies.push_back(0.0);

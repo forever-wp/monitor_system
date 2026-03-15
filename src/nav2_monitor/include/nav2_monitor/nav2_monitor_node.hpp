@@ -55,6 +55,7 @@ private:
   void on_battery_state(const sensor_msgs::msg::BatteryState::SharedPtr msg);
   void on_collision_scan(const sensor_msgs::msg::LaserScan::SharedPtr msg);
   void on_collision_pointcloud(const sensor_msgs::msg::PointCloud2::SharedPtr msg);
+  void on_collision_ultrasonic(const std_msgs::msg::String::SharedPtr msg);
   void try_subscribe_moto_topic();
   double parse_command_speed(const std::string & payload) const;
   bool decode_moto_info(const rclcpp::SerializedMessage & msg, double & left_speed, double & right_speed) const;
@@ -64,6 +65,7 @@ private:
   void publish_collision_zones();
   rclcpp::QoS build_watch_topic_qos(const std::string & topic, const std::string & type) const;
   rclcpp::QoS build_topic_subscription_qos(const std::string & topic, const rclcpp::QoS & fallback, size_t max_depth) const;
+  rclcpp::Time stamp_or_now(const builtin_interfaces::msg::Time & stamp) const;
 
   rclcpp::TimerBase::SharedPtr scan_timer_;
   rclcpp::TimerBase::SharedPtr check_timer_;
@@ -75,6 +77,7 @@ private:
   rclcpp::Subscription<sensor_msgs::msg::BatteryState>::SharedPtr battery_sub_;
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr collision_scan_sub_;
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr collision_pointcloud_sub_;
+  rclcpp::Subscription<std_msgs::msg::String>::SharedPtr collision_ultrasonic_sub_;
   std::map<std::string, rclcpp::Publisher<geometry_msgs::msg::PolygonStamped>::SharedPtr> collision_zone_pubs_;
   rclcpp::GenericSubscription::SharedPtr moto_sub_;
 
