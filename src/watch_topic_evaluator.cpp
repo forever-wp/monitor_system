@@ -67,6 +67,9 @@ std::vector<FaultInfo> WatchTopicEvaluator::evaluate(
   base_fault.safety_slow_down_percentage = 0.0;
 
   for (const auto & [topic, min_hz] : module.watch_topic_min_hz) {
+    if (min_hz <= 0.0) {
+      continue;
+    }
     const double hz = store.get_watch_topic_frequency(topic);
     const bool abnormal = hz < min_hz;
     std::string reason;

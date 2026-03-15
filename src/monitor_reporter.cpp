@@ -231,19 +231,24 @@ void MonitorReporter::publish_fault_event_json(const msg::FaultEvent & event, co
       << "\"fault_level\":\"" << fault_level_to_string(event.fault_level) << "\"," 
       << "\"fault_message\":\"" << json_escape(event.reason) << "\"," 
       << "\"measure_execution\":{"
-      << "\"action_type\":\"" << action_to_string(event.action) << "\",";
-
-  if (supervisor_match) {
-    oss << "\"supervisor_module\":\"" << json_escape(last_supervisor_cmd_.module_name) << "\"," 
-        << "\"nodes_to_restart_count\":" << last_supervisor_cmd_.nodes_to_restart_count;
-  } else if (safety_match) {
-    oss << "\"safety_action\":\"" << safety_action_to_string(last_safety_cmd_.action) << "\"," 
-        << "\"slow_down_percentage\":" << last_safety_cmd_.slow_down_percentage;
-  } else {
-    oss << "\"details\":\"none\"";
-  }
-
-  oss << "}}";
+      << "\"action_type\":\"" << action_to_string(event.action) << "\"," 
+      << "\"supervisor\":{"
+      << "\"matched\":" << (supervisor_match ? "true" : "false") << ','
+      << "\"module_name\":\""
+      << json_escape(supervisor_match ? last_supervisor_cmd_.module_name : std::string()) << "\"," 
+      << "\"nodes_to_restart_count\":"
+      << (supervisor_match ? last_supervisor_cmd_.nodes_to_restart_count : 0) << "},"
+      << "\"safety\":{"
+      << "\"matched\":" << (safety_match ? "true" : "false") << ','
+      << "\"action\":\""
+      << json_escape(safety_match ? safety_action_to_string(last_safety_cmd_.action) : std::string("NONE")) << "\"," 
+      << "\"slow_down_percentage\":"
+      << (safety_match ? last_safety_cmd_.slow_down_percentage : 0.0F) << ','
+      << "\"reason\":\""
+      << json_escape(safety_match ? last_safety_cmd_.reason : std::string()) << "\"},"
+      << "\"details\":\""
+      << json_escape(supervisor_match || safety_match ? "matched_by_correlation" : "placeholder_only")
+      << "\"}}";
 
   std_msgs::msg::String out;
   out.data = oss.str();

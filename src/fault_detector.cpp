@@ -148,6 +148,51 @@ std::vector<ActionType> parse_actions(
 }
 
 
+std::vector<UltrasonicSensorConfig> make_default_ultrasonic_sensors()
+{
+  return {
+    UltrasonicSensorConfig{0, true, 0.18, 0.18, 55.0, 1.2, 0.8},
+    UltrasonicSensorConfig{1, true, 0.22, 0.10, 20.0, 1.2, 1.0},
+    UltrasonicSensorConfig{2, true, 0.02, 0.20, 90.0, 1.0, 0.6},
+    UltrasonicSensorConfig{3, true, -0.18, 0.16, 160.0, 0.8, 0.3},
+    UltrasonicSensorConfig{4, true, -0.18, -0.16, -160.0, 0.8, 0.3},
+    UltrasonicSensorConfig{5, true, 0.02, -0.20, -90.0, 1.0, 0.6},
+    UltrasonicSensorConfig{6, true, 0.22, -0.10, -20.0, 1.2, 1.0},
+    UltrasonicSensorConfig{7, true, 0.18, -0.18, -55.0, 1.2, 0.8}
+  };
+}
+
+void apply_ultrasonic_widget(
+  const YAML::Node & widget_node,
+  std::vector<UltrasonicSensorConfig> & sensors,
+  rclcpp::Logger logger)
+{
+  if (!widget_node || !widget_node.IsSequence()) {
+    return;
+  }
+
+  if (sensors.empty()) {
+    sensors = make_default_ultrasonic_sensors();
+  }
+
+  if (widget_node.size() < sensors.size()) {
+    RCLCPP_WARN(
+      logger,
+      "[collision_detection] ultrasonic_widget size=%zu < sensor_count=%zu, remaining sensors keep defaults",
+      widget_node.size(), sensors.size());
+  }
+
+  const size_t count = std::min(widget_node.size(), sensors.size());
+  for (size_t idx = 0; idx < count; ++idx) {
+    try {
+      sensors[idx].weight = std::clamp(widget_node[idx].as<double>(), 0.0, 1.0);
+    } catch (const std::exception & e) {
+      RCLCPP_ERROR(logger, "[collision_detection] ultrasonic_widget[%zu] invalid: %s", idx, e.what());
+    }
+  }
+}
+
+
 
 }  // namespace
 
@@ -220,6 +265,17 @@ const std::vector<std::string> & FaultDetector::get_monitored_nodes() const
 const std::vector<std::string> & FaultDetector::get_watched_topics() const
 {
   return watched_topics_;
+}
+
+bool FaultDetector::is_watch_topic_frequency_required(const std::string & topic) const
+{
+  for (const auto & module : modules_) {
+    const auto it = module.watch_topic_min_hz.find(topic);
+    if (it != module.watch_topic_min_hz.end()) {
+      return it->second > 0.0;
+    }
+  }
+  return false;
 }
 
 const MultiValueJudgeConfig & FaultDetector::get_multi_value_judge_config() const
@@ -298,6 +354,15 @@ void FaultDetector::load_config(const std::string & config_file)
       if (cd["pointcloud_topic"]) {
         collision_cfg_.pointcloud_topic = cd["pointcloud_topic"].as<std::string>();
       }
+      if (cd["ultrasonic_topic"]) {
+        collision_cfg_.ultrasonic_topic = cd["ultrasonic_topic"].as<std::string>();
+      }
+      if (cd["ultrasonic_distances_key"]) {
+        collision_cfg_.ultrasonic_distances_key = cd["ultrasonic_distances_key"].as<std::string>();
+      }
+      if (cd["ultrasonic_scene_flag_key"]) {
+        collision_cfg_.ultrasonic_scene_flag_key = cd["ultrasonic_scene_flag_key"].as<std::string>();
+      }
       if (cd["pointcloud_min_height"]) {
         collision_cfg_.pointcloud_min_height = cd["pointcloud_min_height"].as<double>();
       }
@@ -307,6 +372,50 @@ void FaultDetector::load_config(const std::string & config_file)
       if (cd["source_timeout_s"]) {
         collision_cfg_.source_timeout_s = std::max(0.0, cd["source_timeout_s"].as<double>());
       }
+      collision_cfg_.ultrasonic_sensors = make_default_ultrasonic_sensors();
+      if (cd["ultrasonic_sensors"] && cd["ultrasonic_sensors"].IsSequence()) {
+        collision_cfg_.ultrasonic_sensors.clear();
+        for (const auto & sensor_node : cd["ultrasonic_sensors"]) {
+          try {
+            UltrasonicSensorConfig sensor;
+            if (sensor_node["index"]) {
+              sensor.index = std::max(0, sensor_node["index"].as<int>());
+            }
+            if (sensor_node["enabled"]) {
+              try {
+                if (sensor_node["enabled"].IsScalar()) {
+                  const std::string raw = to_lower(sensor_node["enabled"].as<std::string>());
+                  sensor.enabled = (raw == "1" || raw == "true" || raw == "yes");
+                } else {
+                  sensor.enabled = sensor_node["enabled"].as<bool>();
+                }
+              } catch (...) {
+                sensor.enabled = true;
+              }
+            }
+            if (sensor_node["x"]) {
+              sensor.x = sensor_node["x"].as<double>();
+            }
+            if (sensor_node["y"]) {
+              sensor.y = sensor_node["y"].as<double>();
+            }
+            if (sensor_node["yaw_deg"]) {
+              sensor.yaw_deg = sensor_node["yaw_deg"].as<double>();
+            }
+            if (sensor_node["max_distance"]) {
+              sensor.max_distance = std::max(0.0, sensor_node["max_distance"].as<double>());
+            }
+            if (sensor_node["weight"]) {
+              sensor.weight = std::max(0.0, sensor_node["weight"].as<double>());
+            }
+            collision_cfg_.ultrasonic_sensors.push_back(std::move(sensor));
+          } catch (const std::exception & e) {
+            RCLCPP_ERROR(node_->get_logger(), "Skip ultrasonic sensor config: %s", e.what());
+          }
+        }
+      }
+      apply_ultrasonic_widget(
+        cd["ultrasonic_widget"], collision_cfg_.ultrasonic_sensors, node_->get_logger());
       collision_cfg_.zones.clear();
       if (cd["zones"] && cd["zones"].IsSequence()) {
         for (const auto & zone_node : cd["zones"]) {
@@ -332,7 +441,7 @@ void FaultDetector::load_config(const std::string & config_file)
               }
             }
             if (zone_node["min_points"]) {
-              zone.min_points = std::max(1, zone_node["min_points"].as<int>());
+              zone.min_points = std::max(0.1, zone_node["min_points"].as<double>());
             }
             if (!parse_fault_level(zone_node["level"], zone.level)) {
               zone.level = FaultLevel::ERROR;
@@ -528,7 +637,7 @@ void FaultDetector::load_config(const std::string & config_file)
       if (mod["watch_topics"]) {
         for (const auto & t : mod["watch_topics"]) {
           const std::string topic = t["name"].as<std::string>();
-          const double min_hz = t["min_hz"].as<double>();
+          const double min_hz = t["min_hz"] ? std::max(0.0, t["min_hz"].as<double>()) : -1.0;
           mc.watch_topic_min_hz[topic] = min_hz;
           if (seen_topics.insert(topic).second) {
             watched_topics_.push_back(topic);
@@ -639,13 +748,14 @@ void FaultDetector::load_config(const std::string & config_file)
       return;
     }
 
-    watch_topic_evaluator_->set_multi_value_config(multi_value_cfg_);
-    watch_topic_evaluator_->reset();
-    feedback_rule_evaluator_->set_multi_value_config(multi_value_cfg_);
-    feedback_rule_evaluator_->reset();
-    chassis_evaluator_->set_multi_value_config(multi_value_cfg_);
-    chassis_evaluator_->reset();
-    collision_evaluator_->set_multi_value_config(multi_value_cfg_);
+  watch_topic_evaluator_->set_multi_value_config(multi_value_cfg_);
+  watch_topic_evaluator_->reset();
+  feedback_rule_evaluator_->set_multi_value_config(multi_value_cfg_);
+  feedback_rule_evaluator_->reset();
+  chassis_evaluator_->set_logger(node_->get_logger());
+  chassis_evaluator_->set_multi_value_config(multi_value_cfg_);
+  chassis_evaluator_->reset();
+  collision_evaluator_->set_multi_value_config(multi_value_cfg_);
     collision_evaluator_->reset();
 
     RCLCPP_INFO(

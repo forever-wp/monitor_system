@@ -78,12 +78,23 @@ enum class CollisionModelType
   APPROACH = 1
 };
 
+struct UltrasonicSensorConfig
+{
+  size_t index{0};
+  bool enabled{true};
+  double x{0.0};
+  double y{0.0};
+  double yaw_deg{0.0};
+  double max_distance{1.5};
+  double weight{1.0};
+};
+
 struct CollisionZoneConfig
 {
   std::string name;
   CollisionModelType model{CollisionModelType::ZONE};
   std::vector<CollisionPoint> points;
-  size_t min_points{1};
+  double min_points{1.0};
   FaultLevel level{FaultLevel::ERROR};
   SafetyCommandType safety_command{SafetyCommandType::SOFT_STOP};
   double safety_slow_down_percentage{50.0};
@@ -101,9 +112,13 @@ struct CollisionDetectionConfig
   std::string module_name{"collision_detection"};
   std::string scan_topic{"/scan"};
   std::string pointcloud_topic{""};
+  std::string ultrasonic_topic{""};
+  std::string ultrasonic_distances_key{"distances"};
+  std::string ultrasonic_scene_flag_key{"scene_flag"};
   double pointcloud_min_height{0.0};
   double pointcloud_max_height{2.0};
   double source_timeout_s{0.5};
+  std::vector<UltrasonicSensorConfig> ultrasonic_sensors;
   std::vector<CollisionZoneConfig> zones;
 };
 
@@ -168,6 +183,7 @@ public:
   bool has_module_configs() const;
   const std::vector<std::string> & get_monitored_nodes() const;
   const std::vector<std::string> & get_watched_topics() const;
+  bool is_watch_topic_frequency_required(const std::string & topic) const;
   const MultiValueJudgeConfig & get_multi_value_judge_config() const;
   bool collision_detection_enabled() const;
   const CollisionDetectionConfig & get_collision_detection_config() const;

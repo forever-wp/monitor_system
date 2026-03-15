@@ -1,8 +1,8 @@
 # nav2_monitor
 
-- 名称：Nav2_Monitor v2.1
-- 版本：v2.1
-- 时间：2026-03-13
+- 名称：Nav2_Monitor v2.2
+- 版本：v2.2
+- 时间：2026-03-15
 - 作者：ToTo
 
 轻量级 Nav2 监控、故障检测与安全联动系统。
@@ -30,7 +30,7 @@
 - 底盘异常与久停判断
 - 多故障组合与安全动作仲裁
 - 自动恢复与 `RESUME`
-- 碰撞检测：`LaserScan` / `PointCloud2`
+- 碰撞检测：`LaserScan` / `PointCloud2` / `ultrasonic_eight(JSON)`
 - 碰撞策略：`slowdown zone` / `stop zone` / `approach(TTC)`
 - 碰撞区域可视化
 
@@ -76,6 +76,11 @@ ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
 - `scan_rate`
 - `check_rate`
 - `algorithm_feedback_topic`
+- `fault_event_topic`
+- `supervisor_cmd_topic`
+- `safety_cmd_topic`
+- `reporter.heartbeat_json_topic`
+- `reporter.event_json_topic`
 - `battery_state_topic`
 - `fault_config`
 - `target_transforms`
@@ -94,13 +99,23 @@ ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
 
 - `watch_topics`
   - 表示 `nav2_monitor` 直接监控的真实 ROS topic
-  - 用于发布者状态与频率判断
+  - 若配置了 `min_hz`：同时判断发布者与频率
+  - 若未配置 `min_hz`：只判断是否有发布者，不做频率阈值判断
 
 - `feedback_rules`
   - 表示统一反馈规则
   - `source_topic` 对应 `AlgorithmFeedback.topic_name`
   - `metric_name` 对应 `AlgorithmFeedback.metric_name`
 
+- `chassis_stationary.odom_topic`
+  - 可选输入
+  - 为空时表示不依赖 odom，只根据 `command + moto` 做底盘判断
+
+- `collision_detection.ultrasonic_topic`
+  - 单 topic 八路超声波 JSON 输入
+- `collision_detection.ultrasonic_widget`
+  - 8 个 `0~1` 权重，顺序对应 8 路超声波
+  - 当前支持从 JSON 中提取 8 路距离数组，并按内置 8 路默认位姿和 `ultrasonic_widget` 权重映射到底盘坐标
 - `collision_detection.zones`
   - `model` 支持：
     - 默认 zone 命中
@@ -108,6 +123,7 @@ ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
   - `actions` 支持：
     - `safety_system`
     - `supervisor`
+  - `min_points` 对 `scan/pointcloud` 表示点数阈值，对超声波表示加权后的有效点阈值
   - `safety_system` 支持：
     - `0` 不执行
     - `1` 减速
@@ -118,7 +134,7 @@ ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
 
 ## 发布 Topic 总表
 
-下表按“当前系统涉及的功能模块”整理所有**对外发布**的 topic，包含：`nav2_monitor`、包内 `MonitorReporter`、`safety_emergency_executor`。
+下表按“当前系统涉及的功能模块”整理所有**对外发布**的 topic，包含：`nav2_monitor`、包内 `MonitorReporter`、`safety_emergency_executor`。其中 `/nav2_monitor/fault_event`、`/supervisor/cmd`、`/safety_system/cmd` 以及 reporter JSON topic 均已支持通过参数修改。
 
 | 名称 | 类型 | 作用 | 方式 | 示例 |
 |---|---|---|---|---|
@@ -185,11 +201,14 @@ ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
 | `fault_level` | string | 错误等级，`NORMAL/WARNING/ERROR/CRITICAL` |
 | `fault_message` | string | 详细错误信息 |
 | `measure_execution.action_type` | string | 措施类型，`SUPERVISOR / SAFETY_SYSTEM / NONE` |
-| `measure_execution.supervisor_module` | string | 若为 supervisor 动作，对应模块名 |
-| `measure_execution.nodes_to_restart_count` | number | 若为 supervisor 动作，对应节点数量 |
-| `measure_execution.safety_action` | string | 若为 safety 动作，对应 `SLOW_DOWN / SOFT_STOP / EMERGENCY_STOP / RESUME` |
-| `measure_execution.slow_down_percentage` | number | 若为减速动作，对应减速百分比 |
-| `measure_execution.details` | string | 若无关联动作细节，则为 `none` |
+| `measure_execution.supervisor.matched` | bool | 是否关联到了具体 supervisor 执行 |
+| `measure_execution.supervisor.module_name` | string | supervisor 关联模块名，未关联时为空字符串 |
+| `measure_execution.supervisor.nodes_to_restart_count` | number | supervisor 关联节点数量，未关联时为 0 |
+| `measure_execution.safety.matched` | bool | 是否关联到了具体 safety 执行 |
+| `measure_execution.safety.action` | string | safety 动作，未关联时为 `NONE` |
+| `measure_execution.safety.slow_down_percentage` | number | safety 减速百分比，未关联时为 0 |
+| `measure_execution.safety.reason` | string | safety 触发原因，未关联时为空字符串 |
+| `measure_execution.details` | string | 关联状态说明：`matched_by_correlation` / `placeholder_only` |
 
 ### `/safety_system/cmd` 字段
 
@@ -254,6 +273,7 @@ ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
 - `/battery_state`
 - `collision_detection.scan_topic`
 - `collision_detection.pointcloud_topic`
+- `collision_detection.ultrasonic_topic`
 
 ### 输出
 
@@ -283,6 +303,7 @@ ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
 
 - `LaserScan`
 - `PointCloud2`
+- `ultrasonic_eight(JSON)`
 - polygon 区域
 - `slowdown zone`
 - `stop zone`
@@ -367,14 +388,14 @@ colcon test --packages-select nav2_monitor --event-handlers console_direct+
 检查：
 
 - `collision_detection.enabled=1`
-- `scan_topic` / `pointcloud_topic` 是否有数据
+- `scan_topic` / `pointcloud_topic` / `ultrasonic_topic` 是否有数据
 - 输入 frame 是否能正确变换到 `base_frame_id`
 - `zones.points` 是否围住了真实危险区域
 - `min_points` 是否过高
 
 ## 当前缺项
 
-- `Range / Ultrasonic` 作为碰撞源
+- 多超声波更复杂的场景策略（当前已支持单 topic 八路加权输入，推荐直接配 `ultrasonic_widget`）
 - 完整 footprint 前向离散仿真版 TTC
 - 多错误组合策略表配置化
 - 更彻底的状态组装抽象

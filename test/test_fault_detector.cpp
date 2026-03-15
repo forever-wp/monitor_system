@@ -151,6 +151,36 @@ modules:
   std::remove(config_path.c_str());
 }
 
+TEST_F(FaultDetectorTest, WatchTopicWithoutThresholdOnlyChecksPresence)
+{
+  const std::string config_text = R"(
+modules:
+  - name: "navigation"
+    supervisor: 1
+    safety_system: 0
+    nodes:
+      - "controller_server"
+    watch_topics:
+      - name: "/cmd_vel"
+)";
+  const std::string config_path = write_temp_config(config_text, "watch_topic_without_threshold");
+
+  auto node = std::make_shared<rclcpp::Node>("fault_detector_test_watch_topic_without_threshold");
+  nav2_monitor::FaultDetector detector(node.get());
+  nav2_monitor::MonitorDataStore store;
+  detector.load_config(config_path);
+
+  const auto now = node->now();
+  store.mark_node_seen("controller_server", now);
+  store.set_watch_topic_publisher("/cmd_vel", true);
+
+  auto faults = detector.detect_faults(store, now);
+  EXPECT_TRUE(faults.empty());
+  EXPECT_FALSE(detector.is_watch_topic_frequency_required("/cmd_vel"));
+
+  std::remove(config_path.c_str());
+}
+
 TEST_F(FaultDetectorTest, HealthyModuleHasNoFaults)
 {
   const std::string config_text = R"(
@@ -654,6 +684,80 @@ modules:
   std::remove(config_path.c_str());
 }
 
+TEST_F(FaultDetectorTest, CollisionDetectionUltrasonicWidgetUsesBuiltInLayout)
+{
+  const std::string config_text = R"(
+collision_detection:
+  enabled: 1
+  module_name: "collision_detection"
+  ultrasonic_topic: "/ultrasonic_eight"
+  ultrasonic_widget: [0.2, 0.9, 0.4, 0.1, 0.1, 0.4, 0.9, 0.2]
+modules:
+  - name: "dummy"
+    supervisor: 0
+    safety_system: 0
+)";
+  const std::string config_path = write_temp_config(config_text, "collision_detection_ultrasonic_widget");
+
+  auto node = std::make_shared<rclcpp::Node>("fault_detector_test_collision_ultrasonic_widget");
+  nav2_monitor::FaultDetector detector(node.get());
+  detector.load_config(config_path);
+
+  const auto & cfg = detector.get_collision_detection_config();
+  ASSERT_EQ(cfg.ultrasonic_sensors.size(), 8u);
+  EXPECT_DOUBLE_EQ(cfg.ultrasonic_sensors[0].weight, 0.2);
+  EXPECT_DOUBLE_EQ(cfg.ultrasonic_sensors[1].weight, 0.9);
+  EXPECT_DOUBLE_EQ(cfg.ultrasonic_sensors[6].weight, 0.9);
+  EXPECT_DOUBLE_EQ(cfg.ultrasonic_sensors[7].weight, 0.2);
+  EXPECT_NEAR(cfg.ultrasonic_sensors[1].yaw_deg, 20.0, 1e-9);
+
+  std::remove(config_path.c_str());
+}
+
+TEST_F(FaultDetectorTest, CollisionDetectionWeightedUltrasonicPointCanTriggerZone)
+{
+  const std::string config_text = R"(
+collision_detection:
+  enabled: 1
+  module_name: "collision_detection"
+  ultrasonic_topic: "/ultrasonic_eight"
+  source_timeout_s: 1.0
+  zones:
+    - name: "front_stop"
+      enabled: 1
+      points: [0.5, 0.25, 0.5, -0.25, 0.0, -0.25, 0.0, 0.25]
+      min_points: 1.5
+      level: "CRITICAL"
+      safety_system: 2
+      actions: ["safety_system"]
+modules:
+  - name: "dummy"
+    supervisor: 0
+    safety_system: 0
+)";
+  const std::string config_path = write_temp_config(config_text, "collision_detection_weighted_ultrasonic");
+
+  auto node = std::make_shared<rclcpp::Node>("fault_detector_test_collision_weighted_ultrasonic");
+  nav2_monitor::FaultDetector detector(node.get());
+  nav2_monitor::MonitorDataStore store;
+  detector.load_config(config_path);
+
+  const auto now = node->now();
+  store.set_collision_points("ultrasonic", {
+    nav2_monitor::CollisionPoint{0.25, 0.0, 1.6}
+  }, now);
+
+  auto faults_first = detector.detect_faults(store, now);
+  EXPECT_TRUE(faults_first.empty());
+
+  auto faults = detector.detect_faults(store, now);
+  ASSERT_EQ(faults.size(), 1u);
+  EXPECT_EQ(faults[0].safety_command, nav2_monitor::SafetyCommandType::SOFT_STOP);
+  EXPECT_NE(faults[0].reason.find("weighted_points="), std::string::npos);
+
+  std::remove(config_path.c_str());
+}
+
 TEST_F(FaultDetectorTest, CollisionDetectionAggregatesPointCloudSource)
 {
   const std::string config_text = R"(
@@ -744,6 +848,44 @@ modules:
   EXPECT_EQ(faults[0].action, nav2_monitor::ActionType::SAFETY_SYSTEM);
   EXPECT_EQ(faults[0].safety_command, nav2_monitor::SafetyCommandType::SOFT_STOP);
   EXPECT_NE(faults[0].fault_key.find("collision:front_stop"), std::string::npos);
+
+  std::remove(config_path.c_str());
+}
+
+TEST_F(FaultDetectorTest, ChassisWithoutOdomStillTriggersAnomaly)
+{
+  const std::string config_text = R"(
+chassis_stationary:
+  enabled: 1
+  odom_topic: ""
+  source_timeout_s: 10.0
+  idle_timeout_s: 30.0
+  command_speed_threshold: 0.05
+  moto_speed_threshold: 0.05
+  odom_speed_threshold: 0.03
+  anomaly_level: "ERROR"
+  idle_level: "WARNING"
+  anomaly_actions: ["supervisor"]
+  idle_actions: ["none"]
+modules:
+  - name: "dummy"
+    supervisor: 1
+    safety_system: 0
+)";
+  const std::string config_path = write_temp_config(config_text, "chassis_without_odom");
+
+  auto node = std::make_shared<rclcpp::Node>("fault_detector_test_chassis_without_odom");
+  nav2_monitor::FaultDetector detector(node.get());
+  detector.load_config(config_path);
+  detector.update_command_speed(0.5, node->now());
+
+  auto faults_first = detector.detect_faults();
+  EXPECT_TRUE(faults_first.empty());
+
+  auto faults = detector.detect_faults();
+  ASSERT_EQ(faults.size(), 1u);
+  EXPECT_EQ(faults[0].action, nav2_monitor::ActionType::SUPERVISOR);
+  EXPECT_NE(faults[0].reason.find("odom disabled"), std::string::npos);
 
   std::remove(config_path.c_str());
 }

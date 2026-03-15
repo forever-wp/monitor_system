@@ -13,11 +13,14 @@ multi_value_judge:
 collision_detection:
   enabled: 1
   module_name: "collision_detection"
-  scan_topic: ""
+  scan_topic: "scan"
   pointcloud_topic: "/livox/points"
-  pointcloud_min_height: 0.0
-  pointcloud_max_height: 1.5
+  ultrasonic_topic: "/ultrasonic_eight"
+  ultrasonic_distances_key: "distances"   # JSON 数组键；若缺失会自动尝试第一个长度>=8的数值数组
+  pointcloud_min_height: 0.2
+  pointcloud_max_height: 1.4
   source_timeout_s: 0.5
+  ultrasonic_widget: [0.8, 1.0, 0.6, 0.3, 0.3, 0.6, 1.0, 0.8]  # 8路权重，前视/前侧更高；默认内置安装位姿
   zones:
     - name: "front_approach"
       enabled: 1
@@ -26,7 +29,7 @@ collision_detection:
       level: "WARNING"
       safety_system: 1
       safety_slow_down_percentage: 50.0
-      time_before_collision: 1.0
+      time_before_collision: 3.0     #速度x时间 预测的碰撞距离
       actions: ["safety_system"]
       visualize: 1
       polygon_pub_topic: "/nav2_monitor/collision_zone/front_approach"
@@ -58,7 +61,7 @@ chassis_stationary:
   module_name: "chassis_stationary"
   command_topic: "/command"
   moto_topic: "/moto_info"
-  odom_topic: "/odom_init"
+  odom_topic: ""   # 可选；为空时底盘判断不依赖 odom
   source_timeout_s: 1.0
   idle_timeout_s: 30.0
   command_speed_threshold: 0.05
@@ -87,7 +90,7 @@ modules:
     safety_system: 2
     nodes:
       - "chassis_node"
-    watch_topics:
+    watch_topics:   # 若未配置 min_hz，则只检测有无，不做频率阈值判断
       - name: "/moto_info"
         min_hz: 10.0
       - name: "/encoder_info"
@@ -106,7 +109,7 @@ modules:
       - "odometry_node"
     watch_topics:
       - name: "/odom_init"
-        min_hz: 10.0
+        # min_hz: 10.0
       - name: "/odom_base"
         min_hz: 10.0
 
@@ -122,20 +125,20 @@ modules:
       - "battery_node"
     watch_topics:
       - name: "/battery_state"
-        min_hz: 0.001
-    feedback_rules:
-      - source_topic: "/battery_state"
-        metric_name: "voltage"
-        min_value: 20.0
-        level: "WARNING"
-        max_stale_s: 150.0
-        actions: ["supervisor"]
-      - source_topic: "/battery_state"
-        metric_name: "percentage"
-        min_value: 0.10
-        level: "ERROR"
-        max_stale_s: 150.0
-        actions: ["safety_system", "supervisor"]
+        # min_hz: 0.001
+    # feedback_rules:
+    #   - source_topic: "/battery_state"
+    #     metric_name: "voltage"
+    #     min_value: 20.0
+    #     level: "WARNING"
+    #     max_stale_s: 150.0
+    #     actions: ["supervisor"]
+    #   - source_topic: "/battery_state"
+    #     metric_name: "percentage"
+    #     min_value: 0.10
+    #     level: "ERROR"
+    #     max_stale_s: 150.0
+    #     actions: ["safety_system", "supervisor"]
 
   # ----------------------------------------------------------
   # 4. livox — 激光雷达驱动 (livox MID-360)
@@ -146,9 +149,9 @@ modules:
     supervisor: 1
     safety_system: 2
     nodes:
-      - "livox_lidar_publisher"
+      - "livox_lidar_publisher"   # 监测实际系统时替换为 "livox_lidar_publisher"
     watch_topics:
-      - name: "/livox/lidar"
+      - name: "/livox/points"
         min_hz: 5.0
       - name: "/livox/imu"
         min_hz: 150.0
@@ -189,14 +192,14 @@ modules:
       - "camera/camera"
     watch_topics:
       - name: "/camera/color/image_raw"
-        min_hz: 5.0
+        # min_hz: 5.0
       - name: "/camera/depth/image_raw"
-        min_hz: 5.0
+        # min_hz: 5.0
 
   # ----------------------------------------------------------
-  # 7. uitrasonic — 超声波传感器 (8路)
+  # 7. uitrasonic — 超声波传感器 (8路聚合单 topic)
   #    节点: /uss_driver_publisher
-  #    发布: /ultrasonic_1~8, /ultrasonic_eight_distance
+  #    发布: /ultrasonic_eight (JSON: 场景 bool + 8 路距离数组)
   #    订阅: /elevator_status, /odom
   # ----------------------------------------------------------
   - name: "uitrasonic"
@@ -204,19 +207,9 @@ modules:
     safety_system: 0
     nodes:
       - "uss_driver_publisher"
-    watch_topics: []
-      # - name: "/ultrasonic_1"
-      #   min_hz: 5.0
-      # - name: "/ultrasonic_2"
-      #   min_hz: 5.0
-      # - name: "/ultrasonic_4"
-      #   min_hz: 5.0
-      # - name: "/ultrasonic_5"
-      #   min_hz: 5.0
-      # - name: "/ultrasonic_7"
-      #   min_hz: 5.0
-      #- name: "/ultrasonic_8"
-      #  min_hz: 5.0
+    watch_topics:
+      - name: "/ultrasonic_eight"
+        min_hz: 5.0
 
   # ----------------------------------------------------------
   # 8. navigation — Nav2 导航核心 + 辅助
@@ -252,13 +245,13 @@ modules:
       # - name: "/cmd_vel"
       #   min_hz: 5.0
       - name: "/plan"
-        min_hz: 0.5
+        # min_hz: 0.5
       - name: "/map"
-        min_hz: 0.001
+        # min_hz: 0.001
       - name: "/global_costmap/costmap"
-        min_hz: 0.05
+        # min_hz: 0.05
       - name: "/local_costmap/costmap"
-        min_hz: 2.0
+        # min_hz: 2.0
 
   # ----------------------------------------------------------
   # 9. light-lm — FAST-LIO2 激光里程计/建图
@@ -290,7 +283,7 @@ modules:
       - "ekf_filter_node"
     watch_topics:
       - name: "/odometry/filtered"
-        min_hz: 10.0
+        # min_hz: 10.0
       # - name: "/tf"
       #   min_hz: 10.0
 
@@ -313,27 +306,28 @@ modules:
   #     发布: /scan (LaserScan)
   #     订阅: cloud_in (PointCloud2)
   # ----------------------------------------------------------
-  - name: "pointcloud_to_laserscan"
-    supervisor: 1
-    safety_system: 2
-    nodes:
-      - "pointcloud_to_laserscan"
-    watch_topics:
-      - name: "/scan"
-        min_hz: 5.0
+  #- name: "pointcloud_to_laserscan"
+  #  supervisor: 1
+  #  safety_system: 2
+  #  nodes:
+  #    - "pointcloud_to_laserscan"
+  #  watch_topics:
+  #    - name: "/scan"
+  #      min_hz: 5.0
 
   # ----------------------------------------------------------
   # 13. elevator_server — 电梯呼叫服务
   #     节点: /elevator_server (lifecycle)
   #     服务: /elevator/call
   # ----------------------------------------------------------
-  - name: "elevator_server"
-    supervisor: 1
-    safety_system: 0
-    nodes:
-      - "elevator_server"
-    watch_topics: []
-
+  # - name: "elevator_server"
+  #   supervisor: 1
+  #   safety_system: 0
+  #   nodes:
+  #     - "elevator_server"
+  #   watch_topics: []
+      # - name: "/elevator_status"
+      #   min_hz: 1.0
   # ----------------------------------------------------------
   # 14. elevator_state_detector — 电梯状态检测
   #     节点: /elevator_state_detector
@@ -345,8 +339,7 @@ modules:
     nodes:
       - "elevator_state_detector"
     watch_topics: []
-      # - name: "/elevator_status"
-      #   min_hz: 1.0
+
 
   # ----------------------------------------------------------
   # 15. rgbd_detect — RGBD 目标检测

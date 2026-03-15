@@ -15,6 +15,7 @@ struct CollisionPoint
 {
   double x{0.0};
   double y{0.0};
+  double weight{1.0};
 };
 
 struct TopicRuntimeState

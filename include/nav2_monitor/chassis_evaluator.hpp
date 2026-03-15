@@ -4,6 +4,7 @@
 #include <map>
 #include <string>
 #include <vector>
+#include <rclcpp/logger.hpp>
 
 #include <rclcpp/rclcpp.hpp>
 
@@ -16,6 +17,7 @@ namespace nav2_monitor
 class ChassisEvaluator
 {
 public:
+  void set_logger(const rclcpp::Logger & logger);
   void set_multi_value_config(const MultiValueJudgeConfig & config);
   void reset();
   std::vector<FaultInfo> evaluate(
@@ -47,9 +49,11 @@ private:
     const rclcpp::Time & now) const;
 
   MultiValueJudgeConfig multi_value_cfg_{2, 2};
+  rclcpp::Logger logger_{rclcpp::get_logger("chassis_evaluator")};
   mutable std::map<std::string, RuleJudgeState> judge_states_;
   mutable bool idle_tracking_{false};
   mutable rclcpp::Time idle_start_time_{0, 0, RCL_ROS_TIME};
+  mutable int last_idle_progress_bucket_{-1};
 };
 
 }  // namespace nav2_monitor
