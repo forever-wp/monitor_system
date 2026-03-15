@@ -1,5 +1,25 @@
 # Changelog
 
+## v2.3 - 2026-03-15
+
+作者：ToTo
+
+### 新增
+
+- 新增 `FaultConfigWatcher` 类，支持 `fault_detector_config.yaml` 动态热更新
+- 新增 `fault_config_reload_enabled` 参数，用于开启/关闭配置文件热更新
+- 新增 `current_nav_task` 与 `task_fault_configs.*` 参数，支持任务驱动安全配置切换
+
+### 优化
+
+- 配置变更后自动重建监控目标、底盘订阅、碰撞输入与碰撞可视化 publisher
+- 清空 `fault_config` 时自动回退到 `target_nodes/watch_topics` 参数模式
+
+### 说明
+
+- 热更新复用现有定时器轮询，不新增额外线程
+- 配置加载失败时保留上一份有效配置，避免运行中断
+
 ## v2.2 - 2026-03-15
 
 作者：ToTo

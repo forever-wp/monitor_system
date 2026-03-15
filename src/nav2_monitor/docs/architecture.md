@@ -1,7 +1,7 @@
 # nav2_monitor 架构设计说明
 
-- 名称：nav2_monitor v2.2
-- 版本：v2.2
+- 名称：nav2_monitor v2.3
+- 版本：v2.3
 - 时间：2026-03-15
 - 作者：ToTo
 

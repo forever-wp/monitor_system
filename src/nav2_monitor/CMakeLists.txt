@@ -32,6 +32,8 @@ add_executable(nav2_monitor_node
   src/nav2_monitor_node.cpp
   src/system_monitor.cpp
   src/fault_detector.cpp
+  src/fault_config_watcher.cpp
+  src/task_fault_config_selector.cpp
   src/fault_state_coordinator.cpp
   src/monitor_data_store.cpp
   src/monitor_reporter.cpp
@@ -55,14 +57,15 @@ if(BUILD_TESTING)
   ament_add_gtest(test_fault_detector
     test/test_fault_detector.cpp
     src/fault_detector.cpp
+    src/fault_config_watcher.cpp
+    src/task_fault_config_selector.cpp
     src/fault_state_coordinator.cpp
     src/monitor_data_store.cpp
     src/monitor_reporter.cpp
-  src/monitor_reporter.cpp
-  src/chassis_evaluator.cpp
-  src/collision_evaluator.cpp
-  src/feedback_rule_evaluator.cpp
-  src/watch_topic_evaluator.cpp
+    src/chassis_evaluator.cpp
+    src/collision_evaluator.cpp
+    src/feedback_rule_evaluator.cpp
+    src/watch_topic_evaluator.cpp
   )
   if(TARGET test_fault_detector)
     target_include_directories(test_fault_detector PRIVATE include)

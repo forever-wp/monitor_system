@@ -15,6 +15,12 @@ nav2_monitor:
     battery_state_topic: "/battery_state"
     battery_state_timeout_s: 90.0
     fault_config: "./src/nav2_monitor/config/fault_detector_config.yaml"
+    fault_config_reload_enabled: true
+    current_nav_task: "default"
+    task_fault_configs.default: "./src/nav2_monitor/config/fault_detector_config.yaml"
+    task_fault_configs.todoor: "./src/nav2_monitor/config/fault_detector_config.yaml"
+    task_fault_configs.elevator: "./src/nav2_monitor/config/fault_detector_config.yaml"
+    task_fault_configs.reverse: "./src/nav2_monitor/config/fault_detector_config.yaml"
     vehicle_status_file: "/home/ry/.ros/navigate_status/navigate_todoor_status.json"
 
     # 兼容回退配置：当 fault_config 缺失或无 modules 时生效

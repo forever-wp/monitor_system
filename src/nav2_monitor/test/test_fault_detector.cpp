@@ -12,6 +12,7 @@
 #include "nav2_monitor/fault_detector.hpp"
 #include "nav2_monitor/monitor_data_store.hpp"
 #include "nav2_monitor/fault_state_coordinator.hpp"
+#include "nav2_monitor/task_fault_config_selector.hpp"
 
 namespace
 {
@@ -41,6 +42,43 @@ protected:
     }
   }
 };
+
+TEST(TaskFaultConfigSelectorTest, ResolvesMappedAndDefaultConfigs)
+{
+  nav2_monitor::TaskFaultConfigSelector selector;
+  selector.configure(
+    "/configs/base.yaml",
+    {
+      {"default", "/configs/default.yaml"},
+      {"todoor", "/configs/todoor.yaml"},
+      {"elevator", "/configs/elevator.yaml"}
+    });
+
+  EXPECT_FALSE(selector.update_current_task("default"));
+  EXPECT_EQ(selector.resolve_fault_config_for_task(), "/configs/default.yaml");
+
+  EXPECT_TRUE(selector.update_current_task("todoor"));
+  EXPECT_TRUE(selector.has_task_changed());
+  EXPECT_EQ(selector.resolve_fault_config_for_task(), "/configs/todoor.yaml");
+  selector.clear_task_changed();
+  EXPECT_FALSE(selector.has_task_changed());
+
+  EXPECT_TRUE(selector.update_current_task("unknown_task"));
+  EXPECT_EQ(selector.resolve_fault_config_for_task(), "/configs/default.yaml");
+}
+
+TEST(TaskFaultConfigSelectorTest, FallsBackToBaseFaultConfigWhenDefaultMappingMissing)
+{
+  nav2_monitor::TaskFaultConfigSelector selector;
+  selector.configure(
+    "/configs/base.yaml",
+    {
+      {"todoor", "/configs/todoor.yaml"}
+    });
+
+  selector.update_current_task("elevator");
+  EXPECT_EQ(selector.resolve_fault_config_for_task(), "/configs/base.yaml");
+}
 
 TEST_F(FaultDetectorTest, NodeInactiveTriggersSafetyThenSupervisor)
 {
