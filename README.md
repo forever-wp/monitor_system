@@ -1,7 +1,7 @@
 # nav2_monitor
 
-- 名称：Nav2_Monitor v2.2
-- 版本：v2.2
+- 名称：Nav2_Monitor v2.3
+- 版本：v2.3
 - 时间：2026-03-15
 - 作者：ToTo
 
@@ -83,6 +83,9 @@ ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
 - `reporter.event_json_topic`
 - `battery_state_topic`
 - `fault_config`
+- `fault_config_reload_enabled`
+- `current_nav_task`
+- `task_fault_configs.<task_name>`
 - `target_transforms`
 
 ### 故障配置
@@ -392,6 +395,19 @@ colcon test --packages-select nav2_monitor --event-handlers console_direct+
 - 输入 frame 是否能正确变换到 `base_frame_id`
 - `zones.points` 是否围住了真实危险区域
 - `min_points` 是否过高
+
+## 任务驱动配置切换
+
+- `current_nav_task` 用于表示当前导航任务，例如 `default / todoor / elevator / reverse`。
+- `task_fault_configs.<task_name>` 在参数文件中维护任务到安全配置文件的映射。
+- 当 `current_nav_task` 变化时，`nav2_monitor` 会自动选择对应 `fault_config` 并复用现有热更新链路完成切换。
+- 未命中任务时，回退到 `task_fault_configs.default`；若未设置，则回退到 `fault_config`。
+
+## 动态配置更新
+
+- `fault_config_reload_enabled=true` 时，节点会在现有定时器周期内轮询 `fault_detector_config.yaml` 的修改时间。
+- 当文件内容或路径发生变化时，会自动重载 `FaultDetector` 配置，并重建受影响的监控目标、底盘订阅和碰撞输入。
+- 不新增额外线程，保持低占用 / 小内存 / 快响应。
 
 ## 当前缺项
 

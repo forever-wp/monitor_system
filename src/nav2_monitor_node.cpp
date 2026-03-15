@@ -271,55 +271,14 @@ Nav2MonitorNode::Nav2MonitorNode()
   fault_state_coordinator_.configure(this, safety_cmd_topic);
   monitor_reporter_.configure(this);
 
-  std::string config_file = this->declare_parameter<std::string>("fault_config", "");
-  const std::string resolved_config_file = resolve_config_path(config_file);
+  base_fault_config_path_ = this->declare_parameter<std::string>("fault_config", "");
+  fault_config_reload_enabled_ = this->declare_parameter<bool>("fault_config_reload_enabled", true);
+  current_nav_task_ = this->declare_parameter<std::string>("current_nav_task", "default");
+  resolved_base_fault_config_path_ = resolve_config_path(base_fault_config_path_);
+  load_task_fault_config_mappings();
+  task_fault_config_selector_.update_current_task(current_nav_task_);
   fault_detector_.set_feedback_default_max_stale(timeout_);
-  if (!config_file.empty()) {
-    RCLCPP_INFO(
-      get_logger(), "fault_config param='%s', resolved='%s'",
-      config_file.c_str(), resolved_config_file.c_str());
-    std::ifstream config_stream(resolved_config_file);
-    if (!config_stream.good()) {
-      RCLCPP_ERROR(
-        get_logger(),
-        "fault_config not readable: %s (resolved: %s), fallback to target_nodes/watch_topics",
-        config_file.c_str(), resolved_config_file.c_str());
-    } else {
-      fault_detector_.load_config(resolved_config_file);
-    }
-  }
-  if (fault_detector_.has_module_configs()) {
-    target_nodes_ = fault_detector_.get_monitored_nodes();
-    watch_topics_ = fault_detector_.get_watched_topics();
-    monitor_targets_from_fault_config_ = true;
-    RCLCPP_INFO(
-      get_logger(), "Monitor targets loaded from fault_config modules: %zu nodes, %zu topics",
-      target_nodes_.size(), watch_topics_.size());
-  } else {
-    monitor_targets_from_fault_config_ = false;
-    RCLCPP_INFO(
-      get_logger(),
-      "fault_config missing/empty modules, fallback to target_nodes/watch_topics params");
-  }
-
-  if (fault_detector_.chassis_stationary_enabled()) {
-    const auto & cfg = fault_detector_.get_chassis_stationary_config();
-    command_topic_ = cfg.command_topic;
-    moto_topic_ = cfg.moto_topic;
-    odom_topic_ = cfg.odom_topic;
-
-    command_sub_ = this->create_subscription<std_msgs::msg::String>(
-      command_topic_, rclcpp::QoS(20),
-      std::bind(&Nav2MonitorNode::on_command, this, std::placeholders::_1));
-    if (!odom_topic_.empty()) {
-      odom_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
-        odom_topic_, rclcpp::SensorDataQoS(),
-        std::bind(&Nav2MonitorNode::on_odom, this, std::placeholders::_1));
-    }
-    RCLCPP_INFO(
-      get_logger(), "Chassis stationary judge enabled: command=%s moto=%s odom=%s",
-      command_topic_.c_str(), moto_topic_.c_str(), odom_topic_.empty() ? "<disabled>" : odom_topic_.c_str());
-  }
+  update_task_selected_fault_config(true);
 
   algorithm_feedback_sub_ = this->create_subscription<msg::AlgorithmFeedback>(
     algorithm_feedback_topic_, rclcpp::QoS(50),
@@ -327,46 +286,6 @@ Nav2MonitorNode::Nav2MonitorNode()
   battery_sub_ = this->create_subscription<sensor_msgs::msg::BatteryState>(
     battery_state_topic_, rclcpp::SensorDataQoS(),
     std::bind(&Nav2MonitorNode::on_battery_state, this, std::placeholders::_1));
-
-  if (fault_detector_.collision_detection_enabled()) {
-    const auto & cfg = fault_detector_.get_collision_detection_config();
-    if (!cfg.scan_topic.empty()) {
-      auto scan_fallback = rclcpp::SensorDataQoS();
-      scan_fallback.keep_last(10);
-      const auto scan_qos = build_topic_subscription_qos(cfg.scan_topic, scan_fallback, 10);
-      collision_scan_sub_ = this->create_subscription<sensor_msgs::msg::LaserScan>(
-        cfg.scan_topic, scan_qos,
-        std::bind(&Nav2MonitorNode::on_collision_scan, this, std::placeholders::_1));
-    }
-    if (!cfg.pointcloud_topic.empty()) {
-      auto pointcloud_fallback = rclcpp::SensorDataQoS();
-      pointcloud_fallback.keep_last(50);
-      const auto pointcloud_qos = build_topic_subscription_qos(cfg.pointcloud_topic, pointcloud_fallback, 3);
-      collision_pointcloud_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
-        cfg.pointcloud_topic, pointcloud_qos,
-        std::bind(&Nav2MonitorNode::on_collision_pointcloud, this, std::placeholders::_1));
-    }
-    if (!cfg.ultrasonic_topic.empty()) {
-      auto ultrasonic_fallback = rclcpp::QoS(10);
-      ultrasonic_fallback.keep_last(10);
-      const auto ultrasonic_qos = build_topic_subscription_qos(cfg.ultrasonic_topic, ultrasonic_fallback, 10);
-      collision_ultrasonic_sub_ = this->create_subscription<std_msgs::msg::String>(
-        cfg.ultrasonic_topic, ultrasonic_qos,
-        std::bind(&Nav2MonitorNode::on_collision_ultrasonic, this, std::placeholders::_1));
-    }
-    for (const auto & zone : cfg.zones) {
-      if (!zone.visualize || zone.points.size() < 3) {
-        continue;
-      }
-      auto qos = rclcpp::QoS(1).transient_local().reliable();
-      collision_zone_pubs_[zone.name] = this->create_publisher<geometry_msgs::msg::PolygonStamped>(
-        zone.polygon_pub_topic, qos);
-    }
-    publish_collision_zones();
-    RCLCPP_INFO(
-      get_logger(), "Collision detection enabled: scan=%s pointcloud=%s ultrasonic=%s",
-      cfg.scan_topic.c_str(), cfg.pointcloud_topic.c_str(), cfg.ultrasonic_topic.c_str());
-  }
 
   std::string vehicle_status_file = this->declare_parameter<std::string>(
     "vehicle_status_file", "/home/ry/.ros/navigate_status/navigate_todoor_status.json");
@@ -753,6 +672,242 @@ bool Nav2MonitorNode::should_publish_action(
   return true;
 }
 
+void Nav2MonitorNode::load_task_fault_config_mappings()
+{
+  const std::string prefix = "task_fault_configs.";
+  std::unordered_set<std::string> param_names{
+    prefix + "default",
+    prefix + "todoor",
+    prefix + "elevator",
+    prefix + "reverse"
+  };
+
+  const auto listed = this->list_parameters({prefix}, 2);
+  for (const auto & name : listed.names) {
+    if (name.rfind(prefix, 0) == 0) {
+      param_names.insert(name);
+    }
+  }
+
+  const auto & overrides = this->get_node_parameters_interface()->get_parameter_overrides();
+  for (const auto & [name, _] : overrides) {
+    if (name.rfind(prefix, 0) == 0) {
+      param_names.insert(name);
+    }
+  }
+
+  task_fault_config_mappings_.clear();
+  for (const auto & name : param_names) {
+    const bool is_default = (name == prefix + std::string("default"));
+    const std::string default_value = is_default ? base_fault_config_path_ : std::string();
+    if (!this->has_parameter(name)) {
+      this->declare_parameter<std::string>(name, default_value);
+    }
+
+    std::string value;
+    try {
+      value = this->get_parameter(name).as_string();
+    } catch (...) {
+      value = default_value;
+    }
+
+    task_fault_config_mappings_[name.substr(prefix.size())] = value;
+  }
+
+  const auto default_it = task_fault_config_mappings_.find("default");
+  const std::string selector_default =
+    (default_it != task_fault_config_mappings_.end() && !default_it->second.empty()) ?
+    default_it->second : base_fault_config_path_;
+  task_fault_config_selector_.configure(selector_default, task_fault_config_mappings_);
+}
+
+void Nav2MonitorNode::update_task_selected_fault_config(bool force_reload)
+{
+  const std::string selected_fault_config = task_fault_config_selector_.resolve_fault_config_for_task();
+  const std::string resolved_selected_fault_config = resolve_config_path(selected_fault_config);
+  const bool path_changed =
+    selected_fault_config != fault_config_path_ ||
+    resolved_selected_fault_config != resolved_fault_config_path_;
+
+  if (!path_changed && !force_reload) {
+    task_fault_config_selector_.clear_task_changed();
+    return;
+  }
+
+  fault_config_path_ = selected_fault_config;
+  resolved_fault_config_path_ = resolved_selected_fault_config;
+  fault_config_watcher_.configure(fault_config_path_, resolved_fault_config_path_);
+
+  RCLCPP_INFO(
+    get_logger(),
+    "Selected fault_config for task '%s': active='%s' resolved='%s'",
+    task_fault_config_selector_.current_task().c_str(),
+    fault_config_path_.c_str(),
+    resolved_fault_config_path_.c_str());
+
+  if (fault_config_path_.empty()) {
+    apply_loaded_fault_config();
+    fault_config_watcher_.sync_current_state();
+  } else {
+    (void)reload_fault_config_if_needed(true);
+  }
+  task_fault_config_selector_.clear_task_changed();
+}
+
+bool Nav2MonitorNode::reload_fault_config_if_needed(bool force)
+{
+  if (fault_config_path_.empty()) {
+    return false;
+  }
+
+  if (!force) {
+    if (!fault_config_reload_enabled_ || !fault_config_watcher_.enabled() ||
+      !fault_config_watcher_.poll_changed()) {
+      return false;
+    }
+    RCLCPP_INFO(
+      get_logger(), "fault_config changed, reloading: param='%s', resolved='%s'",
+      fault_config_path_.c_str(), resolved_fault_config_path_.c_str());
+  } else {
+    RCLCPP_INFO(
+      get_logger(), "fault_config param='%s', resolved='%s'",
+      fault_config_path_.c_str(), resolved_fault_config_path_.c_str());
+  }
+
+  std::ifstream config_stream(resolved_fault_config_path_);
+  if (!config_stream.good()) {
+    RCLCPP_ERROR(
+      get_logger(),
+      "fault_config not readable: %s (resolved: %s), keep current config/fallback targets",
+      fault_config_path_.c_str(), resolved_fault_config_path_.c_str());
+  } else {
+    fault_detector_.load_config(resolved_fault_config_path_);
+  }
+
+  apply_loaded_fault_config();
+  fault_config_watcher_.sync_current_state();
+  return true;
+}
+
+void Nav2MonitorNode::clear_watch_topic_subscriptions()
+{
+  topic_subs_.clear();
+  topic_info_.clear();
+}
+
+void Nav2MonitorNode::apply_loaded_fault_config()
+{
+  {
+    std::lock_guard<std::mutex> lock(mtx_);
+    if (!fault_config_path_.empty() && fault_detector_.has_module_configs()) {
+      target_nodes_ = fault_detector_.get_monitored_nodes();
+      watch_topics_ = fault_detector_.get_watched_topics();
+      monitor_targets_from_fault_config_ = true;
+      RCLCPP_INFO(
+        get_logger(), "Monitor targets loaded from fault_config modules: %zu nodes, %zu topics",
+        target_nodes_.size(), watch_topics_.size());
+    } else {
+      target_nodes_ = fallback_target_nodes_;
+      watch_topics_ = fallback_watch_topics_;
+      monitor_targets_from_fault_config_ = false;
+      RCLCPP_INFO(
+        get_logger(),
+        "fault_config missing/empty modules, fallback to target_nodes/watch_topics params");
+    }
+
+    clear_watch_topic_subscriptions();
+  }
+
+  configure_chassis_monitoring();
+  configure_collision_monitoring();
+  subscribe_watch_topics();
+  try_subscribe_moto_topic();
+}
+
+void Nav2MonitorNode::configure_chassis_monitoring()
+{
+  command_sub_.reset();
+  odom_sub_.reset();
+  moto_sub_.reset();
+  moto_topic_type_.clear();
+  command_topic_.clear();
+  moto_topic_.clear();
+  odom_topic_.clear();
+
+  if (fault_config_path_.empty() || !fault_detector_.chassis_stationary_enabled()) {
+    return;
+  }
+
+  const auto & cfg = fault_detector_.get_chassis_stationary_config();
+  command_topic_ = cfg.command_topic;
+  moto_topic_ = cfg.moto_topic;
+  odom_topic_ = cfg.odom_topic;
+
+  if (!command_topic_.empty()) {
+    command_sub_ = this->create_subscription<std_msgs::msg::String>(
+      command_topic_, rclcpp::QoS(20),
+      std::bind(&Nav2MonitorNode::on_command, this, std::placeholders::_1));
+  }
+  if (!odom_topic_.empty()) {
+    odom_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
+      odom_topic_, rclcpp::SensorDataQoS(),
+      std::bind(&Nav2MonitorNode::on_odom, this, std::placeholders::_1));
+  }
+  RCLCPP_INFO(
+    get_logger(), "Chassis stationary judge enabled: command=%s moto=%s odom=%s",
+    command_topic_.c_str(), moto_topic_.c_str(), odom_topic_.empty() ? "<disabled>" : odom_topic_.c_str());
+}
+
+void Nav2MonitorNode::configure_collision_monitoring()
+{
+  collision_scan_sub_.reset();
+  collision_pointcloud_sub_.reset();
+  collision_ultrasonic_sub_.reset();
+  collision_zone_pubs_.clear();
+
+  if (fault_config_path_.empty() || !fault_detector_.collision_detection_enabled()) {
+    return;
+  }
+
+  const auto & cfg = fault_detector_.get_collision_detection_config();
+  if (!cfg.scan_topic.empty()) {
+    auto scan_fallback = rclcpp::SensorDataQoS();
+    scan_fallback.keep_last(10);
+    const auto scan_qos = build_topic_subscription_qos(cfg.scan_topic, scan_fallback, 10);
+    collision_scan_sub_ = this->create_subscription<sensor_msgs::msg::LaserScan>(
+      cfg.scan_topic, scan_qos,
+      std::bind(&Nav2MonitorNode::on_collision_scan, this, std::placeholders::_1));
+  }
+  if (!cfg.pointcloud_topic.empty()) {
+    auto pointcloud_fallback = rclcpp::SensorDataQoS();
+    pointcloud_fallback.keep_last(50);
+    const auto pointcloud_qos = build_topic_subscription_qos(cfg.pointcloud_topic, pointcloud_fallback, 3);
+    collision_pointcloud_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
+      cfg.pointcloud_topic, pointcloud_qos,
+      std::bind(&Nav2MonitorNode::on_collision_pointcloud, this, std::placeholders::_1));
+  }
+  if (!cfg.ultrasonic_topic.empty()) {
+    auto ultrasonic_fallback = rclcpp::QoS(10);
+    ultrasonic_fallback.keep_last(10);
+    const auto ultrasonic_qos = build_topic_subscription_qos(cfg.ultrasonic_topic, ultrasonic_fallback, 10);
+    collision_ultrasonic_sub_ = this->create_subscription<std_msgs::msg::String>(
+      cfg.ultrasonic_topic, ultrasonic_qos,
+      std::bind(&Nav2MonitorNode::on_collision_ultrasonic, this, std::placeholders::_1));
+  }
+  for (const auto & zone : cfg.zones) {
+    if (!zone.visualize || zone.points.size() < 3) {
+      continue;
+    }
+    auto qos = rclcpp::QoS(1).transient_local().reliable();
+    collision_zone_pubs_[zone.name] = this->create_publisher<geometry_msgs::msg::PolygonStamped>(
+      zone.polygon_pub_topic, qos);
+  }
+  publish_collision_zones();
+  RCLCPP_INFO(
+    get_logger(), "Collision detection enabled: scan=%s pointcloud=%s ultrasonic=%s",
+    cfg.scan_topic.c_str(), cfg.pointcloud_topic.c_str(), cfg.ultrasonic_topic.c_str());
+}
+
 void Nav2MonitorNode::subscribe_watch_topics()
 {
   auto topics = this->get_topic_names_and_types();
@@ -831,6 +986,7 @@ void Nav2MonitorNode::subscribe_watch_topics()
 
 void Nav2MonitorNode::scan_topology()
 {
+  (void)reload_fault_config_if_needed(false);
   auto now = this->now();
   auto nodes = this->get_node_names();
   auto node_name_with_ns = this->get_node_graph_interface()->get_node_names_and_namespaces();
@@ -1087,47 +1243,89 @@ rcl_interfaces::msg::SetParametersResult Nav2MonitorNode::on_parameter_change(
   rcl_interfaces::msg::SetParametersResult result;
   result.successful = true;
 
-  std::lock_guard<std::mutex> lock(mtx_);
-  for (const auto & param : params) {
-    if (param.get_name() == "target_nodes") {
-      fallback_target_nodes_ = param.as_string_array();
-      if (monitor_targets_from_fault_config_) {
-        RCLCPP_WARN(get_logger(), "Ignore target_nodes update: monitor targets are from fault_config modules");
-      } else {
-        target_nodes_ = fallback_target_nodes_;
-        RCLCPP_INFO(get_logger(), "Updated target_nodes: %zu nodes", target_nodes_.size());
-      }
-    } else if (param.get_name() == "watch_topics") {
-      fallback_watch_topics_ = param.as_string_array();
-      if (monitor_targets_from_fault_config_) {
-        RCLCPP_WARN(get_logger(), "Ignore watch_topics update: monitor targets are from fault_config modules");
-      } else {
-        watch_topics_ = fallback_watch_topics_;
-        RCLCPP_INFO(get_logger(), "Updated watch_topics: %zu topics", watch_topics_.size());
-      }
-    } else if (param.get_name() == "target_transforms") {
-      target_transforms_.clear();
-      for (const auto & tf_str : param.as_string_array()) {
-        auto pos = tf_str.find("->");
-        if (pos != std::string::npos) {
-          target_transforms_.push_back({tf_str.substr(0, pos), tf_str.substr(pos + 2)});
+  bool fault_config_changed = false;
+  bool fault_config_cleared = false;
+  {
+    std::lock_guard<std::mutex> lock(mtx_);
+    for (const auto & param : params) {
+      if (param.get_name() == "target_nodes") {
+        fallback_target_nodes_ = param.as_string_array();
+        if (monitor_targets_from_fault_config_) {
+          RCLCPP_WARN(get_logger(), "Ignore target_nodes update: monitor targets are from fault_config modules");
+        } else {
+          target_nodes_ = fallback_target_nodes_;
+          clear_watch_topic_subscriptions();
+          RCLCPP_INFO(get_logger(), "Updated target_nodes: %zu nodes", target_nodes_.size());
         }
+      } else if (param.get_name() == "watch_topics") {
+        fallback_watch_topics_ = param.as_string_array();
+        if (monitor_targets_from_fault_config_) {
+          RCLCPP_WARN(get_logger(), "Ignore watch_topics update: monitor targets are from fault_config modules");
+        } else {
+          watch_topics_ = fallback_watch_topics_;
+          clear_watch_topic_subscriptions();
+          RCLCPP_INFO(get_logger(), "Updated watch_topics: %zu topics", watch_topics_.size());
+        }
+      } else if (param.get_name() == "fault_config") {
+        base_fault_config_path_ = param.as_string();
+        resolved_base_fault_config_path_ = resolve_config_path(base_fault_config_path_);
+        fault_config_changed = true;
+        fault_config_cleared = base_fault_config_path_.empty();
+        RCLCPP_INFO(
+          get_logger(), "Updated base fault_config: param='%s', resolved='%s'",
+          base_fault_config_path_.c_str(), resolved_base_fault_config_path_.c_str());
+      } else if (param.get_name() == "current_nav_task") {
+        current_nav_task_ = param.as_string();
+        (void)task_fault_config_selector_.update_current_task(current_nav_task_);
+        fault_config_changed = true;
+        RCLCPP_INFO(get_logger(), "Updated current_nav_task: %s", current_nav_task_.c_str());
+      } else if (param.get_name().rfind("task_fault_configs.", 0) == 0) {
+        fault_config_changed = true;
+        RCLCPP_INFO(get_logger(), "Updated task fault config mapping: %s", param.get_name().c_str());
+      } else if (param.get_name() == "fault_config_reload_enabled") {
+        fault_config_reload_enabled_ = param.as_bool();
+        RCLCPP_INFO(get_logger(), "Updated fault_config_reload_enabled: %s",
+          fault_config_reload_enabled_ ? "true" : "false");
+      } else if (param.get_name() == "target_transforms") {
+        target_transforms_.clear();
+        for (const auto & tf_str : param.as_string_array()) {
+          auto pos = tf_str.find("->");
+          if (pos != std::string::npos) {
+            target_transforms_.push_back({tf_str.substr(0, pos), tf_str.substr(pos + 2)});
+          }
+        }
+        RCLCPP_INFO(get_logger(), "Updated target_transforms: %zu transforms", target_transforms_.size());
+      } else if (param.get_name() == "timeout") {
+        timeout_ = param.as_double();
+        fault_detector_.set_feedback_default_max_stale(timeout_);
+        RCLCPP_INFO(get_logger(), "Updated timeout: %.1f seconds", timeout_);
+      } else if (param.get_name() == "safety_cooldown_s") {
+        safety_cooldown_s_ = std::max(0.0, param.as_double());
+        RCLCPP_INFO(get_logger(), "Updated safety_cooldown_s: %.2f", safety_cooldown_s_);
+      } else if (param.get_name() == "supervisor_cooldown_s") {
+        supervisor_cooldown_s_ = std::max(0.0, param.as_double());
+        RCLCPP_INFO(get_logger(), "Updated supervisor_cooldown_s: %.2f", supervisor_cooldown_s_);
+      } else if (param.get_name() == "battery_state_timeout_s") {
+        battery_state_timeout_s_ = std::max(1.0, param.as_double());
+        RCLCPP_INFO(get_logger(), "Updated battery_state_timeout_s: %.2f", battery_state_timeout_s_);
       }
-      RCLCPP_INFO(get_logger(), "Updated target_transforms: %zu transforms", target_transforms_.size());
-    } else if (param.get_name() == "timeout") {
-      timeout_ = param.as_double();
-      fault_detector_.set_feedback_default_max_stale(timeout_);
-      RCLCPP_INFO(get_logger(), "Updated timeout: %.1f seconds", timeout_);
-    } else if (param.get_name() == "safety_cooldown_s") {
-      safety_cooldown_s_ = std::max(0.0, param.as_double());
-      RCLCPP_INFO(get_logger(), "Updated safety_cooldown_s: %.2f", safety_cooldown_s_);
-    } else if (param.get_name() == "supervisor_cooldown_s") {
-      supervisor_cooldown_s_ = std::max(0.0, param.as_double());
-      RCLCPP_INFO(get_logger(), "Updated supervisor_cooldown_s: %.2f", supervisor_cooldown_s_);
-    } else if (param.get_name() == "battery_state_timeout_s") {
-      battery_state_timeout_s_ = std::max(1.0, param.as_double());
-      RCLCPP_INFO(get_logger(), "Updated battery_state_timeout_s: %.2f", battery_state_timeout_s_);
     }
+  }
+
+  if (fault_config_changed) {
+    load_task_fault_config_mappings();
+    if (task_fault_config_selector_.current_task() != current_nav_task_) {
+      (void)task_fault_config_selector_.update_current_task(current_nav_task_);
+    }
+    if (fault_config_cleared && task_fault_config_mappings_.find("default") == task_fault_config_mappings_.end()) {
+      apply_loaded_fault_config();
+      fault_config_watcher_.sync_current_state();
+    } else {
+      update_task_selected_fault_config(true);
+    }
+  } else {
+    subscribe_watch_topics();
+    try_subscribe_moto_topic();
   }
 
   return result;

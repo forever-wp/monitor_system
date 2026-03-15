@@ -23,7 +23,9 @@
 #include "nav2_monitor/monitor_data_store.hpp"
 #include "nav2_monitor/monitor_reporter.hpp"
 #include "nav2_monitor/fault_detector.hpp"
+#include "nav2_monitor/fault_config_watcher.hpp"
 #include "nav2_monitor/fault_state_coordinator.hpp"
+#include "nav2_monitor/task_fault_config_selector.hpp"
 #include "nav2_monitor/vehicle_status_monitor.hpp"
 #include <nav2_monitor/msg/safety_cmd.hpp>
 
@@ -63,6 +65,13 @@ private:
   rcl_interfaces::msg::SetParametersResult on_parameter_change(const std::vector<rclcpp::Parameter>& params);
   void subscribe_watch_topics();
   void publish_collision_zones();
+  bool reload_fault_config_if_needed(bool force = false);
+  void apply_loaded_fault_config();
+  void configure_chassis_monitoring();
+  void configure_collision_monitoring();
+  void clear_watch_topic_subscriptions();
+  void load_task_fault_config_mappings();
+  void update_task_selected_fault_config(bool force_reload);
   rclcpp::QoS build_watch_topic_qos(const std::string & topic, const std::string & type) const;
   rclcpp::QoS build_topic_subscription_qos(const std::string & topic, const rclcpp::QoS & fallback, size_t max_depth) const;
   rclcpp::Time stamp_or_now(const builtin_interfaces::msg::Time & stamp) const;
@@ -107,6 +116,15 @@ private:
   std::string odom_topic_;
   std::string moto_topic_type_;
   double battery_state_timeout_s_{5.0};
+  bool fault_config_reload_enabled_{true};
+  std::string base_fault_config_path_;
+  std::string resolved_base_fault_config_path_;
+  std::string fault_config_path_;
+  std::string resolved_fault_config_path_;
+  std::string current_nav_task_{"default"};
+  std::map<std::string, std::string> task_fault_config_mappings_;
+  FaultConfigWatcher fault_config_watcher_;
+  TaskFaultConfigSelector task_fault_config_selector_;
   SystemMonitor sys_monitor_;
   MonitorDataStore data_store_;
   FaultDetector fault_detector_;
