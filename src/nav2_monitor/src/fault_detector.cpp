@@ -150,15 +150,19 @@ std::vector<ActionType> parse_actions(
 
 std::vector<UltrasonicSensorConfig> make_default_ultrasonic_sensors()
 {
+  // 实际编号约定：1号=左前，之后顺时针。
+  // 这里按 8 路环绕底盘的近似安装位姿内置默认布局：
+  // 0 左前(45°), 1 正前(0°), 2 右前(-45°), 3 右侧(-90°),
+  // 4 右后(-135°), 5 正后(180°), 6 左后(135°), 7 左侧(90°)
   return {
-    UltrasonicSensorConfig{0, true, 0.18, 0.18, 55.0, 1.2, 0.8},
-    UltrasonicSensorConfig{1, true, 0.22, 0.10, 20.0, 1.2, 1.0},
-    UltrasonicSensorConfig{2, true, 0.02, 0.20, 90.0, 1.0, 0.6},
-    UltrasonicSensorConfig{3, true, -0.18, 0.16, 160.0, 0.8, 0.3},
-    UltrasonicSensorConfig{4, true, -0.18, -0.16, -160.0, 0.8, 0.3},
-    UltrasonicSensorConfig{5, true, 0.02, -0.20, -90.0, 1.0, 0.6},
-    UltrasonicSensorConfig{6, true, 0.22, -0.10, -20.0, 1.2, 1.0},
-    UltrasonicSensorConfig{7, true, 0.18, -0.18, -55.0, 1.2, 0.8}
+    UltrasonicSensorConfig{0, true, 0.18, 0.18, 45.0, 1.2, 0.9},
+    UltrasonicSensorConfig{1, true, 0.24, 0.00, 0.0, 1.2, 1.0},
+    UltrasonicSensorConfig{2, true, 0.18, -0.18, -45.0, 1.2, 0.9},
+    UltrasonicSensorConfig{3, true, 0.00, -0.22, -90.0, 1.0, 0.55},
+    UltrasonicSensorConfig{4, true, -0.18, -0.18, -135.0, 0.9, 0.25},
+    UltrasonicSensorConfig{5, true, -0.24, 0.00, 180.0, 0.9, 0.2},
+    UltrasonicSensorConfig{6, true, -0.18, 0.18, 135.0, 0.9, 0.25},
+    UltrasonicSensorConfig{7, true, 0.00, 0.22, 90.0, 1.0, 0.55}
   };
 }
 
@@ -267,6 +271,11 @@ const std::vector<std::string> & FaultDetector::get_watched_topics() const
   return watched_topics_;
 }
 
+const std::vector<std::string> & FaultDetector::get_monitored_transforms() const
+{
+  return monitored_transforms_;
+}
+
 bool FaultDetector::is_watch_topic_frequency_required(const std::string & topic) const
 {
   for (const auto & module : modules_) {
@@ -289,6 +298,7 @@ void FaultDetector::load_config(const std::string & config_file)
   const auto prev_modules = modules_;
   const auto prev_monitored_nodes = monitored_nodes_;
   const auto prev_watched_topics = watched_topics_;
+  const auto prev_monitored_transforms = monitored_transforms_;
   const auto prev_collision_cfg = collision_cfg_;
   const auto prev_chassis_cfg = chassis_cfg_;
   const auto prev_multi_value_cfg = multi_value_cfg_;
@@ -298,6 +308,7 @@ void FaultDetector::load_config(const std::string & config_file)
     modules_ = prev_modules;
     monitored_nodes_ = prev_monitored_nodes;
     watched_topics_ = prev_watched_topics;
+    monitored_transforms_ = prev_monitored_transforms;
     collision_cfg_ = prev_collision_cfg;
     chassis_cfg_ = prev_chassis_cfg;
     multi_value_cfg_ = prev_multi_value_cfg;
@@ -309,6 +320,7 @@ void FaultDetector::load_config(const std::string & config_file)
     modules_.clear();
     monitored_nodes_.clear();
     watched_topics_.clear();
+    monitored_transforms_.clear();
     config_loaded_time_ = node_->now();
 
     multi_value_cfg_.trigger_count = 2;
@@ -327,6 +339,21 @@ void FaultDetector::load_config(const std::string & config_file)
           multi_value_cfg_.recover_count = std::max(1, mv["recover_count"].as<int>());
         } catch (...) {
           RCLCPP_ERROR(node_->get_logger(), "[multi_value_judge] invalid recover_count, fallback to 2");
+        }
+      }
+    }
+
+    if (config["target_transforms"] && config["target_transforms"].IsSequence()) {
+      for (const auto & tf_node : config["target_transforms"]) {
+        try {
+          const std::string tf_str = tf_node.as<std::string>();
+          if (tf_str.find("->") == std::string::npos) {
+            RCLCPP_ERROR(node_->get_logger(), "Skip target_transform '%s': expected frame1->frame2", tf_str.c_str());
+            continue;
+          }
+          monitored_transforms_.push_back(tf_str);
+        } catch (const std::exception & e) {
+          RCLCPP_ERROR(node_->get_logger(), "Skip target_transform: invalid config (%s)", e.what());
         }
       }
     }
@@ -362,6 +389,14 @@ void FaultDetector::load_config(const std::string & config_file)
       }
       if (cd["ultrasonic_scene_flag_key"]) {
         collision_cfg_.ultrasonic_scene_flag_key = cd["ultrasonic_scene_flag_key"].as<std::string>();
+      }
+      if (cd["ultrasonic_blind_distance"]) {
+        collision_cfg_.ultrasonic_blind_distance = std::max(0.0, cd["ultrasonic_blind_distance"].as<double>());
+      }
+      if (cd["ultrasonic_out_of_range_value"]) {
+        collision_cfg_.ultrasonic_out_of_range_value = std::max(
+          collision_cfg_.ultrasonic_blind_distance,
+          cd["ultrasonic_out_of_range_value"].as<double>());
       }
       if (cd["pointcloud_min_height"]) {
         collision_cfg_.pointcloud_min_height = cd["pointcloud_min_height"].as<double>();
