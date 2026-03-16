@@ -65,7 +65,7 @@ collision_detection:
 chassis_stationary:
   enabled: 1
   module_name: "chassis_stationary"
-  command_topic: "/command_safety"
+  command_topic: "/command"
   moto_topic: "/moto_info"
   odom_topic: ""   # 可选；为空时底盘判断不依赖 odom
   source_timeout_s: 1.0
