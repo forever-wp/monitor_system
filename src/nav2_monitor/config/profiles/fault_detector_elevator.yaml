@@ -1,32 +1,28 @@
 # ============================================================
 # nav2_monitor 故障检测配置
-# 基于实际系统节点/topic 信息 (2026-03-12)
+# Elevator 任务安全配置模板：强化超声波近距离保护，降低对点云的依赖
 # ============================================================
 
 multi_value_judge:
   trigger_count: 2
   recover_count: 2
 
-target_transforms:
-  - "map->odom"
-  - "odom->base_link"
-
 # ============================================================
 # 碰撞检测（轻量版 LaserScan + 区域）
 # ============================================================
 collision_detection:
-  enabled: 1
+  enabled: 0
   module_name: "collision_detection"
   scan_topic: "scan"
-  pointcloud_topic: "/livox/points"
-  ultrasonic_topic: "/ultrasonic_eight_distance"
+  pointcloud_topic: ""
+  ultrasonic_topic: "/ultrasonic_eight"
   ultrasonic_distances_key: "distances"   # 支持 {"distances":[8路]} 或 false,d1,d2,...,d8
   ultrasonic_blind_distance: 0.2        # 0.2 视为盲区下限，低于此值按 0.2 处理
   ultrasonic_out_of_range_value: 1.0    # 1.0 视为超出探测上限，不生成碰撞点
   pointcloud_min_height: 0.2
   pointcloud_max_height: 1.4
   source_timeout_s: 0.5
-  ultrasonic_widget: [0.9, 1.0, 0.9, 0.55, 0.25, 0.2, 0.25, 0.55]  # 1号左前，顺时针编号；前视和前侧更高
+  ultrasonic_widget: [0.9, 1.0, 0.9, 0.85, 0.65, 0.65, 0.65, 0.85]  # 电梯任务：全向更保守，侧向也抬高
   zones:
     - name: "front_approach"
       enabled: 1
@@ -35,24 +31,24 @@ collision_detection:
       level: "WARNING"
       safety_system: 1
       safety_slow_down_percentage: 50.0
-      time_before_collision: 3.0     #速度x时间 预测的碰撞距离
+      time_before_collision: 4.0     # 电梯任务更早介入
       actions: ["safety_system"]
       visualize: 1
       polygon_pub_topic: "/nav2_monitor/collision_zone/front_approach"
     - name: "front_slow"
       enabled: 1
       points: [0.8, 0.35, 0.8, -0.35, 0.2, -0.35, 0.2, 0.35]
-      min_points: 3
+      min_points: 2.0
       level: "ERROR"
       safety_system: 1
-      safety_slow_down_percentage: 30.0
+      safety_slow_down_percentage: 20.0
       actions: ["safety_system"]
       visualize: 1
       polygon_pub_topic: "/nav2_monitor/collision_zone/front_slow"
     - name: "front_stop"
       enabled: 1
       points: [0.5, 0.25, 0.5, -0.25, 0.0, -0.25, 0.0, 0.25]
-      min_points: 3
+      min_points: 1.5
       level: "CRITICAL"
       safety_system: 2
       actions: ["safety_system"]
@@ -63,7 +59,7 @@ collision_detection:
 # 底盘停留原地 / 反馈异常检测 (全局)
 # ============================================================
 chassis_stationary:
-  enabled: 1
+  enabled: 0
   module_name: "chassis_stationary"
   command_topic: "/command"
   moto_topic: "/moto_info"
@@ -77,7 +73,7 @@ chassis_stationary:
   idle_level: "WARNING"
   safety_system: 2
   safety_slow_down_percentage: 50.0
-  anomaly_actions: [ "supervisor"]
+  anomaly_actions: ["safety_system", "supervisor"]
   idle_actions: ["none"]
 
 # ============================================================

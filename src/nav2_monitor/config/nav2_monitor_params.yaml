@@ -14,13 +14,19 @@ nav2_monitor:
     reporter.cmd_correlation_window_s: 2.0
     battery_state_topic: "/battery_state"
     battery_state_timeout_s: 90.0
+
+
+
     fault_config: "./src/nav2_monitor/config/fault_detector_config.yaml"
     fault_config_reload_enabled: true
     current_nav_task: "default"
     task_fault_configs.default: "./src/nav2_monitor/config/fault_detector_config.yaml"
-    task_fault_configs.todoor: "./src/nav2_monitor/config/fault_detector_config.yaml"
-    task_fault_configs.elevator: "./src/nav2_monitor/config/fault_detector_config.yaml"
-    task_fault_configs.reverse: "./src/nav2_monitor/config/fault_detector_config.yaml"
+    task_fault_configs.todoor: "./src/nav2_monitor/config/profiles/fault_detector_todoor.yaml"
+    task_fault_configs.elevator: "./src/nav2_monitor/config/profiles/fault_detector_elevator.yaml"
+    task_fault_configs.reverse: "./src/nav2_monitor/config/profiles/fault_detector_reverse.yaml"
+
+
+    
     vehicle_status_file: "/home/ry/.ros/navigate_status/navigate_todoor_status.json"
 
     # 兼容回退配置：当 fault_config 缺失或无 modules 时生效
@@ -115,6 +121,7 @@ nav2_monitor:
     #   # 其他
     #   - "/diagnostics"
 
-    target_transforms:
-      - "map->odom"
-      - "odom->base_link"
+    # # fallback TF 监控配置：当 fault_config 未配置 target_transforms 时生效
+    # target_transforms:
+    #   - "map->odom"
+    #   - "odom->base_link"
