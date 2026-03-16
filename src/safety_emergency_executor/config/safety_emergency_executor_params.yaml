@@ -1,0 +1,14 @@
+safety_emergency_executor:
+  ros__parameters:
+    safety_cmd_topic: "/safety_system/cmd"
+    command_input_topic: "/command_safety"
+    command_output_topic: "/command"
+
+    slow_down_percentage: 50.0
+
+    brake_strong_speed: -1.0
+    brake_medium_speed: -0.5
+    brake_strong_repeat: 2
+    brake_medium_repeat: 2
+    brake_zero_repeat: 4
+    brake_interval_ms: 20
