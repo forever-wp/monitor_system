@@ -19,7 +19,7 @@ CommandFrame VelocityConverter::convert(const geometry_msgs::msg::Twist & msg) c
   CommandFrame frame;
   frame.speed = std::round(msg.linear.x * 100.0) / 100.0;
   frame.angle = std::round(msg.angular.z * 100.0) / 100.0;
-  frame.acc = params_.acc;
+  frame.acc = effective_acc();
   frame.press = params_.press;
   frame.place = params_.place;
   frame.ulock = params_.ulock;
@@ -55,6 +55,11 @@ bool VelocityConverter::update_params_from_json(const std::string & payload, std
   return true;
 }
 
+void VelocityConverter::update_acc_from_topic(int acc_value)
+{
+  acc_override_ = acc_value;
+}
+
 std::string VelocityConverter::to_json(const CommandFrame & frame) const
 {
   Json::Value command_json;
@@ -73,11 +78,16 @@ std::string VelocityConverter::to_json(const CommandFrame & frame) const
 CommandFrame VelocityConverter::template_frame() const
 {
   CommandFrame frame;
-  frame.acc = params_.acc;
+  frame.acc = effective_acc();
   frame.press = params_.press;
   frame.place = params_.place;
   frame.ulock = params_.ulock;
   return frame;
+}
+
+int VelocityConverter::effective_acc() const
+{
+  return acc_override_.value_or(params_.acc);
 }
 
 }  // namespace safety_emergency_executor

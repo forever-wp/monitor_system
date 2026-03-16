@@ -11,6 +11,7 @@
 #include <nav_msgs/msg/odometry.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/imu.hpp>
+#include <std_msgs/msg/int32.hpp>
 #include <std_msgs/msg/string.hpp>
 
 #include "safety_emergency_executor/command_frame.hpp"
@@ -35,6 +36,8 @@ public:
       "cmd_vel_topic", "/cmd_vel");
     const auto pressure_update_topic = this->declare_parameter<std::string>(
       "pressure_update_topic", "/pressure_");
+    const auto acc_update_topic = this->declare_parameter<std::string>(
+      "acc_update_topic", "/acc_");
     const auto wheel_odom_topic = this->declare_parameter<std::string>(
       "wheel_odom_topic", "/odom_base");
     const auto loc_odom_topic = this->declare_parameter<std::string>(
@@ -55,6 +58,9 @@ public:
     pressure_sub_ = this->create_subscription<std_msgs::msg::String>(
       pressure_update_topic, rclcpp::QoS(10),
       std::bind(&SafetyEmergencyExecutorNode::on_pressure_update, this, std::placeholders::_1));
+    acc_update_sub_ = this->create_subscription<std_msgs::msg::Int32>(
+      acc_update_topic, rclcpp::QoS(10),
+      std::bind(&SafetyEmergencyExecutorNode::on_acc_update, this, std::placeholders::_1));
     wheel_odom_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
       wheel_odom_topic, rclcpp::SensorDataQoS(),
       std::bind(&SafetyEmergencyExecutorNode::on_wheel_odom, this, std::placeholders::_1));
@@ -70,8 +76,9 @@ public:
 
     RCLCPP_INFO(
       get_logger(),
-      "safety_emergency_executor started: safety_cmd=%s, cmd_vel=%s, out=%s",
-      safety_cmd_topic.c_str(), cmd_vel_topic.c_str(), command_output_topic.c_str());
+      "safety_emergency_executor started: safety_cmd=%s, cmd_vel=%s, acc_update=%s, out=%s",
+      safety_cmd_topic.c_str(), cmd_vel_topic.c_str(), acc_update_topic.c_str(),
+      command_output_topic.c_str());
   }
 
 private:
@@ -107,6 +114,11 @@ private:
         get_logger(), *get_clock(), 2000,
         "Failed to parse pressure update: %s", error.c_str());
     }
+  }
+
+  void on_acc_update(const std_msgs::msg::Int32::SharedPtr msg)
+  {
+    velocity_converter_.update_acc_from_topic(msg->data);
   }
 
   void on_wheel_odom(const nav_msgs::msg::Odometry::SharedPtr msg)
@@ -150,6 +162,7 @@ private:
   rclcpp::Subscription<nav2_monitor::msg::SafetyCmd>::SharedPtr safety_cmd_sub_;
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_sub_;
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr pressure_sub_;
+  rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr acc_update_sub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr wheel_odom_sub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr loc_odom_sub_;
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
