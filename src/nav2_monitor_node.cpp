@@ -514,16 +514,22 @@ void Nav2MonitorNode::on_collision_ultrasonic(const std_msgs::msg::String::Share
       continue;
     }
 
-    const double distance = distances[sensor.index];
-    if (!std::isfinite(distance) || distance <= 0.0 || distance > sensor.max_distance) {
+    const double raw_distance = distances[sensor.index];
+    if (!std::isfinite(raw_distance) || raw_distance <= 0.0) {
       continue;
     }
+
+    if (raw_distance >= cfg.ultrasonic_out_of_range_value || raw_distance > sensor.max_distance) {
+      continue;
+    }
+
+    const double effective_distance = std::max(raw_distance, cfg.ultrasonic_blind_distance);
 
     constexpr double kDegToRad = 3.14159265358979323846 / 180.0;
     const double yaw = sensor.yaw_deg * kDegToRad;
     points.push_back(CollisionPoint{
-      sensor.x + distance * std::cos(yaw),
-      sensor.y + distance * std::sin(yaw),
+      sensor.x + effective_distance * std::cos(yaw),
+      sensor.y + effective_distance * std::sin(yaw),
       sensor.weight});
   }
 
@@ -813,6 +819,21 @@ void Nav2MonitorNode::apply_loaded_fault_config()
       RCLCPP_INFO(
         get_logger(),
         "fault_config missing/empty modules, fallback to target_nodes/watch_topics params");
+    }
+
+    target_transforms_.clear();
+    const auto & fault_transforms = fault_detector_.get_monitored_transforms();
+    std::vector<std::string> fallback_transforms;
+    const std::vector<std::string> * active_transforms = &fault_transforms;
+    if (fault_config_path_.empty() || fault_transforms.empty()) {
+      fallback_transforms = this->get_parameter("target_transforms").as_string_array();
+      active_transforms = &fallback_transforms;
+    }
+    for (const auto & tf_str : *active_transforms) {
+      auto pos = tf_str.find("->");
+      if (pos != std::string::npos) {
+        target_transforms_.push_back({tf_str.substr(0, pos), tf_str.substr(pos + 2)});
+      }
     }
 
     clear_watch_topic_subscriptions();
@@ -1294,7 +1315,11 @@ rcl_interfaces::msg::SetParametersResult Nav2MonitorNode::on_parameter_change(
             target_transforms_.push_back({tf_str.substr(0, pos), tf_str.substr(pos + 2)});
           }
         }
-        RCLCPP_INFO(get_logger(), "Updated target_transforms: %zu transforms", target_transforms_.size());
+        if (!fault_config_path_.empty() && !fault_detector_.get_monitored_transforms().empty()) {
+          RCLCPP_WARN(get_logger(), "target_transforms param updated but fault_config target_transforms takes precedence");
+        } else {
+          RCLCPP_INFO(get_logger(), "Updated target_transforms: %zu transforms", target_transforms_.size());
+        }
       } else if (param.get_name() == "timeout") {
         timeout_ = param.as_double();
         fault_detector_.set_feedback_default_max_stale(timeout_);

@@ -2,7 +2,7 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>nav2_monitor</name>
-  <version>1.0.0</version>
+  <version>2.3.0</version>
   <description>Lightweight monitor for Nav2 nodes health status</description>
   <maintainer email="user@example.com">maintainer</maintainer>
   <license>Apache-2.0</license>
