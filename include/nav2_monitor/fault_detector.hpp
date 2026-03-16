@@ -115,6 +115,8 @@ struct CollisionDetectionConfig
   std::string ultrasonic_topic{""};
   std::string ultrasonic_distances_key{"distances"};
   std::string ultrasonic_scene_flag_key{"scene_flag"};
+  double ultrasonic_blind_distance{0.2};
+  double ultrasonic_out_of_range_value{1.0};
   double pointcloud_min_height{0.0};
   double pointcloud_max_height{2.0};
   double source_timeout_s{0.5};
@@ -183,6 +185,7 @@ public:
   bool has_module_configs() const;
   const std::vector<std::string> & get_monitored_nodes() const;
   const std::vector<std::string> & get_watched_topics() const;
+  const std::vector<std::string> & get_monitored_transforms() const;
   bool is_watch_topic_frequency_required(const std::string & topic) const;
   const MultiValueJudgeConfig & get_multi_value_judge_config() const;
   bool collision_detection_enabled() const;
@@ -204,6 +207,7 @@ private:
   MultiValueJudgeConfig multi_value_cfg_;
   std::vector<std::string> monitored_nodes_;
   std::vector<std::string> watched_topics_;
+  std::vector<std::string> monitored_transforms_;
   rclcpp::Time config_loaded_time_;
   double feedback_default_max_stale_s_;
   MonitorDataStore compatibility_store_;
