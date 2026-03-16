@@ -25,6 +25,7 @@ ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
 - `command_output_topic`（默认 `/command`）
 - `cmd_vel_topic` / `wheel_odom_topic` / `loc_odom_topic` / `imu_topic`
 - `pressure_update_topic`（动态更新 `acc_/press_/place_/ulock_`）
+- `acc_update_topic`（直接覆盖当前 `acc` 值；未收到消息时保留默认 `acc_`）
 - `auto_pressure.*`（打滑检测与压力调节参数）
 - `slow_down_percentage`（默认 `50.0`）
 - `brake_*`（急停制动序列）

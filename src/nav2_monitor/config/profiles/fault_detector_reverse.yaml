@@ -4,25 +4,26 @@
 # ============================================================
 
 multi_value_judge:
-  trigger_count: 2
-  recover_count: 2
+  trigger_count: 2  # 同一规则连续异常多少次后才正式触发
+  recover_count: 2  # 同一规则连续恢复多少次后才正式清除
 
 # ============================================================
 # 碰撞检测（轻量版 LaserScan + 区域）
 # ============================================================
 collision_detection:
-  enabled: 1
-  module_name: "collision_detection"
-  scan_topic: "scan"
-  pointcloud_topic: "/livox/points"
-  ultrasonic_topic: "/ultrasonic_eight"
-  ultrasonic_distances_key: "distances"   # 支持 {"distances":[8路]} 或 false,d1,d2,...,d8
-  ultrasonic_blind_distance: 0.2        # 0.2 视为盲区下限，低于此值按 0.2 处理
-  ultrasonic_out_of_range_value: 1.0    # 1.0 视为超出探测上限，不生成碰撞点
-  pointcloud_min_height: 0.2
-  pointcloud_max_height: 1.4
-  source_timeout_s: 0.5
+  enabled: 1  # 是否启用碰撞检测
+  module_name: "collision_detection"  # 碰撞故障输出时使用的模块名
+  scan_topic: "scan"  # LaserScan 输入 topic
+  pointcloud_topic: "/livox/points"  # PointCloud2 输入 topic
+  ultrasonic_topic: "/ultrasonic_eight"  # 超声波 JSON 输入 topic
+  ultrasonic_distances_key: "distances"   # JSON 中 8 路距离数组的键名
+  ultrasonic_blind_distance: 0.2  # 超声盲区下限，小于此值按该值处理
+  ultrasonic_out_of_range_value: 1.0  # 超声超量程值，达到该值视为“无障碍点”
+  pointcloud_min_height: 0.2  # 点云参与碰撞检测的最小高度（米）
+  pointcloud_max_height: 1.4  # 点云参与碰撞检测的最大高度（米）
+  source_timeout_s: 0.5  # 各碰撞数据源的有效超时时间（秒）
   ultrasonic_widget: [0.35, 0.35, 0.35, 0.7, 0.95, 1.0, 0.95, 0.7]  # 倒车任务：后向优先，侧后次之
+  # zones 字段说明见主配置 fault_detector_config.yaml，对所有任务 profile 含义一致
   zones:
     - name: "rear_approach"
       enabled: 1
@@ -59,26 +60,27 @@ collision_detection:
 # 底盘停留原地 / 反馈异常检测 (全局)
 # ============================================================
 chassis_stationary:
-  enabled: 1
-  module_name: "chassis_stationary"
-  command_topic: "/command"
-  moto_topic: "/moto_info"
-  odom_topic: ""   # 可选；为空时底盘判断不依赖 odom
-  source_timeout_s: 1.0
-  idle_timeout_s: 30.0
-  command_speed_threshold: 0.05
-  moto_speed_threshold: 0.05
-  odom_speed_threshold: 0.03
-  anomaly_level: "ERROR"
-  idle_level: "WARNING"
-  safety_system: 2
-  safety_slow_down_percentage: 50.0
-  anomaly_actions: ["safety_system", "supervisor"]
-  idle_actions: ["none"]
+  enabled: 1  # 是否启用底盘异常/久停检测
+  module_name: "chassis_stationary"  # 底盘故障输出时使用的模块名
+  command_topic: "/command"  # 被监控的最终控制命令 topic
+  moto_topic: "/moto_info"  # 电机反馈 topic
+  odom_topic: ""   # 可选；为空时仅依赖 command + moto，不依赖 odom
+  source_timeout_s: 1.0  # 输入源数据超时时间（秒）
+  idle_timeout_s: 30.0  # command 和 moto 都静默多久后认为“久停”
+  command_speed_threshold: 0.05  # command 认为“有速度”的阈值
+  moto_speed_threshold: 0.05  # moto 认为“有速度”的阈值
+  odom_speed_threshold: 0.03  # odom 认为“有速度”的阈值
+  anomaly_level: "ERROR"  # command/moto 异常时的故障等级
+  idle_level: "WARNING"  # 久停时的故障等级
+  safety_system: 2  # 触发安全动作时默认执行 SOFT_STOP
+  safety_slow_down_percentage: 50.0  # 若安全动作为减速时使用的百分比
+  anomaly_actions: ["safety_system", "supervisor"]  # 异常触发后的动作列表
+  idle_actions: ["none"]  # 久停触发后的动作列表
 
 # ============================================================
 # 模块定义
 # ============================================================
+# modules 通用字段说明见主配置 fault_detector_config.yaml，对所有任务 profile 含义一致
 modules:
 
   # ----------------------------------------------------------

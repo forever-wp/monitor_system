@@ -1,33 +1,29 @@
 nav2_monitor:
   ros__parameters:
-    timeout: 5.0
-    scan_rate: 5.0
-    check_rate: 10.0
-    safety_cooldown_s: 2.0
-    supervisor_cooldown_s: 5.0
-    algorithm_feedback_topic: "/nav2_monitor/algorithm_feedback"
-    fault_event_topic: "/nav2_monitor/fault_event"
-    supervisor_cmd_topic: "/supervisor/cmd"
-    safety_cmd_topic: "/safety_system/cmd"
-    reporter.heartbeat_json_topic: "/nav2_monitor/reporter/heartbeat_json"
-    reporter.event_json_topic: "/nav2_monitor/reporter/event_json"
-    reporter.cmd_correlation_window_s: 2.0
-    battery_state_topic: "/battery_state"
-    battery_state_timeout_s: 90.0
+    timeout: 5.0  # 节点/TF/反馈等通用超时时间（秒）
+    scan_rate: 5.0  # 拓扑扫描频率（Hz），用于扫描节点、topic 发布者和 TF
+    check_rate: 10.0  # 健康检查与状态发布频率（Hz）
+    safety_cooldown_s: 2.0  # 安全动作重复发布冷却时间（秒）
+    supervisor_cooldown_s: 5.0  # supervisor 重启命令重复发布冷却时间（秒）
+    algorithm_feedback_topic: "/nav2_monitor/algorithm_feedback"  # 统一反馈输入 topic
+    fault_event_topic: "/nav2_monitor/fault_event"  # 故障边沿事件输出 topic
+    supervisor_cmd_topic: "/supervisor/cmd"  # supervisor 重启命令输出 topic
+    safety_cmd_topic: "/safety_system/cmd"  # 安全执行命令输出 topic
+    reporter.heartbeat_json_topic: "/nav2_monitor/reporter/heartbeat_json"  # 心跳 JSON 上报 topic
+    reporter.event_json_topic: "/nav2_monitor/reporter/event_json"  # 事件 JSON 上报 topic
+    reporter.cmd_correlation_window_s: 2.0  # reporter 关联安全/重启动作与事件的时间窗（秒）
+    battery_state_topic: "/battery_state"  # 电池状态订阅 topic
+    battery_state_timeout_s: 90.0  # 电池数据有效超时时间（秒）
 
+    fault_config: "./src/nav2_monitor/config/fault_detector_config.yaml"  # 默认故障检测配置文件路径
+    fault_config_reload_enabled: true  # 是否启用故障配置热重载
+    current_nav_task: "default"  # 当前导航任务名，用于选择任务对应 fault_config
+    task_fault_configs.default: "./src/nav2_monitor/config/fault_detector_config.yaml"  # default 任务使用的故障配置
+    task_fault_configs.todoor: "./src/nav2_monitor/config/profiles/fault_detector_todoor.yaml"  # todoor 任务故障配置
+    task_fault_configs.elevator: "./src/nav2_monitor/config/profiles/fault_detector_elevator.yaml"  # elevator 任务故障配置
+    task_fault_configs.reverse: "./src/nav2_monitor/config/profiles/fault_detector_reverse.yaml"  # reverse 任务故障配置
 
-
-    fault_config: "./src/nav2_monitor/config/fault_detector_config.yaml"
-    fault_config_reload_enabled: true
-    current_nav_task: "default"
-    task_fault_configs.default: "./src/nav2_monitor/config/fault_detector_config.yaml"
-    task_fault_configs.todoor: "./src/nav2_monitor/config/profiles/fault_detector_todoor.yaml"
-    task_fault_configs.elevator: "./src/nav2_monitor/config/profiles/fault_detector_elevator.yaml"
-    task_fault_configs.reverse: "./src/nav2_monitor/config/profiles/fault_detector_reverse.yaml"
-
-
-    
-    vehicle_status_file: "/home/ry/.ros/navigate_status/navigate_todoor_status.json"
+    vehicle_status_file: "/home/ry/.ros/navigate_status/navigate_todoor_status.json"  # 导航状态 JSON 文件路径
 
     # 兼容回退配置：当 fault_config 缺失或无 modules 时生效
     # 基于实际系统节点/topic 信息 (2026-03-12)
@@ -121,7 +117,7 @@ nav2_monitor:
     #   # 其他
     #   - "/diagnostics"
 
-    # # fallback TF 监控配置：当 fault_config 未配置 target_transforms 时生效
+    # fallback TF 监控配置：当 fault_config 未配置 target_transforms 时生效
     # target_transforms:
     #   - "map->odom"
     #   - "odom->base_link"
