@@ -1,0 +1,120 @@
+nav2_monitor:
+  ros__parameters:
+    timeout: 5.0
+    scan_rate: 5.0
+    check_rate: 10.0
+    safety_cooldown_s: 2.0
+    supervisor_cooldown_s: 5.0
+    algorithm_feedback_topic: "/nav2_monitor/algorithm_feedback"
+    fault_event_topic: "/nav2_monitor/fault_event"
+    supervisor_cmd_topic: "/supervisor/cmd"
+    safety_cmd_topic: "/safety_system/cmd"
+    reporter.heartbeat_json_topic: "/nav2_monitor/reporter/heartbeat_json"
+    reporter.event_json_topic: "/nav2_monitor/reporter/event_json"
+    reporter.cmd_correlation_window_s: 2.0
+    battery_state_topic: "/battery_state"
+    battery_state_timeout_s: 90.0
+    fault_config: "./src/nav2_monitor/config/fault_detector_config.yaml"
+    fault_config_reload_enabled: true
+    current_nav_task: "default"
+    task_fault_configs.default: "./src/nav2_monitor/config/fault_detector_config.yaml"
+    task_fault_configs.todoor: "./src/nav2_monitor/config/fault_detector_config.yaml"
+    task_fault_configs.elevator: "./src/nav2_monitor/config/fault_detector_config.yaml"
+    task_fault_configs.reverse: "./src/nav2_monitor/config/fault_detector_config.yaml"
+    vehicle_status_file: "/home/ry/.ros/navigate_status/navigate_todoor_status.json"
+
+    # 兼容回退配置：当 fault_config 缺失或无 modules 时生效
+    # 基于实际系统节点/topic 信息 (2026-03-12)
+    # target_nodes:
+    #   # 底盘
+    #   - "chassis_node"
+    #   - "odometry_node"
+    #   - "battery_node"
+    #   # 传感器
+    #   - "livox_lidar_publisher"
+    #   - "front_camera"
+    #   - "back_camera"
+    #   - "left_camera"
+    #   - "right_camera"
+    #   - "camera/camera"
+    #   - "uss_driver_publisher"
+    #   # 导航
+    #   - "controller_server"
+    #   - "planner_server"
+    #   - "bt_navigator"
+    #   - "behavior_server"
+    #   - "smoother_server"
+    #   - "velocity_smoother"
+    #   - "waypoint_follower"
+    #   - "lifecycle_manager_navigation"
+    #   - "map_server"
+    #   - "global_costmap/global_costmap"
+    #   - "local_costmap/local_costmap"
+    #   # 定位
+    #   - "lio_node"
+    #   - "ekf_filter_node"
+    #   - "amcl"
+    #   - "pointcloud_to_laserscan"
+    #   # 电梯
+    #   - "elevator_server"
+    #   - "elevator_state_detector"
+    #   # 视觉检测
+    #   - "object_detection_node"
+    #   - "pointcloud_processor"
+    #   # 任务
+    #   - "task_execute_server"
+    #   - "navigate_todoor_server"
+    #   # 指令转换
+    #   - "cmd_vel_to_command_node"
+
+    # watch_topics:
+    #   # 底盘
+    #   - "/moto_info"
+    #   - "/encoder_info"
+    #   - "/is_emergency_stop"
+    #   - "/odom_init"
+    #   - "/odom_base"
+    #   - "/odom_vel"
+    #   - "/command"
+    #   - "/battery_state"
+    #   # 传感器 - livox
+    #   - "/livox/lidar"
+    #   - "/livox/imu"
+    #   # 传感器 - 相机
+    #   - "/front_camera/image_raw"
+    #   - "/back_camera/image_raw"
+    #   - "/left_camera/image_raw"
+    #   - "/right_camera/image_raw"
+    #   - "/camera/color/image_raw"
+    #   - "/camera/depth/image_raw"
+    #   # 传感器 - 超声波（8路聚合单 topic）
+    #   - "/ultrasonic_eight"
+    #   # 导航
+    #   - "/cmd_vel"
+    #   - "/cmd_vel_nav"
+    #   - "/plan"
+    #   - "/local_plan"
+    #   - "/global_plan"
+    #   - "/map"
+    #   - "/global_costmap/costmap"
+    #   - "/local_costmap/costmap"
+    #   - "/goal_pose"
+    #   # 定位
+    #   - "/fastlio2/lio_odom"
+    #   - "/fastlio2/body_cloud"
+    #   - "/odometry/filtered"
+    #   - "/tf"
+    #   - "/tf_static"
+    #   - "/scan"
+    #   # 视觉检测
+    #   - "/detected_objects_nav"
+    #   - "/detected_objects_pointcloud"
+    #   - "/filtered_pointcloud"
+    #   # 电梯
+    #   - "/elevator_status"
+    #   # 其他
+    #   - "/diagnostics"
+
+    target_transforms:
+      - "map->odom"
+      - "odom->base_link"
