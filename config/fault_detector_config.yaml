@@ -4,9 +4,10 @@
 # ============================================================
 
 multi_value_judge:
-  trigger_count: 2
-  recover_count: 2
+  trigger_count: 2  # 同一规则连续异常多少次后才正式触发
+  recover_count: 2  # 同一规则连续恢复多少次后才正式清除
 
+# 需要持续监控的 TF 变换对，格式为 "parent->child"
 target_transforms:
   - "map->odom"
   - "odom->base_link"
@@ -15,30 +16,43 @@ target_transforms:
 # 碰撞检测（轻量版 LaserScan + 区域）
 # ============================================================
 collision_detection:
-  enabled: 1
-  module_name: "collision_detection"
-  scan_topic: "scan"
-  pointcloud_topic: "/livox/points"
-  ultrasonic_topic: "/ultrasonic_eight_distance"
-  ultrasonic_distances_key: "distances"   # 支持 {"distances":[8路]} 或 false,d1,d2,...,d8
-  ultrasonic_blind_distance: 0.2        # 0.2 视为盲区下限，低于此值按 0.2 处理
-  ultrasonic_out_of_range_value: 1.0    # 1.0 视为超出探测上限，不生成碰撞点
-  pointcloud_min_height: 0.2
-  pointcloud_max_height: 1.4
-  source_timeout_s: 0.5
+  enabled: 1  # 是否启用碰撞检测
+  module_name: "collision_detection"  # 碰撞故障输出时使用的模块名
+  scan_topic: "scan"  # LaserScan 输入 topic
+  pointcloud_topic: "/livox/points"  # PointCloud2 输入 topic；留空表示不使用
+  ultrasonic_topic: "/ultrasonic_eight_distance"  # 超声波 JSON 输入 topic
+  ultrasonic_distances_key: "distances"   # JSON 中 8 路距离数组的键名
+  ultrasonic_blind_distance: 0.2  # 超声盲区下限，小于此值按该值处理
+  ultrasonic_out_of_range_value: 1.0  # 超声超量程值，达到该值视为“无障碍点”
+  pointcloud_min_height: 0.2  # 点云参与碰撞检测的最小高度（米）
+  pointcloud_max_height: 1.4  # 点云参与碰撞检测的最大高度（米）
+  source_timeout_s: 0.5  # 各碰撞数据源的有效超时时间（秒）
   ultrasonic_widget: [0.9, 1.0, 0.9, 0.55, 0.25, 0.2, 0.25, 0.55]  # 1号左前，顺时针编号；前视和前侧更高
+  # zones 字段说明：
+  # - name: 区域唯一名称
+  # - enabled: 是否启用该区域
+  # - model: zone/approach；approach 表示 TTC 预警模型
+  # - points: 多边形顶点，按 [x1, y1, x2, y2, ...] 展开
+  # - min_points: 命中阈值；对超声波是加权点数，对 scan/pointcloud 是点数量/权重和
+  # - level: 故障等级 WARNING/ERROR/CRITICAL
+  # - safety_system: 0=NONE 1=SLOW_DOWN 2=SOFT_STOP 3=EMERGENCY_STOP
+  # - safety_slow_down_percentage: 减速动作时的速度百分比
+  # - time_before_collision: approach 模型的 TTC 阈值（秒）
+  # - actions: 触发后的动作列表，可选 safety_system/supervisor
+  # - visualize: 是否发布该区域的 PolygonStamped 可视化
+  # - polygon_pub_topic: 区域可视化 topic
   zones:
     - name: "front_approach"
-      enabled: 1
-      model: "approach"
-      points: [1.2, 0.45, 1.2, -0.45, 0.2, -0.45, 0.2, 0.45]
-      level: "WARNING"
-      safety_system: 1
-      safety_slow_down_percentage: 50.0
-      time_before_collision: 3.0     #速度x时间 预测的碰撞距离
-      actions: ["safety_system"]
-      visualize: 1
-      polygon_pub_topic: "/nav2_monitor/collision_zone/front_approach"
+      enabled: 1  # 启用前向接近预警区
+      model: "approach"  # 按 TTC 预估方式触发
+      points: [1.2, 0.45, 1.2, -0.45, 0.2, -0.45, 0.2, 0.45]  # 区域轮廓
+      level: "WARNING"  # 触发时按 WARNING 上报
+      safety_system: 1  # 触发后执行减速
+      safety_slow_down_percentage: 50.0  # 减速到 50%
+      time_before_collision: 3.0  # TTC 小于 3 秒时触发
+      actions: ["safety_system"]  # 仅执行安全动作
+      visualize: 1  # 发布区域可视化
+      polygon_pub_topic: "/nav2_monitor/collision_zone/front_approach"  # 可视化 topic
     - name: "front_slow"
       enabled: 1
       points: [0.8, 0.35, 0.8, -0.35, 0.2, -0.35, 0.2, 0.35]
@@ -63,26 +77,43 @@ collision_detection:
 # 底盘停留原地 / 反馈异常检测 (全局)
 # ============================================================
 chassis_stationary:
-  enabled: 1
-  module_name: "chassis_stationary"
-  command_topic: "/command"
-  moto_topic: "/moto_info"
-  odom_topic: ""   # 可选；为空时底盘判断不依赖 odom
-  source_timeout_s: 1.0
-  idle_timeout_s: 30.0
-  command_speed_threshold: 0.05
-  moto_speed_threshold: 0.05
-  odom_speed_threshold: 0.03
-  anomaly_level: "ERROR"
-  idle_level: "WARNING"
-  safety_system: 2
-  safety_slow_down_percentage: 50.0
-  anomaly_actions: [ "supervisor"]
-  idle_actions: ["none"]
+  enabled: 1  # 是否启用底盘异常/久停检测
+  module_name: "chassis_stationary"  # 底盘故障输出时使用的模块名
+  command_topic: "/command"  # 被监控的最终控制命令 topic
+  moto_topic: "/moto_info"  # 电机反馈 topic
+  odom_topic: ""   # 可选；为空时仅依赖 command + moto，不依赖 odom
+  source_timeout_s: 1.0  # 输入源数据超时时间（秒）
+  idle_timeout_s: 30.0  # command 和 moto 都静默多久后认为“久停”
+  command_speed_threshold: 0.05  # command 认为“有速度”的阈值
+  moto_speed_threshold: 0.05  # moto 认为“有速度”的阈值
+  odom_speed_threshold: 0.03  # odom 认为“有速度”的阈值
+  anomaly_level: "ERROR"  # command/moto 异常时的故障等级
+  idle_level: "WARNING"  # 久停时的故障等级
+  safety_system: 2  # 触发安全动作时默认执行 SOFT_STOP
+  safety_slow_down_percentage: 50.0  # 若安全动作为减速时使用的百分比
+  anomaly_actions: [ "supervisor"]  # 异常触发后的动作列表
+  idle_actions: ["none"]  # 久停触发后的动作列表
 
 # ============================================================
 # 模块定义
 # ============================================================
+# modules 通用字段说明：
+# - name: 模块唯一名称，作为故障 module_name 的来源
+# - supervisor: 1=该模块故障允许触发 /supervisor/cmd
+# - safety_system: 0/1/2/3，模块节点失活时默认对应的安全动作
+# - safety_slow_down_percentage: 若 safety_system=1 时使用的减速百分比
+# - nodes: 需要被监控在线状态的 ROS 节点名列表
+# - watch_topics: 直接监控的真实 ROS topic 列表
+#   - name: topic 名称
+#   - min_hz: 期望最低频率；省略或注释掉表示只检查发布者存在
+# - feedback_rules: 统一反馈规则列表
+#   - source_topic: AlgorithmFeedback.topic_name
+#   - metric_name: AlgorithmFeedback.metric_name
+#   - min_value/max_value: 数值阈值
+#   - min_hz: 最低反馈频率
+#   - max_stale_s: 反馈最大允许陈旧时间
+#   - level: WARNING/ERROR/CRITICAL
+#   - actions: supervisor/safety_system/none
 modules:
 
   # ----------------------------------------------------------
