@@ -1,8 +1,35 @@
 safety_emergency_executor:
   ros__parameters:
     safety_cmd_topic: "/safety_system/cmd"
-    command_input_topic: "/command_safety"
     command_output_topic: "/command"
+    cmd_vel_topic: "/cmd_vel"
+    pressure_update_topic: "/pressure_"
+    wheel_odom_topic: "/odom_base"
+    loc_odom_topic: "/odom"
+    imu_topic: "/livox/imu"
+
+    acc_: 2000
+    press_: 1400
+    place_: -1
+    ulock_: -1
+
+    auto_pressure:
+      enable_imu: true
+      enable_localization: true
+      fallback_mode: "dual_sensor"
+      slip_threshold: 0.08
+      slip_hysteresis: 0.03
+      pressure_min: 800
+      pressure_max: 2500
+      rate_limit_up: 30.0
+      rate_limit_down: 20.0
+      static_vel_threshold: 0.02
+      bias_calibration_samples: 50
+      imu_trust_duration: 2.0
+      imu_decay_rate: 0.98
+      weight_imu: 0.8
+      loc_jump_threshold: 0.5
+      loc_recovery_rate: 0.1
 
     slow_down_percentage: 50.0
 
