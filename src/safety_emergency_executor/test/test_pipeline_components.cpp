@@ -66,6 +66,29 @@ TEST_F(SafetyExecutorComponentTest, VelocityConverterMapsFieldsAndUpdatesParams)
   EXPECT_NE(json.find("\"press\":950"), std::string::npos);
 }
 
+TEST_F(SafetyExecutorComponentTest, VelocityConverterAccTopicOverrideKeepsDefaultFallback)
+{
+  auto node = std::make_shared<rclcpp::Node>("velocity_converter_acc_override_test");
+  safety_emergency_executor::VelocityConverter converter;
+  converter.configure(*node);
+
+  geometry_msgs::msg::Twist msg;
+  msg.linear.x = 0.3;
+  msg.angular.z = 0.1;
+
+  const auto default_frame = converter.convert(msg);
+  EXPECT_EQ(default_frame.acc, 2000);
+
+  converter.update_acc_from_topic(3200);
+  const auto overridden_frame = converter.convert(msg);
+  EXPECT_EQ(overridden_frame.acc, 3200);
+
+  std::string error;
+  ASSERT_TRUE(converter.update_params_from_json("{\"acc\":1500}", &error));
+  const auto still_overridden_frame = converter.convert(msg);
+  EXPECT_EQ(still_overridden_frame.acc, 3200);
+}
+
 TEST_F(SafetyExecutorComponentTest, PressureAdjusterDisabledModeLeavesPressureUnchanged)
 {
   rclcpp::NodeOptions options;
