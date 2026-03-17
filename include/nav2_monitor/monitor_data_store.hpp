@@ -46,6 +46,10 @@ struct ChassisRuntimeState
   bool prediction_speed_received{false};
   double prediction_speed{0.0};
   rclcpp::Time prediction_speed_stamp{0, 0, RCL_ROS_TIME};
+  bool imu_received{false};
+  double imu_speed_estimate{0.0};
+  double imu_yaw_rate{0.0};
+  rclcpp::Time imu_stamp{0, 0, RCL_ROS_TIME};
   bool moto_received{false};
   bool moto_valid{false};
   double left_speed_rad{0.0};
@@ -85,6 +89,7 @@ public:
     const std::string & metric_name, double value, bool valid, const rclcpp::Time & stamp);
   void set_command_speed(double speed, const rclcpp::Time & stamp);
   void set_prediction_speed(double speed, const rclcpp::Time & stamp);
+  void set_imu_motion(double speed_estimate, double yaw_rate, const rclcpp::Time & stamp);
   void set_moto_speed(double left_speed_rad, double right_speed_rad, bool valid, const rclcpp::Time & stamp);
   void set_odom_speed(double linear_speed, const rclcpp::Time & stamp);
   void set_battery_state(float temperature, float percentage, const rclcpp::Time & stamp);

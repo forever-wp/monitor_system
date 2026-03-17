@@ -383,6 +383,62 @@ void Nav2MonitorNode::on_battery_state(const sensor_msgs::msg::BatteryState::Sha
   data_store_.set_battery_state(msg->temperature, msg->percentage, stamp);
 }
 
+void Nav2MonitorNode::on_chassis_imu(const sensor_msgs::msg::Imu::SharedPtr msg)
+{
+  const auto stamp = (msg->header.stamp.sec != 0 || msg->header.stamp.nanosec != 0) ?
+    rclcpp::Time(msg->header.stamp) : this->now();
+
+  if (!chassis_imu_time_initialized_) {
+    chassis_imu_last_stamp_ = stamp;
+    chassis_imu_time_initialized_ = true;
+    return;
+  }
+
+  const double dt = (stamp - chassis_imu_last_stamp_).seconds();
+  chassis_imu_last_stamp_ = stamp;
+  if (dt <= 0.0 || dt > 0.5) {
+    return;
+  }
+
+  const double accel_x = msg->linear_acceleration.x;
+  const double yaw_rate = msg->angular_velocity.z;
+  const bool static_motion =
+    std::fabs(chassis_imu_speed_estimate_) < chassis_imu_static_command_threshold_ &&
+    std::fabs(yaw_rate) < chassis_imu_yaw_rate_threshold_;
+
+  if (static_motion) {
+    chassis_imu_bias_samples_.push_back(accel_x);
+    if (static_cast<int>(chassis_imu_bias_samples_.size()) > chassis_imu_bias_calibration_samples_) {
+      chassis_imu_bias_samples_.erase(chassis_imu_bias_samples_.begin());
+    }
+
+    if (static_cast<int>(chassis_imu_bias_samples_.size()) >= chassis_imu_bias_calibration_samples_) {
+      double sum = 0.0;
+      for (const auto sample : chassis_imu_bias_samples_) {
+        sum += sample;
+      }
+      chassis_imu_acc_bias_ = sum / static_cast<double>(chassis_imu_bias_samples_.size());
+      chassis_imu_bias_calibrated_ = true;
+    }
+  }
+
+  if (chassis_imu_bias_calibrated_) {
+    const double corrected_accel = accel_x - chassis_imu_acc_bias_;
+    chassis_imu_speed_estimate_ += corrected_accel * dt;
+    chassis_imu_speed_estimate_ *= chassis_imu_decay_rate_;
+    chassis_imu_speed_estimate_ = std::clamp(chassis_imu_speed_estimate_, -3.0, 3.0);
+
+    if (static_motion) {
+      chassis_imu_speed_estimate_ *= 0.5;
+      if (std::fabs(chassis_imu_speed_estimate_) < chassis_imu_speed_threshold_) {
+        chassis_imu_speed_estimate_ = 0.0;
+      }
+    }
+  }
+
+  data_store_.set_imu_motion(chassis_imu_speed_estimate_, yaw_rate, stamp);
+}
+
 void Nav2MonitorNode::on_collision_prediction_cmd_vel(const geometry_msgs::msg::Twist::SharedPtr msg)
 {
   const auto & linear = msg->linear;
@@ -547,6 +603,9 @@ void Nav2MonitorNode::on_collision_ultrasonic(const std_msgs::msg::String::Share
 void Nav2MonitorNode::try_subscribe_moto_topic()
 {
   if (!fault_detector_.chassis_stationary_enabled() || moto_topic_.empty() || moto_sub_) {
+    return;
+  }
+  if (!fault_detector_.get_chassis_stationary_config().imu_topic.empty()) {
     return;
   }
 
@@ -857,11 +916,18 @@ void Nav2MonitorNode::configure_chassis_monitoring()
 {
   command_sub_.reset();
   odom_sub_.reset();
+  chassis_imu_sub_.reset();
   moto_sub_.reset();
   moto_topic_type_.clear();
   command_topic_.clear();
   moto_topic_.clear();
   odom_topic_.clear();
+  chassis_imu_topic_.clear();
+  chassis_imu_time_initialized_ = false;
+  chassis_imu_speed_estimate_ = 0.0;
+  chassis_imu_acc_bias_ = 0.0;
+  chassis_imu_bias_calibrated_ = false;
+  chassis_imu_bias_samples_.clear();
 
   if (fault_config_path_.empty() || !fault_detector_.chassis_stationary_enabled()) {
     return;
@@ -871,20 +937,35 @@ void Nav2MonitorNode::configure_chassis_monitoring()
   command_topic_ = cfg.command_topic;
   moto_topic_ = cfg.moto_topic;
   odom_topic_ = cfg.odom_topic;
+  chassis_imu_topic_ = cfg.imu_topic;
+  chassis_imu_speed_threshold_ = cfg.imu_speed_threshold;
+  chassis_imu_yaw_rate_threshold_ = cfg.imu_yaw_rate_threshold;
+  chassis_imu_static_command_threshold_ = cfg.imu_static_command_threshold;
+  chassis_imu_decay_rate_ = cfg.imu_decay_rate;
+  chassis_imu_bias_calibration_samples_ = cfg.imu_bias_calibration_samples;
 
-  if (!command_topic_.empty()) {
+  const bool use_imu_as_truth = !chassis_imu_topic_.empty();
+
+  if (!use_imu_as_truth && !command_topic_.empty()) {
     command_sub_ = this->create_subscription<std_msgs::msg::String>(
       command_topic_, rclcpp::QoS(20),
       std::bind(&Nav2MonitorNode::on_command, this, std::placeholders::_1));
   }
-  if (!odom_topic_.empty()) {
+  if (!use_imu_as_truth && !odom_topic_.empty()) {
     odom_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
       odom_topic_, rclcpp::SensorDataQoS(),
       std::bind(&Nav2MonitorNode::on_odom, this, std::placeholders::_1));
   }
+  if (!chassis_imu_topic_.empty()) {
+    chassis_imu_sub_ = this->create_subscription<sensor_msgs::msg::Imu>(
+      chassis_imu_topic_, rclcpp::SensorDataQoS(),
+      std::bind(&Nav2MonitorNode::on_chassis_imu, this, std::placeholders::_1));
+  }
   RCLCPP_INFO(
-    get_logger(), "Chassis stationary judge enabled: command=%s moto=%s odom=%s",
-    command_topic_.c_str(), moto_topic_.c_str(), odom_topic_.empty() ? "<disabled>" : odom_topic_.c_str());
+    get_logger(), "Chassis stationary judge enabled: command=%s moto=%s odom=%s imu=%s",
+    command_topic_.c_str(), moto_topic_.c_str(),
+    odom_topic_.empty() ? "<disabled>" : odom_topic_.c_str(),
+    chassis_imu_topic_.empty() ? "<disabled>" : chassis_imu_topic_.c_str());
 }
 
 void Nav2MonitorNode::configure_collision_monitoring()
