@@ -64,12 +64,18 @@ chassis_stationary:
   module_name: "chassis_stationary"
   command_topic: "/command_safety"
   moto_topic: "/moto_info"
-  odom_topic: ""   # 可选；为空时底盘判断不依赖 odom
+  odom_topic: ""
+  imu_topic: "/livox/imu"
   source_timeout_s: 1.0
   idle_timeout_s: 30.0
   command_speed_threshold: 0.05
   moto_speed_threshold: 0.05
   odom_speed_threshold: 0.03
+  imu_speed_threshold: 0.03
+  imu_yaw_rate_threshold: 0.08
+  imu_static_command_threshold: 0.02
+  imu_bias_calibration_samples: 50
+  imu_decay_rate: 0.98
   anomaly_level: "ERROR"
   idle_level: "WARNING"
   safety_system: 2

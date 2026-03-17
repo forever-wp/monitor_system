@@ -211,12 +211,18 @@ FaultDetector::FaultDetector(rclcpp::Node * node)
   chassis_cfg_.module_name = "chassis_stationary";
   chassis_cfg_.command_topic = "/command";
   chassis_cfg_.moto_topic = "/moto_info";
-  chassis_cfg_.odom_topic = "/odom";
+  chassis_cfg_.odom_topic = "";
+  chassis_cfg_.imu_topic = "";
   chassis_cfg_.source_timeout_s = 1.0;
   chassis_cfg_.idle_timeout_s = 30.0;
   chassis_cfg_.command_speed_threshold = 0.05;
   chassis_cfg_.moto_speed_threshold = 0.05;
   chassis_cfg_.odom_speed_threshold = 0.03;
+  chassis_cfg_.imu_speed_threshold = 0.03;
+  chassis_cfg_.imu_yaw_rate_threshold = 0.08;
+  chassis_cfg_.imu_static_command_threshold = 0.02;
+  chassis_cfg_.imu_bias_calibration_samples = 50;
+  chassis_cfg_.imu_decay_rate = 0.98;
   chassis_cfg_.anomaly_level = FaultLevel::ERROR;
   chassis_cfg_.idle_level = FaultLevel::WARNING;
   chassis_cfg_.safety_command = SafetyCommandType::SOFT_STOP;
@@ -573,6 +579,9 @@ void FaultDetector::load_config(const std::string & config_file)
       if (cs["odom_topic"]) {
         chassis_cfg_.odom_topic = cs["odom_topic"].as<std::string>();
       }
+      if (cs["imu_topic"]) {
+        chassis_cfg_.imu_topic = cs["imu_topic"].as<std::string>();
+      }
       if (cs["source_timeout_s"]) {
         chassis_cfg_.source_timeout_s = std::max(0.0, cs["source_timeout_s"].as<double>());
       }
@@ -587,6 +596,25 @@ void FaultDetector::load_config(const std::string & config_file)
       }
       if (cs["odom_speed_threshold"]) {
         chassis_cfg_.odom_speed_threshold = std::max(0.0, cs["odom_speed_threshold"].as<double>());
+      }
+      if (cs["imu_speed_threshold"]) {
+        chassis_cfg_.imu_speed_threshold = std::max(0.0, cs["imu_speed_threshold"].as<double>());
+      }
+      if (cs["imu_yaw_rate_threshold"]) {
+        chassis_cfg_.imu_yaw_rate_threshold =
+          std::max(0.0, cs["imu_yaw_rate_threshold"].as<double>());
+      }
+      if (cs["imu_static_command_threshold"]) {
+        chassis_cfg_.imu_static_command_threshold =
+          std::max(0.0, cs["imu_static_command_threshold"].as<double>());
+      }
+      if (cs["imu_bias_calibration_samples"]) {
+        chassis_cfg_.imu_bias_calibration_samples =
+          std::max(1, cs["imu_bias_calibration_samples"].as<int>());
+      }
+      if (cs["imu_decay_rate"]) {
+        chassis_cfg_.imu_decay_rate =
+          std::clamp(cs["imu_decay_rate"].as<double>(), 0.0, 1.0);
       }
 
       FaultLevel anomaly_level;

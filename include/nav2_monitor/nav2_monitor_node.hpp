@@ -54,6 +54,7 @@ private:
   void on_algorithm_feedback(const msg::AlgorithmFeedback::SharedPtr msg);
   void on_command(const std_msgs::msg::String::SharedPtr msg);
   void on_odom(const nav_msgs::msg::Odometry::SharedPtr msg);
+  void on_chassis_imu(const sensor_msgs::msg::Imu::SharedPtr msg);
   void on_battery_state(const sensor_msgs::msg::BatteryState::SharedPtr msg);
   void on_collision_prediction_cmd_vel(const geometry_msgs::msg::Twist::SharedPtr msg);
   void on_collision_scan(const sensor_msgs::msg::LaserScan::SharedPtr msg);
@@ -84,6 +85,7 @@ private:
   rclcpp::Subscription<msg::AlgorithmFeedback>::SharedPtr algorithm_feedback_sub_;
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr command_sub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
+  rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr chassis_imu_sub_;
   rclcpp::Subscription<sensor_msgs::msg::BatteryState>::SharedPtr battery_sub_;
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr collision_prediction_cmd_vel_sub_;
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr collision_scan_sub_;
@@ -116,7 +118,19 @@ private:
   std::string command_topic_;
   std::string moto_topic_;
   std::string odom_topic_;
+  std::string chassis_imu_topic_;
   std::string moto_topic_type_;
+  rclcpp::Time chassis_imu_last_stamp_{0, 0, RCL_ROS_TIME};
+  bool chassis_imu_time_initialized_{false};
+  double chassis_imu_speed_estimate_{0.0};
+  double chassis_imu_acc_bias_{0.0};
+  bool chassis_imu_bias_calibrated_{false};
+  std::vector<double> chassis_imu_bias_samples_;
+  double chassis_imu_speed_threshold_{0.03};
+  double chassis_imu_yaw_rate_threshold_{0.08};
+  double chassis_imu_static_command_threshold_{0.02};
+  double chassis_imu_decay_rate_{0.98};
+  int chassis_imu_bias_calibration_samples_{50};
   double battery_state_timeout_s_{5.0};
   bool fault_config_reload_enabled_{true};
   std::string base_fault_config_path_;
