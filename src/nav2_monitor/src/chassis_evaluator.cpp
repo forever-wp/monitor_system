@@ -111,6 +111,7 @@ std::vector<FaultInfo> ChassisEvaluator::evaluate(
 {
   std::vector<FaultInfo> faults;
   const auto & chassis_state = store.get_chassis_state();
+  const bool imu_enabled = !cfg.imu_topic.empty();
   const bool odom_enabled = !cfg.odom_topic.empty();
   const bool command_fresh = chassis_state.command_received &&
     (now - chassis_state.command_stamp).seconds() <= cfg.source_timeout_s;
@@ -118,6 +119,8 @@ std::vector<FaultInfo> ChassisEvaluator::evaluate(
     (now - chassis_state.moto_stamp).seconds() <= cfg.source_timeout_s;
   const bool odom_fresh = odom_enabled && chassis_state.odom_received &&
     (now - chassis_state.odom_stamp).seconds() <= cfg.source_timeout_s;
+  const bool imu_fresh = imu_enabled && chassis_state.imu_received &&
+    (now - chassis_state.imu_stamp).seconds() <= cfg.source_timeout_s;
 
   const bool command_has = command_fresh &&
     std::fabs(chassis_state.command_speed) >= cfg.command_speed_threshold;
@@ -126,62 +129,151 @@ std::vector<FaultInfo> ChassisEvaluator::evaluate(
     cfg.moto_speed_threshold;
   const bool odom_has = odom_fresh &&
     std::fabs(chassis_state.odom_speed) >= cfg.odom_speed_threshold;
-
+  const bool imu_has = imu_fresh && (
+    std::fabs(chassis_state.imu_speed_estimate) >= cfg.imu_speed_threshold ||
+    std::fabs(chassis_state.imu_yaw_rate) >= cfg.imu_yaw_rate_threshold);
   bool anomaly_abnormal = false;
   bool idle_abnormal = false;
   std::string anomaly_reason;
   std::string idle_reason;
 
-  if (command_has && !moto_has) {
-    anomaly_abnormal = true;
-    if (odom_enabled && odom_has) {
-      anomaly_reason = "Command active, moto inactive but odom moving (moto feedback abnormal)";
-    } else if (odom_enabled) {
-      anomaly_reason = "Command active, moto inactive and odom not moving (chassis may be stuck)";
-    } else {
-      anomaly_reason = "Command active, moto inactive (odom disabled, chassis may be stuck or moto feedback abnormal)";
-    }
-    idle_tracking_ = false;
-  } else if (!command_has && moto_has) {
-    anomaly_abnormal = true;
-    anomaly_reason = "Moto active without command (chassis feedback abnormal)";
-    idle_tracking_ = false;
-  } else if (!command_has && !moto_has) {
-    if (!idle_tracking_) {
-      idle_tracking_ = true;
-      idle_start_time_ = now;
-      last_idle_progress_bucket_ = 0;
-      RCLCPP_INFO(
-        logger_,
-        "[chassis_idle] start counting: idle_timeout=%.1fs command_has=false moto_has=false odom_enabled=%s odom_has=%s",
-        cfg.idle_timeout_s, odom_enabled ? "true" : "false", odom_has ? "true" : "false");
-    } else if ((now - idle_start_time_).seconds() >= cfg.idle_timeout_s) {
-      idle_abnormal = true;
-      idle_reason = "Command and moto inactive for too long (stationary timeout)";
-      last_idle_progress_bucket_ = static_cast<int>(cfg.idle_timeout_s);
-    } else {
-      const int bucket = static_cast<int>((now - idle_start_time_).seconds());
-      if (bucket > last_idle_progress_bucket_) {
-        last_idle_progress_bucket_ = bucket;
+  if (imu_enabled) {
+    if (!imu_fresh) {
+      anomaly_abnormal = true;
+      anomaly_reason = "IMU motion source missing or stale";
+      idle_tracking_ = false;
+    } else if (imu_has) {
+      if (idle_tracking_) {
         RCLCPP_INFO(
           logger_,
-          "[chassis_idle] counting: elapsed=%ds / %.1fs command_has=false moto_has=false odom_enabled=%s odom_has=%s",
-          bucket, cfg.idle_timeout_s, odom_enabled ? "true" : "false", odom_has ? "true" : "false");
+          "[chassis_idle] reset: imu_motion=true elapsed=%.2fs",
+          (now - idle_start_time_).seconds());
+      }
+      idle_tracking_ = false;
+      last_idle_progress_bucket_ = -1;
+    } else {
+      if (!idle_tracking_) {
+        idle_tracking_ = true;
+        idle_start_time_ = now;
+        last_idle_progress_bucket_ = 0;
+        RCLCPP_INFO(
+          logger_,
+          "[chassis_idle] start counting: idle_timeout=%.1fs imu_motion=false",
+          cfg.idle_timeout_s);
+      } else if ((now - idle_start_time_).seconds() >= cfg.idle_timeout_s) {
+        idle_abnormal = true;
+        idle_reason = "IMU indicates stationary for too long (stationary timeout)";
+        last_idle_progress_bucket_ = static_cast<int>(cfg.idle_timeout_s);
+      } else {
+        const int bucket = static_cast<int>((now - idle_start_time_).seconds());
+        if (bucket > last_idle_progress_bucket_) {
+          last_idle_progress_bucket_ = bucket;
+          RCLCPP_INFO(
+            logger_,
+            "[chassis_idle] counting: elapsed=%ds / %.1fs imu_motion=false",
+            bucket, cfg.idle_timeout_s);
+        }
       }
     }
-  } else {
-    if (idle_tracking_) {
-      RCLCPP_INFO(
-        logger_,
-        "[chassis_idle] reset: command_has=%s moto_has=%s odom_enabled=%s odom_has=%s elapsed=%.2fs",
-        command_has ? "true" : "false",
-        moto_has ? "true" : "false",
-        odom_enabled ? "true" : "false",
-        odom_has ? "true" : "false",
-        (now - idle_start_time_).seconds());
+  } else if (odom_enabled) {
+    const bool drive_request_has = command_has || moto_has;
+    if (drive_request_has && !odom_has) {
+      anomaly_abnormal = true;
+      if (command_has && moto_has) {
+        anomaly_reason = "Drive request active but raw odom stationary (chassis may be stuck)";
+      } else if (command_has) {
+        anomaly_reason = "Command active but raw odom stationary (chassis may be stuck)";
+      } else {
+        anomaly_reason = "Moto active but raw odom stationary (feedback indicates motion but raw odom does not)";
+      }
+      idle_tracking_ = false;
+    } else if (!drive_request_has && odom_has) {
+      anomaly_abnormal = true;
+      if (moto_has) {
+        anomaly_reason = "Raw odom moving without command (unexpected chassis motion)";
+      } else {
+        anomaly_reason = "Raw odom moving without command or moto request (unexpected chassis motion)";
+      }
+      idle_tracking_ = false;
+    } else if (!drive_request_has && !odom_has) {
+      if (!idle_tracking_) {
+        idle_tracking_ = true;
+        idle_start_time_ = now;
+        last_idle_progress_bucket_ = 0;
+        RCLCPP_INFO(
+          logger_,
+          "[chassis_idle] start counting: idle_timeout=%.1fs drive_request=false raw_odom=false",
+          cfg.idle_timeout_s);
+      } else if ((now - idle_start_time_).seconds() >= cfg.idle_timeout_s) {
+        idle_abnormal = true;
+        idle_reason = "Raw odom stationary for too long without drive request (stationary timeout)";
+        last_idle_progress_bucket_ = static_cast<int>(cfg.idle_timeout_s);
+      } else {
+        const int bucket = static_cast<int>((now - idle_start_time_).seconds());
+        if (bucket > last_idle_progress_bucket_) {
+          last_idle_progress_bucket_ = bucket;
+          RCLCPP_INFO(
+            logger_,
+            "[chassis_idle] counting: elapsed=%ds / %.1fs drive_request=false raw_odom=false",
+            bucket, cfg.idle_timeout_s);
+        }
+      }
+    } else {
+      if (idle_tracking_) {
+        RCLCPP_INFO(
+          logger_,
+          "[chassis_idle] reset: drive_request=%s raw_odom=%s elapsed=%.2fs",
+          drive_request_has ? "true" : "false",
+          odom_has ? "true" : "false",
+          (now - idle_start_time_).seconds());
+      }
+      idle_tracking_ = false;
+      last_idle_progress_bucket_ = -1;
     }
-    idle_tracking_ = false;
-    last_idle_progress_bucket_ = -1;
+  } else {
+    if (command_has && !moto_has) {
+      anomaly_abnormal = true;
+      anomaly_reason = "Command active, moto inactive (raw odom disabled, chassis may be stuck or moto feedback abnormal)";
+      idle_tracking_ = false;
+    } else if (!command_has && moto_has) {
+      anomaly_abnormal = true;
+      anomaly_reason = "Moto active without command (raw odom disabled, feedback abnormal)";
+      idle_tracking_ = false;
+    } else if (!command_has && !moto_has) {
+      if (!idle_tracking_) {
+        idle_tracking_ = true;
+        idle_start_time_ = now;
+        last_idle_progress_bucket_ = 0;
+        RCLCPP_INFO(
+          logger_,
+          "[chassis_idle] start counting: idle_timeout=%.1fs command_has=false moto_has=false raw_odom=disabled",
+          cfg.idle_timeout_s);
+      } else if ((now - idle_start_time_).seconds() >= cfg.idle_timeout_s) {
+        idle_abnormal = true;
+        idle_reason = "Command and moto inactive for too long (stationary timeout)";
+        last_idle_progress_bucket_ = static_cast<int>(cfg.idle_timeout_s);
+      } else {
+        const int bucket = static_cast<int>((now - idle_start_time_).seconds());
+        if (bucket > last_idle_progress_bucket_) {
+          last_idle_progress_bucket_ = bucket;
+          RCLCPP_INFO(
+            logger_,
+            "[chassis_idle] counting: elapsed=%ds / %.1fs command_has=false moto_has=false raw_odom=disabled",
+            bucket, cfg.idle_timeout_s);
+        }
+      }
+    } else {
+      if (idle_tracking_) {
+        RCLCPP_INFO(
+          logger_,
+          "[chassis_idle] reset: command_has=%s moto_has=%s raw_odom=disabled elapsed=%.2fs",
+          command_has ? "true" : "false",
+          moto_has ? "true" : "false",
+          (now - idle_start_time_).seconds());
+      }
+      idle_tracking_ = false;
+      last_idle_progress_bucket_ = -1;
+    }
   }
 
   std::string active_reason;

@@ -132,11 +132,17 @@ struct ChassisStationaryConfig
   std::string command_topic;
   std::string moto_topic;
   std::string odom_topic;
+  std::string imu_topic;
   double source_timeout_s;
   double idle_timeout_s;
   double command_speed_threshold;
   double moto_speed_threshold;
   double odom_speed_threshold;
+  double imu_speed_threshold;
+  double imu_yaw_rate_threshold;
+  double imu_static_command_threshold;
+  int imu_bias_calibration_samples;
+  double imu_decay_rate;
   FaultLevel anomaly_level;
   FaultLevel idle_level;
   SafetyCommandType safety_command;
