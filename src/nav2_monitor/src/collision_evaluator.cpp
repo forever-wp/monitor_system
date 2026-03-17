@@ -127,7 +127,10 @@ std::vector<FaultInfo> CollisionEvaluator::evaluate(
   }
 
   const auto & chassis_state = store.get_chassis_state();
-  const double current_speed = std::fabs(chassis_state.command_speed);
+  const bool prediction_speed_fresh = chassis_state.prediction_speed_received &&
+    (now - chassis_state.prediction_speed_stamp).seconds() <= cfg.source_timeout_s;
+  const double current_speed = prediction_speed_fresh ?
+    std::fabs(chassis_state.prediction_speed) : 0.0;
 
   for (const auto & zone : cfg.zones) {
     if (!zone.enabled || zone.points.size() < 3) {
