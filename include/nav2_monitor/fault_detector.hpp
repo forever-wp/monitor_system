@@ -113,6 +113,7 @@ struct CollisionDetectionConfig
   std::string scan_topic{"/scan"};
   std::string pointcloud_topic{""};
   std::string ultrasonic_topic{""};
+  std::string prediction_speed_topic{"/cmd_vel"};
   std::string ultrasonic_distances_key{"distances"};
   std::string ultrasonic_scene_flag_key{"scene_flag"};
   double ultrasonic_blind_distance{0.2};

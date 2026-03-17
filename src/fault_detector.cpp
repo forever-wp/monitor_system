@@ -384,6 +384,9 @@ void FaultDetector::load_config(const std::string & config_file)
       if (cd["ultrasonic_topic"]) {
         collision_cfg_.ultrasonic_topic = cd["ultrasonic_topic"].as<std::string>();
       }
+      if (cd["prediction_speed_topic"]) {
+        collision_cfg_.prediction_speed_topic = cd["prediction_speed_topic"].as<std::string>();
+      }
       if (cd["ultrasonic_distances_key"]) {
         collision_cfg_.ultrasonic_distances_key = cd["ultrasonic_distances_key"].as<std::string>();
       }

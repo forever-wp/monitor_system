@@ -383,6 +383,14 @@ void Nav2MonitorNode::on_battery_state(const sensor_msgs::msg::BatteryState::Sha
   data_store_.set_battery_state(msg->temperature, msg->percentage, stamp);
 }
 
+void Nav2MonitorNode::on_collision_prediction_cmd_vel(const geometry_msgs::msg::Twist::SharedPtr msg)
+{
+  const auto & linear = msg->linear;
+  const double speed = std::sqrt(
+    linear.x * linear.x + linear.y * linear.y + linear.z * linear.z);
+  data_store_.set_prediction_speed(speed, this->now());
+}
+
 void Nav2MonitorNode::on_collision_scan(const sensor_msgs::msg::LaserScan::SharedPtr msg)
 {
   std::vector<CollisionPoint> points;
@@ -881,6 +889,7 @@ void Nav2MonitorNode::configure_chassis_monitoring()
 
 void Nav2MonitorNode::configure_collision_monitoring()
 {
+  collision_prediction_cmd_vel_sub_.reset();
   collision_scan_sub_.reset();
   collision_pointcloud_sub_.reset();
   collision_ultrasonic_sub_.reset();
@@ -891,6 +900,11 @@ void Nav2MonitorNode::configure_collision_monitoring()
   }
 
   const auto & cfg = fault_detector_.get_collision_detection_config();
+  if (!cfg.prediction_speed_topic.empty()) {
+    collision_prediction_cmd_vel_sub_ = this->create_subscription<geometry_msgs::msg::Twist>(
+      cfg.prediction_speed_topic, rclcpp::QoS(20),
+      std::bind(&Nav2MonitorNode::on_collision_prediction_cmd_vel, this, std::placeholders::_1));
+  }
   if (!cfg.scan_topic.empty()) {
     auto scan_fallback = rclcpp::SensorDataQoS();
     scan_fallback.keep_last(10);

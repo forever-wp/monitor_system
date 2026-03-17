@@ -106,6 +106,14 @@ void MonitorDataStore::set_command_speed(double speed, const rclcpp::Time & stam
   chassis_state_.command_stamp = stamp;
 }
 
+void MonitorDataStore::set_prediction_speed(double speed, const rclcpp::Time & stamp)
+{
+  std::lock_guard<std::mutex> lock(mtx_);
+  chassis_state_.prediction_speed_received = true;
+  chassis_state_.prediction_speed = speed;
+  chassis_state_.prediction_speed_stamp = stamp;
+}
+
 void MonitorDataStore::set_moto_speed(
   double left_speed_rad, double right_speed_rad, bool valid, const rclcpp::Time & stamp)
 {
