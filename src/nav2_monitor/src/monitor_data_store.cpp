@@ -114,6 +114,15 @@ void MonitorDataStore::set_prediction_speed(double speed, const rclcpp::Time & s
   chassis_state_.prediction_speed_stamp = stamp;
 }
 
+void MonitorDataStore::set_imu_motion(double speed_estimate, double yaw_rate, const rclcpp::Time & stamp)
+{
+  std::lock_guard<std::mutex> lock(mtx_);
+  chassis_state_.imu_received = true;
+  chassis_state_.imu_speed_estimate = speed_estimate;
+  chassis_state_.imu_yaw_rate = yaw_rate;
+  chassis_state_.imu_stamp = stamp;
+}
+
 void MonitorDataStore::set_moto_speed(
   double left_speed_rad, double right_speed_rad, bool valid, const rclcpp::Time & stamp)
 {
