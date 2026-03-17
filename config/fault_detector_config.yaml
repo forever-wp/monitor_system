@@ -15,17 +15,18 @@ target_transforms:
 # 碰撞检测（轻量版 LaserScan + 区域）
 # ============================================================
 collision_detection:
-  enabled: 1
-  module_name: "collision_detection"
-  scan_topic: "scan"
-  pointcloud_topic: "/livox/points"
-  ultrasonic_topic: "/ultrasonic_eight_distance"
-  ultrasonic_distances_key: "distances"   # 支持 {"distances":[8路]} 或 false,d1,d2,...,d8
-  ultrasonic_blind_distance: 0.2        # 0.2 视为盲区下限，低于此值按 0.2 处理
-  ultrasonic_out_of_range_value: 1.0    # 1.0 视为超出探测上限，不生成碰撞点
-  pointcloud_min_height: 0.2
-  pointcloud_max_height: 1.4
-  source_timeout_s: 0.5
+  enabled: 1  # 是否启用碰撞检测
+  module_name: "collision_detection"  # 碰撞故障输出时使用的模块名
+  scan_topic: "scan"  # LaserScan 输入 topic
+  pointcloud_topic: "/livox/points"  # PointCloud2 输入 topic；留空表示不使用
+  ultrasonic_topic: "/ultrasonic_eight_distance"  # 超声波 JSON 输入 topic
+  prediction_speed_topic: "/cmd_vel"  # 提前减速（approach/TTC）使用的预测速度 topic
+  ultrasonic_distances_key: "distances"   # JSON 中 8 路距离数组的键名
+  ultrasonic_blind_distance: 0.2  # 超声盲区下限，小于此值按该值处理
+  ultrasonic_out_of_range_value: 1.0  # 超声超量程值，达到该值视为“无障碍点”
+  pointcloud_min_height: 0.2  # 点云参与碰撞检测的最小高度（米）
+  pointcloud_max_height: 1.4  # 点云参与碰撞检测的最大高度（米）
+  source_timeout_s: 0.5  # 各碰撞数据源的有效超时时间（秒）
   ultrasonic_widget: [0.9, 1.0, 0.9, 0.55, 0.25, 0.2, 0.25, 0.55]  # 1号左前，顺时针编号；前视和前侧更高
   zones:
     - name: "front_approach"

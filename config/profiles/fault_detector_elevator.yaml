@@ -16,6 +16,7 @@ collision_detection:
   scan_topic: "scan"
   pointcloud_topic: ""
   ultrasonic_topic: "/ultrasonic_eight"
+  prediction_speed_topic: "/cmd_vel"  # 提前减速（approach/TTC）使用的预测速度 topic
   ultrasonic_distances_key: "distances"   # 支持 {"distances":[8路]} 或 false,d1,d2,...,d8
   ultrasonic_blind_distance: 0.2        # 0.2 视为盲区下限，低于此值按 0.2 处理
   ultrasonic_out_of_range_value: 1.0    # 1.0 视为超出探测上限，不生成碰撞点

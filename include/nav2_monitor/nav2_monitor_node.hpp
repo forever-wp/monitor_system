@@ -55,6 +55,7 @@ private:
   void on_command(const std_msgs::msg::String::SharedPtr msg);
   void on_odom(const nav_msgs::msg::Odometry::SharedPtr msg);
   void on_battery_state(const sensor_msgs::msg::BatteryState::SharedPtr msg);
+  void on_collision_prediction_cmd_vel(const geometry_msgs::msg::Twist::SharedPtr msg);
   void on_collision_scan(const sensor_msgs::msg::LaserScan::SharedPtr msg);
   void on_collision_pointcloud(const sensor_msgs::msg::PointCloud2::SharedPtr msg);
   void on_collision_ultrasonic(const std_msgs::msg::String::SharedPtr msg);
@@ -84,6 +85,7 @@ private:
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr command_sub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
   rclcpp::Subscription<sensor_msgs::msg::BatteryState>::SharedPtr battery_sub_;
+  rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr collision_prediction_cmd_vel_sub_;
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr collision_scan_sub_;
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr collision_pointcloud_sub_;
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr collision_ultrasonic_sub_;
