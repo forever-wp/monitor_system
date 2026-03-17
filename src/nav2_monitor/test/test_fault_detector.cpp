@@ -247,6 +247,32 @@ modules:
   std::remove(config_path.c_str());
 }
 
+TEST_F(FaultDetectorTest, TargetTransformsAreLoadedFromFaultConfig)
+{
+  const std::string config_text = R"(
+target_transforms:
+  - "map->odom"
+  - "odom->base_link"
+modules:
+  - name: "navigation"
+    supervisor: 1
+    safety_system: 0
+    nodes:
+      - "controller_server"
+)";
+  const std::string config_path = write_temp_config(config_text, "target_transforms_from_fault_config");
+
+  auto node = std::make_shared<rclcpp::Node>("fault_detector_test_target_transforms");
+  nav2_monitor::FaultDetector detector(node.get());
+  detector.load_config(config_path);
+
+  EXPECT_EQ(
+    detector.get_monitored_transforms(),
+    (std::vector<std::string>{"map->odom", "odom->base_link"}));
+
+  std::remove(config_path.c_str());
+}
+
 TEST_F(FaultDetectorTest, MonitorTargetsAreAggregatedFromModules)
 {
   const std::string config_text = R"(
@@ -659,10 +685,59 @@ modules:
   detector.load_config(config_path);
 
   const auto now = node->now();
-  store.set_command_speed(1.0, now);
+  store.set_prediction_speed(1.0, now);
   store.set_collision_points("scan", {
     nav2_monitor::CollisionPoint{0.5, 0.0},
     nav2_monitor::CollisionPoint{0.6, 0.1}
+  }, now);
+
+  auto faults_first = detector.detect_faults(store, now);
+  EXPECT_TRUE(faults_first.empty());
+
+  auto faults = detector.detect_faults(store, now);
+  ASSERT_EQ(faults.size(), 1u);
+  EXPECT_EQ(faults[0].safety_command, nav2_monitor::SafetyCommandType::SLOW_DOWN);
+  EXPECT_NE(faults[0].reason.find("ttc="), std::string::npos);
+
+  std::remove(config_path.c_str());
+}
+
+TEST_F(FaultDetectorTest, CollisionDetectionApproachUsesPredictedSpeedNotFinalCommandSpeed)
+{
+  const std::string config_text = R"(
+collision_detection:
+  enabled: 1
+  module_name: "collision_detection"
+  prediction_speed_topic: "/cmd_vel"
+  scan_topic: "/scan"
+  source_timeout_s: 1.0
+  zones:
+    - name: "front_approach"
+      enabled: 1
+      model: "approach"
+      points: [1.2, 0.4, 1.2, -0.4, 0.2, -0.4, 0.2, 0.4]
+      level: "WARNING"
+      safety_system: 1
+      safety_slow_down_percentage: 40.0
+      time_before_collision: 1.0
+      actions: ["safety_system"]
+modules:
+  - name: "dummy"
+    supervisor: 0
+    safety_system: 0
+)";
+  const std::string config_path = write_temp_config(config_text, "collision_detection_predicted_speed");
+
+  auto node = std::make_shared<rclcpp::Node>("fault_detector_test_collision_predicted_speed");
+  nav2_monitor::FaultDetector detector(node.get());
+  nav2_monitor::MonitorDataStore store;
+  detector.load_config(config_path);
+
+  const auto now = node->now();
+  store.set_command_speed(0.1, now);
+  store.set_prediction_speed(1.0, now);
+  store.set_collision_points("scan", {
+    nav2_monitor::CollisionPoint{0.5, 0.0}
   }, now);
 
   auto faults_first = detector.detect_faults(store, now);
@@ -747,7 +822,9 @@ modules:
   EXPECT_DOUBLE_EQ(cfg.ultrasonic_sensors[1].weight, 0.9);
   EXPECT_DOUBLE_EQ(cfg.ultrasonic_sensors[6].weight, 0.9);
   EXPECT_DOUBLE_EQ(cfg.ultrasonic_sensors[7].weight, 0.2);
-  EXPECT_NEAR(cfg.ultrasonic_sensors[1].yaw_deg, 20.0, 1e-9);
+  EXPECT_NEAR(cfg.ultrasonic_sensors[1].yaw_deg, 0.0, 1e-9);
+  EXPECT_NEAR(cfg.ultrasonic_sensors[0].yaw_deg, 45.0, 1e-9);
+  EXPECT_NEAR(cfg.ultrasonic_sensors[5].yaw_deg, 180.0, 1e-9);
 
   std::remove(config_path.c_str());
 }
