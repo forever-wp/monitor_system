@@ -26,6 +26,7 @@
 #include "nav2_monitor/fault_config_watcher.hpp"
 #include "nav2_monitor/fault_state_coordinator.hpp"
 #include "nav2_monitor/task_fault_config_selector.hpp"
+#include "nav2_monitor/task_status_mapper.hpp"
 #include "nav2_monitor/vehicle_status_monitor.hpp"
 #include <nav2_monitor/msg/safety_cmd.hpp>
 
@@ -52,6 +53,7 @@ private:
   void scan_topology();
   void check_health();
   void on_algorithm_feedback(const msg::AlgorithmFeedback::SharedPtr msg);
+  void on_task_status(const std_msgs::msg::String::SharedPtr msg);
   void on_command(const std_msgs::msg::String::SharedPtr msg);
   void on_odom(const nav_msgs::msg::Odometry::SharedPtr msg);
   void on_chassis_imu(const sensor_msgs::msg::Imu::SharedPtr msg);
@@ -73,7 +75,10 @@ private:
   void configure_collision_monitoring();
   void clear_watch_topic_subscriptions();
   void load_task_fault_config_mappings();
+  void load_task_status_code_mappings();
+  void configure_task_status_subscription();
   void update_task_selected_fault_config(bool force_reload);
+  bool update_current_nav_task_locked(const std::string & task_name, const std::string & change_source);
   rclcpp::QoS build_watch_topic_qos(const std::string & topic, const std::string & type) const;
   rclcpp::QoS build_topic_subscription_qos(const std::string & topic, const rclcpp::QoS & fallback, size_t max_depth) const;
   rclcpp::Time stamp_or_now(const builtin_interfaces::msg::Time & stamp) const;
@@ -83,6 +88,7 @@ private:
   rclcpp::Publisher<msg::MonitorStatus>::SharedPtr pub_;
   rclcpp::Publisher<msg::FaultEvent>::SharedPtr fault_event_pub_;
   rclcpp::Subscription<msg::AlgorithmFeedback>::SharedPtr algorithm_feedback_sub_;
+  rclcpp::Subscription<std_msgs::msg::String>::SharedPtr task_status_sub_;
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr command_sub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr chassis_imu_sub_;
@@ -113,6 +119,7 @@ private:
   double safety_cooldown_s_;
   double supervisor_cooldown_s_;
   std::string algorithm_feedback_topic_;
+  std::string task_status_topic_{"/task_status"};
   std::string battery_state_topic_;
   std::string base_frame_id_{"base_link"};
   std::string command_topic_;
@@ -139,8 +146,11 @@ private:
   std::string resolved_fault_config_path_;
   std::string current_nav_task_{"default"};
   std::map<std::string, std::string> task_fault_config_mappings_;
+  std::map<std::string, std::string> task_status_code_mappings_;
   FaultConfigWatcher fault_config_watcher_;
+  std::string pending_task_switch_source_;
   TaskFaultConfigSelector task_fault_config_selector_;
+  TaskStatusMapper task_status_mapper_;
   SystemMonitor sys_monitor_;
   MonitorDataStore data_store_;
   FaultDetector fault_detector_;

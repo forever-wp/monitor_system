@@ -124,6 +124,31 @@ std::string resolve_config_path(const std::string & config_file)
   return config_file;
 }
 
+std::map<std::string, std::string> default_task_status_code_mappings()
+{
+  return {
+    {"100", "default"},
+    {"101", "default"},
+    {"102", "default"},
+    {"103", "default"},
+    {"109", "default"},
+    {"200", "elevator"},
+    {"201", "elevator"},
+    {"202", "elevator"},
+    {"203", "elevator"},
+    {"209", "elevator"},
+    {"300", "todoor"},
+    {"301", "todoor"},
+    {"302", "todoor"},
+    {"303", "todoor"},
+    {"304", "todoor"},
+    {"400", "default"},
+    {"401", "default"},
+    {"402", "default"},
+    {"403", "default"}
+  };
+}
+
 bool extract_ultrasonic_distances(const YAML::Node & node, std::vector<double> & distances)
 {
   distances.clear();
@@ -274,8 +299,10 @@ Nav2MonitorNode::Nav2MonitorNode()
   base_fault_config_path_ = this->declare_parameter<std::string>("fault_config", "");
   fault_config_reload_enabled_ = this->declare_parameter<bool>("fault_config_reload_enabled", true);
   current_nav_task_ = this->declare_parameter<std::string>("current_nav_task", "default");
+  task_status_topic_ = this->declare_parameter<std::string>("task_status_topic", "/task_status");
   resolved_base_fault_config_path_ = resolve_config_path(base_fault_config_path_);
   load_task_fault_config_mappings();
+  load_task_status_code_mappings();
   task_fault_config_selector_.update_current_task(current_nav_task_);
   fault_detector_.set_feedback_default_max_stale(timeout_);
   update_task_selected_fault_config(true);
@@ -286,6 +313,7 @@ Nav2MonitorNode::Nav2MonitorNode()
   battery_sub_ = this->create_subscription<sensor_msgs::msg::BatteryState>(
     battery_state_topic_, rclcpp::SensorDataQoS(),
     std::bind(&Nav2MonitorNode::on_battery_state, this, std::placeholders::_1));
+  configure_task_status_subscription();
 
   std::string vehicle_status_file = this->declare_parameter<std::string>(
     "vehicle_status_file", "/home/ry/.ros/navigate_status/navigate_todoor_status.json");
@@ -651,6 +679,41 @@ void Nav2MonitorNode::on_algorithm_feedback(const msg::AlgorithmFeedback::Shared
     msg->module_name, msg->topic_name, msg->metric_name, msg->value, msg->valid, stamp);
 }
 
+void Nav2MonitorNode::on_task_status(const std_msgs::msg::String::SharedPtr msg)
+{
+  const std::string raw_code = msg ? msg->data : std::string();
+  const std::string mapped_task = task_status_mapper_.resolve_task_for_code(raw_code);
+  if (mapped_task.empty()) {
+    RCLCPP_WARN(
+      get_logger(), "Ignore task_status code '%s': no task mapping configured", raw_code.c_str());
+    return;
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(mtx_);
+    if (mapped_task == current_nav_task_) {
+      RCLCPP_DEBUG(
+        get_logger(), "Ignore task_status code '%s': current_nav_task already '%s'",
+        raw_code.c_str(), current_nav_task_.c_str());
+      return;
+    }
+    pending_task_switch_source_ = std::string("task_status code '") + raw_code + "'";
+  }
+
+  const auto result = this->set_parameters_atomically({rclcpp::Parameter("current_nav_task", mapped_task)});
+
+  {
+    std::lock_guard<std::mutex> lock(mtx_);
+    pending_task_switch_source_.clear();
+  }
+
+  if (!result.successful) {
+    RCLCPP_WARN(
+      get_logger(), "Failed to apply task_status code '%s' -> '%s': %s",
+      raw_code.c_str(), mapped_task.c_str(), result.reason.c_str());
+  }
+}
+
 rclcpp::QoS Nav2MonitorNode::build_topic_subscription_qos(
   const std::string & topic, const rclcpp::QoS & fallback, size_t max_depth) const
 {
@@ -743,6 +806,89 @@ bool Nav2MonitorNode::should_publish_action(
 
   last_action_publish_time_[key] = now;
   return true;
+}
+
+bool Nav2MonitorNode::update_current_nav_task_locked(
+  const std::string & task_name,
+  const std::string & change_source)
+{
+  const std::string normalized = task_name.empty() ? "default" : task_name;
+  if (normalized == current_nav_task_) {
+    RCLCPP_DEBUG(
+      get_logger(), "Ignore current_nav_task update from %s: already '%s'",
+      change_source.c_str(), current_nav_task_.c_str());
+    return false;
+  }
+
+  current_nav_task_ = normalized;
+  (void)task_fault_config_selector_.update_current_task(current_nav_task_);
+  RCLCPP_INFO(
+    get_logger(), "Updated current_nav_task via %s: %s",
+    change_source.c_str(), current_nav_task_.c_str());
+  return true;
+}
+
+void Nav2MonitorNode::load_task_status_code_mappings()
+{
+  const std::string prefix = "task_status_code_mappings.";
+  const auto defaults = default_task_status_code_mappings();
+  std::unordered_set<std::string> param_names;
+  for (const auto & entry : defaults) {
+    param_names.insert(prefix + entry.first);
+  }
+
+  const auto listed = this->list_parameters({prefix}, 2);
+  for (const auto & name : listed.names) {
+    if (name.rfind(prefix, 0) == 0) {
+      param_names.insert(name);
+    }
+  }
+
+  const auto & overrides = this->get_node_parameters_interface()->get_parameter_overrides();
+  for (const auto & [name, _] : overrides) {
+    if (name.rfind(prefix, 0) == 0) {
+      param_names.insert(name);
+    }
+  }
+
+  task_status_code_mappings_.clear();
+  for (const auto & name : param_names) {
+    const std::string code = name.substr(prefix.size());
+    const auto default_it = defaults.find(code);
+    const std::string default_value =
+      (default_it != defaults.end()) ? default_it->second : std::string();
+    if (!this->has_parameter(name)) {
+      this->declare_parameter<std::string>(name, default_value);
+    }
+
+    std::string value;
+    try {
+      value = this->get_parameter(name).as_string();
+    } catch (...) {
+      value = default_value;
+    }
+
+    if (!value.empty()) {
+      task_status_code_mappings_[code] = value;
+    }
+  }
+
+  task_status_mapper_.configure(task_status_code_mappings_);
+  RCLCPP_INFO(get_logger(), "Loaded %zu task_status code mappings", task_status_code_mappings_.size());
+}
+
+void Nav2MonitorNode::configure_task_status_subscription()
+{
+  task_status_sub_.reset();
+  if (task_status_topic_.empty()) {
+    RCLCPP_INFO(get_logger(), "task_status subscription disabled: empty topic");
+    return;
+  }
+
+  task_status_sub_ = this->create_subscription<std_msgs::msg::String>(
+    task_status_topic_, rclcpp::QoS(10),
+    std::bind(&Nav2MonitorNode::on_task_status, this, std::placeholders::_1));
+  RCLCPP_INFO(get_logger(), "Subscribed task_status topic: %s", task_status_topic_.c_str());
 }
 
 void Nav2MonitorNode::load_task_fault_config_mappings()
@@ -1361,6 +1507,8 @@ rcl_interfaces::msg::SetParametersResult Nav2MonitorNode::on_parameter_change(
 
   bool fault_config_changed = false;
   bool fault_config_cleared = false;
+  bool task_status_subscription_changed = false;
+  bool task_status_code_mappings_changed = false;
   {
     std::lock_guard<std::mutex> lock(mtx_);
     for (const auto & param : params) {
@@ -1391,10 +1539,17 @@ rcl_interfaces::msg::SetParametersResult Nav2MonitorNode::on_parameter_change(
           get_logger(), "Updated base fault_config: param='%s', resolved='%s'",
           base_fault_config_path_.c_str(), resolved_base_fault_config_path_.c_str());
       } else if (param.get_name() == "current_nav_task") {
-        current_nav_task_ = param.as_string();
-        (void)task_fault_config_selector_.update_current_task(current_nav_task_);
-        fault_config_changed = true;
-        RCLCPP_INFO(get_logger(), "Updated current_nav_task: %s", current_nav_task_.c_str());
+        const std::string change_source = pending_task_switch_source_.empty() ?
+          std::string("param current_nav_task") : pending_task_switch_source_;
+        fault_config_changed =
+          update_current_nav_task_locked(param.as_string(), change_source) || fault_config_changed;
+      } else if (param.get_name() == "task_status_topic") {
+        task_status_topic_ = param.as_string();
+        task_status_subscription_changed = true;
+        RCLCPP_INFO(get_logger(), "Updated task_status_topic: %s", task_status_topic_.c_str());
+      } else if (param.get_name().rfind("task_status_code_mappings.", 0) == 0) {
+        task_status_code_mappings_changed = true;
+        RCLCPP_INFO(get_logger(), "Updated task status code mapping: %s", param.get_name().c_str());
       } else if (param.get_name().rfind("task_fault_configs.", 0) == 0) {
         fault_config_changed = true;
         RCLCPP_INFO(get_logger(), "Updated task fault config mapping: %s", param.get_name().c_str());
@@ -1430,6 +1585,13 @@ rcl_interfaces::msg::SetParametersResult Nav2MonitorNode::on_parameter_change(
         RCLCPP_INFO(get_logger(), "Updated battery_state_timeout_s: %.2f", battery_state_timeout_s_);
       }
     }
+  }
+
+  if (task_status_code_mappings_changed) {
+    load_task_status_code_mappings();
+  }
+  if (task_status_subscription_changed) {
+    configure_task_status_subscription();
   }
 
   if (fault_config_changed) {

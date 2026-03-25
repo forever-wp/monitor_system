@@ -18,10 +18,30 @@ nav2_monitor:
     fault_config: "./src/nav2_monitor/config/fault_detector_config.yaml"  # 默认故障检测配置文件路径
     fault_config_reload_enabled: true  # 是否启用故障配置热重载
     current_nav_task: "default"  # 当前导航任务名，用于选择任务对应 fault_config
+    task_status_topic: "/task_status"  # 外层任务状态输入 topic，收到状态码后映射到 current_nav_task
     task_fault_configs.default: "./src/nav2_monitor/config/fault_detector_config.yaml"  # default 任务使用的故障配置
     task_fault_configs.todoor: "./src/nav2_monitor/config/profiles/fault_detector_todoor.yaml"  # todoor 任务故障配置
     task_fault_configs.elevator: "./src/nav2_monitor/config/profiles/fault_detector_elevator.yaml"  # elevator 任务故障配置
     task_fault_configs.reverse: "./src/nav2_monitor/config/profiles/fault_detector_reverse.yaml"  # reverse 任务故障配置
+    task_status_code_mappings.100: "default"  # Task_Start -> default
+    task_status_code_mappings.101: "default"  # OutDoor_Tasking -> default
+    task_status_code_mappings.102: "default"  # InDoor_Tasking -> default
+    task_status_code_mappings.103: "default"  # TaskReturn_Waiting -> default
+    task_status_code_mappings.109: "default"  # Task_Complete -> default
+    task_status_code_mappings.200: "elevator"  # Elevator_Waiting -> elevator
+    task_status_code_mappings.201: "elevator"  # Elevator_In -> elevator
+    task_status_code_mappings.202: "elevator"  # Elevator_Taking -> elevator
+    task_status_code_mappings.203: "elevator"  # Elevator_Out -> elevator
+    task_status_code_mappings.209: "elevator"  # Elevator_Arrived -> elevator
+    task_status_code_mappings.300: "todoor"  # Door_Waiting -> todoor
+    task_status_code_mappings.301: "todoor"  # DoorM_In -> todoor
+    task_status_code_mappings.302: "todoor"  # DoorM_Out -> todoor
+    task_status_code_mappings.303: "todoor"  # DoorA_In -> todoor
+    task_status_code_mappings.304: "todoor"  # DoorA_Out -> todoor
+    task_status_code_mappings.400: "default"  # ClampWater_Waiting -> default
+    task_status_code_mappings.401: "default"  # ClampWater -> default
+    task_status_code_mappings.402: "default"  # PlaceWater_Waiting -> default
+    task_status_code_mappings.403: "default"  # PlaceWater -> default
 
     vehicle_status_file: "/home/ry/.ros/navigate_status/navigate_todoor_status.json"  # 导航状态 JSON 文件路径
 
