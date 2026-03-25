@@ -34,6 +34,7 @@ add_executable(nav2_monitor_node
   src/fault_detector.cpp
   src/fault_config_watcher.cpp
   src/task_fault_config_selector.cpp
+  src/task_status_mapper.cpp
   src/fault_state_coordinator.cpp
   src/monitor_data_store.cpp
   src/monitor_reporter.cpp
@@ -59,6 +60,7 @@ if(BUILD_TESTING)
     src/fault_detector.cpp
     src/fault_config_watcher.cpp
     src/task_fault_config_selector.cpp
+    src/task_status_mapper.cpp
     src/fault_state_coordinator.cpp
     src/monitor_data_store.cpp
     src/monitor_reporter.cpp

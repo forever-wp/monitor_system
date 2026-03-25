@@ -13,6 +13,7 @@
 #include "nav2_monitor/monitor_data_store.hpp"
 #include "nav2_monitor/fault_state_coordinator.hpp"
 #include "nav2_monitor/task_fault_config_selector.hpp"
+#include "nav2_monitor/task_status_mapper.hpp"
 
 namespace
 {
@@ -78,6 +79,67 @@ TEST(TaskFaultConfigSelectorTest, FallsBackToBaseFaultConfigWhenDefaultMappingMi
 
   selector.update_current_task("elevator");
   EXPECT_EQ(selector.resolve_fault_config_for_task(), "/configs/base.yaml");
+}
+
+TEST(TaskStatusMapperTest, ResolvesConfiguredCodesToTasks)
+{
+  nav2_monitor::TaskStatusMapper mapper;
+  mapper.configure({
+    {"100", "default"},
+    {"200", "elevator"},
+    {"301", "todoor"}
+  });
+
+  EXPECT_EQ(mapper.resolve_task_for_code("100"), "default");
+  EXPECT_EQ(mapper.resolve_task_for_code("200"), "elevator");
+  EXPECT_EQ(mapper.resolve_task_for_code("301"), "todoor");
+  EXPECT_TRUE(mapper.has_mapping_for_code("200"));
+  EXPECT_FALSE(mapper.has_mapping_for_code("999"));
+}
+
+TEST(TaskStatusMapperTest, TrimsConfiguredAndIncomingCodes)
+{
+  nav2_monitor::TaskStatusMapper mapper;
+  mapper.configure({
+    {" 200 ", " elevator "},
+    {"300", "todoor"},
+    {"403", "default"}
+  });
+
+  EXPECT_EQ(mapper.resolve_task_for_code("200"), "elevator");
+  EXPECT_EQ(mapper.resolve_task_for_code(" 200 "), "elevator");
+  EXPECT_EQ(mapper.resolve_task_for_code("300\n"), "todoor");
+  EXPECT_EQ(mapper.resolve_task_for_code("\t403"), "default");
+  EXPECT_TRUE(mapper.resolve_task_for_code("").empty());
+  EXPECT_TRUE(mapper.resolve_task_for_code("999").empty());
+}
+
+TEST(TaskStatusMapperTest, MappedTasksReuseExistingTaskFaultConfigSelection)
+{
+  nav2_monitor::TaskStatusMapper mapper;
+  mapper.configure({
+    {"109", "default"},
+    {"200", "elevator"},
+    {"301", "todoor"}
+  });
+
+  nav2_monitor::TaskFaultConfigSelector selector;
+  selector.configure(
+    "/configs/base.yaml",
+    {
+      {"default", "/configs/default.yaml"},
+      {"todoor", "/configs/todoor.yaml"},
+      {"elevator", "/configs/elevator.yaml"}
+    });
+
+  EXPECT_TRUE(selector.update_current_task(mapper.resolve_task_for_code("200")));
+  EXPECT_EQ(selector.resolve_fault_config_for_task(), "/configs/elevator.yaml");
+
+  EXPECT_TRUE(selector.update_current_task(mapper.resolve_task_for_code("301")));
+  EXPECT_EQ(selector.resolve_fault_config_for_task(), "/configs/todoor.yaml");
+
+  EXPECT_TRUE(selector.update_current_task(mapper.resolve_task_for_code("109")));
+  EXPECT_EQ(selector.resolve_fault_config_for_task(), "/configs/default.yaml");
 }
 
 TEST_F(FaultDetectorTest, NodeInactiveTriggersSafetyThenSupervisor)

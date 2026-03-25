@@ -85,8 +85,10 @@ ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
 - `fault_config`
 - `fault_config_reload_enabled`
 - `current_nav_task`
+- `task_status_topic`
+- `task_status_code_mappings.<code>`
 - `task_fault_configs.<task_name>`
-- `target_transforms`
+- `target_transforms`（fallback，仅当 `fault_config` 未配置时生效）
 
 ### 故障配置
 
@@ -99,6 +101,10 @@ ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
 - `modules`
 
 ### 配置语义
+
+- `fault_config.target_transforms`
+  - 顶层 TF 监控配置，优先级高于 `nav2_monitor_params.yaml` 里的 `target_transforms`
+  - 推荐将 TF 监控迁移到 `fault_detector_config.yaml` 统一管理
 
 - `watch_topics`
   - 表示 `nav2_monitor` 直接监控的真实 ROS topic
@@ -118,7 +124,12 @@ ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
   - 单 topic 八路超声波 JSON 输入
 - `collision_detection.ultrasonic_widget`
   - 8 个 `0~1` 权重，顺序对应 8 路超声波
+  - 当前编号约定：`1号左前，之后顺时针编号`
   - 当前支持从 JSON 中提取 8 路距离数组，并按内置 8 路默认位姿和 `ultrasonic_widget` 权重映射到底盘坐标
+- `collision_detection.ultrasonic_blind_distance`
+  - 盲区下限，默认 `0.2`；小于该值时按盲区边界处理
+- `collision_detection.ultrasonic_out_of_range_value`
+  - 超量程值，默认 `1.0`；等于或超过该值时视为“无障碍点”
 - `collision_detection.zones`
   - `model` 支持：
     - 默认 zone 命中
@@ -399,15 +410,29 @@ colcon test --packages-select nav2_monitor --event-handlers console_direct+
 ## 任务驱动配置切换
 
 - `current_nav_task` 用于表示当前导航任务，例如 `default / todoor / elevator / reverse`。
+- `/task_status` 是外层任务状态输入，节点会先把 `std_msgs/String.data` 状态码映射为内部任务名，再同步更新 `current_nav_task`。
+- `task_status_code_mappings.<code>` 在参数文件中维护状态码到内部任务名的映射，例如 `200~209 -> elevator`、`300~304 -> todoor`。
 - `task_fault_configs.<task_name>` 在参数文件中维护任务到安全配置文件的映射。
 - 当 `current_nav_task` 变化时，`nav2_monitor` 会自动选择对应 `fault_config` 并复用现有热更新链路完成切换。
-- 未命中任务时，回退到 `task_fault_configs.default`；若未设置，则回退到 `fault_config`。
+- 未知状态码会被忽略并保持当前任务不变；未命中任务时，回退到 `task_fault_configs.default`；若未设置，则回退到 `fault_config`。
 
 ## 动态配置更新
 
 - `fault_config_reload_enabled=true` 时，节点会在现有定时器周期内轮询 `fault_detector_config.yaml` 的修改时间。
 - 当文件内容或路径发生变化时，会自动重载 `FaultDetector` 配置，并重建受影响的监控目标、底盘订阅和碰撞输入。
 - 不新增额外线程，保持低占用 / 小内存 / 快响应。
+
+## 任务配置模板
+
+- 默认配置：`src/nav2_monitor/config/fault_detector_config.yaml`
+- 到门任务：`src/nav2_monitor/config/profiles/fault_detector_todoor.yaml`
+- 电梯任务：`src/nav2_monitor/config/profiles/fault_detector_elevator.yaml`
+- 倒车任务：`src/nav2_monitor/config/profiles/fault_detector_reverse.yaml`
+
+当前模板差异：
+- `todoor`：更早前向减速，更敏感前视/前侧超声波（1号左前，顺时针编号）
+- `elevator`：更依赖超声波，点云关闭，全向更保守
+- `reverse`：切到后向碰撞区，后向超声波权重最高
 
 ## 当前缺项
 
