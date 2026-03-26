@@ -17,6 +17,14 @@ void SafetyPolicyExecutor::configure(rclcpp::Node & node)
   brake_interval_ms_ = node.declare_parameter<int>("brake_interval_ms", brake_interval_ms_);
 }
 
+void SafetyPolicyExecutor::reset()
+{
+  forwarding_enabled_ = true;
+  speed_limit_active_ = false;
+  speed_limit_percentage_ = true;
+  speed_limit_value_ = 0.0;
+}
+
 bool SafetyPolicyExecutor::allow_forward() const
 {
   return forwarding_enabled_;

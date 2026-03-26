@@ -15,6 +15,7 @@ class SafetyPolicyExecutor
 {
 public:
   void configure(rclcpp::Node & node);
+  void reset();
 
   bool allow_forward() const;
   bool apply(CommandFrame & frame) const;

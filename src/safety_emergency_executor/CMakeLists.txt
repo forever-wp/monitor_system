@@ -11,6 +11,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(std_srvs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
@@ -24,7 +25,9 @@ include_directories(
 )
 
 add_executable(safety_emergency_executor_node
+  src/main.cpp
   src/safety_emergency_executor_node.cpp
+  src/external_override_controller.cpp
   src/velocity_converter.cpp
   src/pressure_adjuster.cpp
   src/safety_policy_executor.cpp
@@ -33,6 +36,7 @@ add_executable(safety_emergency_executor_node
 ament_target_dependencies(safety_emergency_executor_node
   rclcpp
   std_msgs
+  std_srvs
   geometry_msgs
   nav_msgs
   sensor_msgs
@@ -59,6 +63,8 @@ if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
   ament_add_gtest(test_pipeline_components
     test/test_pipeline_components.cpp
+    src/safety_emergency_executor_node.cpp
+    src/external_override_controller.cpp
     src/velocity_converter.cpp
     src/pressure_adjuster.cpp
     src/safety_policy_executor.cpp
@@ -72,6 +78,7 @@ if(BUILD_TESTING)
       nav_msgs
       sensor_msgs
       std_msgs
+      std_srvs
       nav2_monitor
     )
     target_link_libraries(test_pipeline_components
