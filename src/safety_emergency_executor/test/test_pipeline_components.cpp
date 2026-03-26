@@ -20,6 +20,7 @@
 #include <std_msgs/msg/bool.hpp>
 #include <std_msgs/msg/string.hpp>
 #include <std_srvs/srv/set_bool.hpp>
+#include <std_srvs/srv/trigger.hpp>
 
 #include "safety_emergency_executor/external_override_controller.hpp"
 #include "safety_emergency_executor/safety_emergency_executor_node.hpp"
@@ -206,6 +207,8 @@ public:
       "/test/manual_override/safety_cmd", rclcpp::QoS(20));
     manual_override_client_ = this->create_client<std_srvs::srv::SetBool>(
       "/test/set_manual_override");
+    manual_override_query_client_ = this->create_client<std_srvs::srv::Trigger>(
+      "/test/get_manual_override");
   }
 
   bool wait_for_graph_ready(std::chrono::milliseconds timeout)
@@ -214,6 +217,7 @@ public:
     while (std::chrono::steady_clock::now() < deadline) {
       if (
         manual_override_client_->wait_for_service(std::chrono::milliseconds(0)) &&
+        manual_override_query_client_->wait_for_service(std::chrono::milliseconds(0)) &&
         cmd_vel_pub_->get_subscription_count() >= 1 &&
         safety_pub_->get_subscription_count() >= 1 &&
         command_sub_->get_publisher_count() >= 1 &&
@@ -266,6 +270,17 @@ public:
     return *future.get();
   }
 
+  std_srvs::srv::Trigger::Response call_manual_override_query(
+    std::chrono::milliseconds timeout)
+  {
+    auto request = std::make_shared<std_srvs::srv::Trigger::Request>();
+    auto future = manual_override_query_client_->async_send_request(request);
+    if (future.wait_for(timeout) != std::future_status::ready) {
+      throw std::runtime_error("manual override query service call timed out");
+    }
+    return *future.get();
+  }
+
   void publish_cmd_vel(double linear_x, double angular_z)
   {
     geometry_msgs::msg::Twist msg;
@@ -313,6 +328,7 @@ private:
   rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_pub_;
   rclcpp::Publisher<nav2_monitor::msg::SafetyCmd>::SharedPtr safety_pub_;
   rclcpp::Client<std_srvs::srv::SetBool>::SharedPtr manual_override_client_;
+  rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr manual_override_query_client_;
 };
 
 TEST_F(SafetyExecutorComponentTest, ExternalOverrideControllerTransitionsAreStable)
@@ -371,6 +387,7 @@ TEST_F(SafetyExecutorComponentTest, ManualOverrideServicePublishesStateAndBlocks
       rclcpp::Parameter("cmd_vel_topic", "/test/manual_override/cmd_vel"),
       rclcpp::Parameter("safety_cmd_topic", "/test/manual_override/safety_cmd"),
       rclcpp::Parameter("manual_override_service", "/test/set_manual_override"),
+      rclcpp::Parameter("manual_override_query_service", "/test/get_manual_override"),
       rclcpp::Parameter("manual_override_state_topic", "/test/manual_override_active")
     });
   auto executor_node = std::make_shared<safety_emergency_executor::SafetyEmergencyExecutorNode>(
@@ -395,6 +412,9 @@ TEST_F(SafetyExecutorComponentTest, ManualOverrideServicePublishesStateAndBlocks
 
   ASSERT_TRUE(harness->wait_for_graph_ready(std::chrono::milliseconds(2000)));
   ASSERT_TRUE(harness->wait_for_manual_override_state(false, std::chrono::milliseconds(2000)));
+  const auto initial_mode = harness->call_manual_override_query(std::chrono::milliseconds(2000));
+  EXPECT_TRUE(initial_mode.success);
+  EXPECT_EQ(initial_mode.message, "auto");
 
   harness->publish_cmd_vel(0.5, 0.2);
   ASSERT_TRUE(harness->wait_for_command_count_at_least(1, std::chrono::milliseconds(2000)));
@@ -406,6 +426,9 @@ TEST_F(SafetyExecutorComponentTest, ManualOverrideServicePublishesStateAndBlocks
   const auto manual_response = harness->call_manual_override(true, std::chrono::milliseconds(2000));
   EXPECT_TRUE(manual_response.success);
   ASSERT_TRUE(harness->wait_for_manual_override_state(true, std::chrono::milliseconds(2000)));
+  const auto manual_mode = harness->call_manual_override_query(std::chrono::milliseconds(2000));
+  EXPECT_TRUE(manual_mode.success);
+  EXPECT_EQ(manual_mode.message, "manual");
   ASSERT_TRUE(
     harness->wait_for_command_count_at_least(
       auto_count + 1,
@@ -423,6 +446,9 @@ TEST_F(SafetyExecutorComponentTest, ManualOverrideServicePublishesStateAndBlocks
   const auto auto_response = harness->call_manual_override(false, std::chrono::milliseconds(2000));
   EXPECT_TRUE(auto_response.success);
   ASSERT_TRUE(harness->wait_for_manual_override_state(false, std::chrono::milliseconds(2000)));
+  const auto auto_mode = harness->call_manual_override_query(std::chrono::milliseconds(2000));
+  EXPECT_TRUE(auto_mode.success);
+  EXPECT_EQ(auto_mode.message, "auto");
 
   harness->publish_cmd_vel(0.5, 0.2);
   ASSERT_TRUE(

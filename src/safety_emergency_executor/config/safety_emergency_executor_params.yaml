@@ -7,12 +7,13 @@ safety_emergency_executor:
     acc_update_topic: "/acc_"  # 直接覆盖当前加速度值的 Int32 topic；未收到时使用默认 acc_
     manual_override_service: "/set_manual_override"  # 外部手动接管切换服务：true=手动接管，false=恢复自动
     manual_override_state_topic: "/manual_override_active"  # 当前是否处于外部手动接管的状态 topic
+    manual_override_query_service: "/get_manual_override"  # 查询当前模式服务，返回 message=manual/auto
     wheel_odom_topic: "/odom_base"  # 轮式里程计 topic，用于打滑检测
     loc_odom_topic: "/odom"  # 定位里程计 topic，用于双源打滑检测
     imu_topic: "/livox/imu"  # IMU topic，用于高频打滑检测和偏置校准
 
     acc_: 2000  # 默认加速度字段，写入最终 /command JSON
-    press_: 1400  # 默认基础压力值，自动调压以此为基线增减
+    press_: 800  # 默认基础压力值，自动调压以此为基线增减
     place_: -1  # 默认位置字段，透传到底盘协议
     ulock_: -1  # 默认解锁字段，透传到底盘协议
 
@@ -23,7 +24,7 @@ safety_emergency_executor:
       slip_threshold: 0.08  # 打滑触发阈值
       slip_hysteresis: 0.03  # 打滑恢复阈值，形成滞回避免抖动
       pressure_min: 800  # 自动调压下限
-      pressure_max: 2500  # 自动调压上限
+      pressure_max: 1500  # 自动调压上限
       rate_limit_up: 30.0  # 压力上升步进/速率限制
       rate_limit_down: 20.0  # 压力下降步进/速率限制
       static_vel_threshold: 0.02  # IMU 偏置校准时的静止速度阈值

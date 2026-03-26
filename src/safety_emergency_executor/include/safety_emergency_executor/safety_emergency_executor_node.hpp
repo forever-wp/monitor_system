@@ -10,6 +10,7 @@
 #include <std_msgs/msg/int32.hpp>
 #include <std_msgs/msg/string.hpp>
 #include <std_srvs/srv/set_bool.hpp>
+#include <std_srvs/srv/trigger.hpp>
 
 #include "safety_emergency_executor/command_frame.hpp"
 #include "safety_emergency_executor/external_override_controller.hpp"
@@ -36,6 +37,9 @@ private:
   void on_manual_override_request(
     const std::shared_ptr<std_srvs::srv::SetBool::Request> request,
     std::shared_ptr<std_srvs::srv::SetBool::Response> response);
+  void on_manual_override_query_request(
+    const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+    std::shared_ptr<std_srvs::srv::Trigger::Response> response);
   void publish_frame(const CommandFrame & frame);
   void publish_manual_override_state();
 
@@ -49,6 +53,7 @@ private:
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr command_pub_;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr manual_override_state_pub_;
   rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr manual_override_srv_;
+  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr manual_override_query_srv_;
 
   VelocityConverter velocity_converter_;
   PressureAdjuster pressure_adjuster_;
