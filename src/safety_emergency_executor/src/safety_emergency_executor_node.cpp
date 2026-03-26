@@ -30,6 +30,8 @@ SafetyEmergencyExecutorNode::SafetyEmergencyExecutorNode(const rclcpp::NodeOptio
     "manual_override_service", "/set_manual_override");
   const auto manual_override_state_topic = this->declare_parameter<std::string>(
     "manual_override_state_topic", "/manual_override_active");
+  const auto manual_override_query_service = this->declare_parameter<std::string>(
+    "manual_override_query_service", "/get_manual_override");
 
   velocity_converter_.configure(*this);
   pressure_adjuster_.configure(*this);
@@ -68,14 +70,21 @@ SafetyEmergencyExecutorNode::SafetyEmergencyExecutorNode(const rclcpp::NodeOptio
       this,
       std::placeholders::_1,
       std::placeholders::_2));
+  manual_override_query_srv_ = this->create_service<std_srvs::srv::Trigger>(
+    manual_override_query_service,
+    std::bind(
+      &SafetyEmergencyExecutorNode::on_manual_override_query_request,
+      this,
+      std::placeholders::_1,
+      std::placeholders::_2));
 
   publish_manual_override_state();
 
   RCLCPP_INFO(
     get_logger(),
-    "safety_emergency_executor started: safety_cmd=%s, cmd_vel=%s, manual_override_service=%s, out=%s",
+    "safety_emergency_executor started: safety_cmd=%s, cmd_vel=%s, manual_override_service=%s, manual_override_query_service=%s, out=%s",
     safety_cmd_topic.c_str(), cmd_vel_topic.c_str(), manual_override_service.c_str(),
-    command_output_topic.c_str());
+    manual_override_query_service.c_str(), command_output_topic.c_str());
 }
 
 void SafetyEmergencyExecutorNode::on_cmd_vel(const geometry_msgs::msg::Twist::SharedPtr msg)
@@ -183,6 +192,15 @@ void SafetyEmergencyExecutorNode::on_manual_override_request(
   response->success = true;
   response->message = change.message;
   RCLCPP_INFO(get_logger(), "%s", change.message.c_str());
+}
+
+void SafetyEmergencyExecutorNode::on_manual_override_query_request(
+  const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+  std::shared_ptr<std_srvs::srv::Trigger::Response> response)
+{
+  (void)request;
+  response->success = true;
+  response->message = external_override_.manual_override_active() ? "manual" : "auto";
 }
 
 void SafetyEmergencyExecutorNode::publish_frame(const CommandFrame & frame)

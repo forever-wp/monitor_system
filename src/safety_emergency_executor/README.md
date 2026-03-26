@@ -6,6 +6,7 @@
 
 - 订阅 `/safety_system/cmd` (`nav2_monitor/msg/SafetyCmd`)
 - 提供 `/set_manual_override` (`std_srvs/SetBool`) 外部手动接管接口，优先级高于安全执行
+- 提供 `/get_manual_override` (`std_srvs/Trigger`) 查询当前模式，`message=manual/auto`
 - 发布 `/manual_override_active` (`std_msgs/Bool`) 反馈当前是否处于手动接管
 - 执行应急措施：
   - `SLOW_DOWN`：优先使用消息中的减速百分比，否则回退到本地 `slow_down_percentage`（默认 50%）
@@ -29,6 +30,7 @@ ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
 - `pressure_update_topic`（动态更新 `acc_/press_/place_/ulock_`）
 - `acc_update_topic`（直接覆盖当前 `acc` 值；未收到消息时保留默认 `acc_`）
 - `manual_override_service`（默认 `/set_manual_override`，`true=手动接管`、`false=恢复自动`）
+- `manual_override_query_service`（默认 `/get_manual_override`，返回 `message=manual/auto`）
 - `manual_override_state_topic`（默认 `/manual_override_active`）
 - `auto_pressure.*`（打滑检测与压力调节参数）
 - `slow_down_percentage`（默认 `50.0`）
