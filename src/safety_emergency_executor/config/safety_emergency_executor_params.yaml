@@ -5,6 +5,8 @@ safety_emergency_executor:
     cmd_vel_topic: "/cmd_vel"  # 速度命令输入 topic
     pressure_update_topic: "/pressure_"  # 动态更新 acc_/press_/place_/ulock_ 的 JSON topic
     acc_update_topic: "/acc_"  # 直接覆盖当前加速度值的 Int32 topic；未收到时使用默认 acc_
+    manual_override_service: "/set_manual_override"  # 外部手动接管切换服务：true=手动接管，false=恢复自动
+    manual_override_state_topic: "/manual_override_active"  # 当前是否处于外部手动接管的状态 topic
     wheel_odom_topic: "/odom_base"  # 轮式里程计 topic，用于打滑检测
     loc_odom_topic: "/odom"  # 定位里程计 topic，用于双源打滑检测
     imu_topic: "/livox/imu"  # IMU topic，用于高频打滑检测和偏置校准
