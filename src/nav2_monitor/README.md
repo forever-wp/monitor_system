@@ -410,7 +410,7 @@ colcon test --packages-select nav2_monitor --event-handlers console_direct+
 ## 任务驱动配置切换
 
 - `current_nav_task` 用于表示当前导航任务，例如 `default / todoor / elevator / reverse`。
-- `/task_status` 是外层任务状态输入，节点会先把 `std_msgs/String.data` 状态码映射为内部任务名，再同步更新 `current_nav_task`。
+- `/task_status_code` 是外层任务状态输入，消息类型为 `master_interfaces/msg/TaskStatus`，节点会读取其中的 `status_code` 映射为内部任务名，再同步更新 `current_nav_task`。
 - `task_status_code_mappings.<code>` 在参数文件中维护状态码到内部任务名的映射，例如 `200~209 -> elevator`、`300~304 -> todoor`。
 - `task_fault_configs.<task_name>` 在参数文件中维护任务到安全配置文件的映射。
 - 当 `current_nav_task` 变化时，`nav2_monitor` 会自动选择对应 `fault_config` 并复用现有热更新链路完成切换。

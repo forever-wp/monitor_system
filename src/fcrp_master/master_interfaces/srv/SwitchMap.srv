@@ -1,0 +1,14 @@
+# interface/srv/SwitchMap.srv
+# 
+# 地图切换服务请求
+# 支持同时指定地图 YAML 路径和对应的 PCD 路径用于 FastLio2 重定位
+
+# 请求字段
+string map_yaml_path    # 地图 YAML 文件的完整路径（含文件名）
+string pcd_path         # PCD 文件的完整路径（含文件名）
+
+---
+
+# 响应字段
+bool success            # 服务调用是否成功
+string message          # 返回的消息或错误说明

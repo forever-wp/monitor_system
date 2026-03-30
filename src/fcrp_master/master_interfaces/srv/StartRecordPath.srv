@@ -1,0 +1,5 @@
+string path_name
+string bag_path
+float64 point_interval   #采点间隔
+---
+bool success

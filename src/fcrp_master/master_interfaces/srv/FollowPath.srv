@@ -1,0 +1,33 @@
+# FollowPath.srv - 跟随路径服务
+#
+# 该服务用于控制机器人沿给定路径行驶，内部由 SDK 对接 Nav2 FollowPath 动作。
+
+# 请求部分 (Request)
+# 路径信息（含 frame_id 与时间戳）
+nav_msgs/Path path
+
+# 控制器ID，如果为空则使用默认控制器（如 "FollowPath"）
+string controller_id
+
+# 目标检查器ID
+string goal_checker_id
+
+# 行为树文件路径，如果为空则使用默认行为树
+string behavior_tree
+
+# 超时时间 (秒)，0 表示无超时限制
+float64 timeout
+
+# 航点类型 (可选)，用于业务逻辑识别
+string waypoint_type         # path_point / gate_point / elevator_point / user_door ...
+
+---
+
+# 响应部分 (Response)
+# 标准响应格式
+master_interfaces/StandardResponse response
+
+# 路径跟随任务ID，用于后续查询和取消操作
+string task_id
+
+

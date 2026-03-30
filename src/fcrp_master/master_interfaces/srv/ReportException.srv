@@ -1,0 +1,15 @@
+# ReportException.srv
+# 用于向 bridge_node 上报异常信息
+
+
+# 请求（字段与 JSON payload 保持一致）
+string request_id        # 可选，请求唯一标识
+string safe_level        # 异常等级，如 Error / Warn
+string safe_code         # 8位16进制错误码字符串，例如 "0x0000A001"
+string safe_msg          # 异常描述
+string safe_action       # 处理措施，可为空
+
+---
+# 响应
+bool success             # 是否成功上报
+string error_message     # 错误信息(如果 success=false)

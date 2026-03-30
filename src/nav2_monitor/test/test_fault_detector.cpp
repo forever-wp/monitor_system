@@ -14,6 +14,8 @@
 #include "nav2_monitor/fault_state_coordinator.hpp"
 #include "nav2_monitor/task_fault_config_selector.hpp"
 #include "nav2_monitor/task_status_mapper.hpp"
+#include "nav2_monitor/task_status_message_adapter.hpp"
+#include "master_interfaces/msg/task_status.hpp"
 
 namespace
 {
@@ -140,6 +142,26 @@ TEST(TaskStatusMapperTest, MappedTasksReuseExistingTaskFaultConfigSelection)
 
   EXPECT_TRUE(selector.update_current_task(mapper.resolve_task_for_code("109")));
   EXPECT_EQ(selector.resolve_fault_config_for_task(), "/configs/default.yaml");
+}
+
+TEST(TaskStatusMessageAdapterTest, ExtractsTrimmedStatusCodeFromTaskStatusMessage)
+{
+  master_interfaces::msg::TaskStatus msg;
+  msg.status_code = " 200\n";
+  msg.task_uuid = "task-123";
+  msg.message = "elevator waiting";
+
+  EXPECT_EQ(nav2_monitor::TaskStatusMessageAdapter::extract_code(msg), "200");
+}
+
+TEST(TaskStatusMessageAdapterTest, EmptyStatusCodeStaysEmpty)
+{
+  master_interfaces::msg::TaskStatus msg;
+  msg.status_code = " \t ";
+  msg.task_uuid = "task-456";
+  msg.message = "ignored";
+
+  EXPECT_TRUE(nav2_monitor::TaskStatusMessageAdapter::extract_code(msg).empty());
 }
 
 TEST_F(FaultDetectorTest, NodeInactiveTriggersSafetyThenSupervisor)

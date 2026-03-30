@@ -1,0 +1,9 @@
+# 服务请求：客户端请求开启/关闭检测
+bool enable         # True=开启检测，False=关闭检测
+string car_status   #小车状态，进电梯=in,出电梯=out
+---
+# 服务响应：节点反馈门状态
+string door_state   # 门状态：open/closed/half-open/unknown/error
+float32 confidence  # 检测置信度（%）
+bool success        # 操作是否成功（True/False）
+string message

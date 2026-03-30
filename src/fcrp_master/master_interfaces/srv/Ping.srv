@@ -1,0 +1,8 @@
+# Ping服务用于测试连通性
+# 请求
+string message
+builtin_interfaces/Time request_time
+---
+# 响应
+StandardResponse response
+builtin_interfaces/Time response_time 

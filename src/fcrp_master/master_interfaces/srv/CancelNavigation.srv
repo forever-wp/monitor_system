@@ -1,0 +1,24 @@
+# CancelNavigation.srv - 取消导航任务服务
+#
+# 该服务用于取消正在执行的导航任务
+# 支持取消指定任务ID的导航或取消所有导航任务
+
+# 请求部分 (Request)
+# 要取消的导航任务ID
+# 如果为空字符串，则取消所有正在执行的导航任务
+string task_id
+
+# 取消原因 (可选)
+string reason
+
+---
+
+# 响应部分 (Response)
+# 标准响应格式
+master_interfaces/StandardResponse response
+
+# 被取消的任务数量
+int32 cancelled_tasks_count
+
+# 被取消的任务ID列表
+string[] cancelled_task_ids

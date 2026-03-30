@@ -1,0 +1,7 @@
+# 请求：无参数，获取所有数据包信息
+
+---
+
+# 响应
+bool success
+BagInfo[] bags

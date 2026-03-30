@@ -1,0 +1,18 @@
+# GetNavigationStatus.srv - 获取导航状态服务
+#
+# 该服务用于查询导航任务的执行状态
+# 支持查询指定任务或所有任务的状态
+
+# 请求部分 (Request)
+# 要查询的导航任务ID
+# 如果为空字符串，则返回所有任务的状态
+string task_id
+
+---
+
+# 响应部分 (Response)
+# 标准响应格式
+master_interfaces/StandardResponse response
+
+# 导航状态信息列表
+master_interfaces/NavigationStatus[] navigation_status
