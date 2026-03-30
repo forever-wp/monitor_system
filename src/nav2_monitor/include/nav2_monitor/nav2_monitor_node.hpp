@@ -7,6 +7,7 @@
 #include <nav2_monitor/msg/algorithm_feedback.hpp>
 #include <std_msgs/msg/string.hpp>
 #include <nav_msgs/msg/odometry.hpp>
+#include <master_interfaces/msg/task_status.hpp>
 #include <sensor_msgs/msg/battery_state.hpp>
 #include <sensor_msgs/msg/laser_scan.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
@@ -27,6 +28,7 @@
 #include "nav2_monitor/fault_state_coordinator.hpp"
 #include "nav2_monitor/task_fault_config_selector.hpp"
 #include "nav2_monitor/task_status_mapper.hpp"
+#include "nav2_monitor/task_status_message_adapter.hpp"
 #include "nav2_monitor/vehicle_status_monitor.hpp"
 #include <nav2_monitor/msg/safety_cmd.hpp>
 
@@ -53,7 +55,7 @@ private:
   void scan_topology();
   void check_health();
   void on_algorithm_feedback(const msg::AlgorithmFeedback::SharedPtr msg);
-  void on_task_status(const std_msgs::msg::String::SharedPtr msg);
+  void on_task_status(const master_interfaces::msg::TaskStatus::SharedPtr msg);
   void on_command(const std_msgs::msg::String::SharedPtr msg);
   void on_odom(const nav_msgs::msg::Odometry::SharedPtr msg);
   void on_chassis_imu(const sensor_msgs::msg::Imu::SharedPtr msg);
@@ -88,7 +90,7 @@ private:
   rclcpp::Publisher<msg::MonitorStatus>::SharedPtr pub_;
   rclcpp::Publisher<msg::FaultEvent>::SharedPtr fault_event_pub_;
   rclcpp::Subscription<msg::AlgorithmFeedback>::SharedPtr algorithm_feedback_sub_;
-  rclcpp::Subscription<std_msgs::msg::String>::SharedPtr task_status_sub_;
+  rclcpp::Subscription<master_interfaces::msg::TaskStatus>::SharedPtr task_status_sub_;
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr command_sub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr chassis_imu_sub_;
@@ -119,7 +121,7 @@ private:
   double safety_cooldown_s_;
   double supervisor_cooldown_s_;
   std::string algorithm_feedback_topic_;
-  std::string task_status_topic_{"/task_status"};
+  std::string task_status_topic_{"/task_status_code"};
   std::string battery_state_topic_;
   std::string base_frame_id_{"base_link"};
   std::string command_topic_;

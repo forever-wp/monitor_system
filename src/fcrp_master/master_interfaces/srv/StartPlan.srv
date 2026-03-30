@@ -1,0 +1,9 @@
+# 请求启动配送任务计划
+string json_url
+string task_type
+---
+# 响应
+bool success
+int32 code
+string msg
+string task_id

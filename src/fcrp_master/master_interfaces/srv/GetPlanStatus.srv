@@ -1,0 +1,7 @@
+# 查询配送任务计划状态
+string task_id
+---
+bool success
+int32 code
+string msg
+master_interfaces/PlanStatus status

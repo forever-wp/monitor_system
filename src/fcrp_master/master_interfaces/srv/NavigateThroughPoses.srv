@@ -1,0 +1,28 @@
+# NavigateThroughPoses.srv - 通过多个目标位姿执行导航
+#
+# 该服务封装 Nav2 NavigateThroughPoses 动作，支持一次性发送多个途经点。
+
+# 请求部分 (Request)
+# 目标位姿序列，顺序执行
+geometry_msgs/PoseStamped[] poses
+
+# 行为树文件路径，如果为空则使用默认行为树
+string behavior_tree
+
+# 超时时间 (秒)，0 表示无超时限制
+float64 timeout
+
+# 航点类型 (可选)，用于业务逻辑识别
+string waypoint_type         # path_point / gate_point / elevator_point / user_door ...
+
+---
+
+# 响应部分 (Response)
+# 标准响应格式
+master_interfaces/StandardResponse response
+
+# 任务ID，用于后续查询和取消操作
+string task_id
+
+
+

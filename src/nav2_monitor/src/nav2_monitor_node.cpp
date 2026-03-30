@@ -299,7 +299,7 @@ Nav2MonitorNode::Nav2MonitorNode()
   base_fault_config_path_ = this->declare_parameter<std::string>("fault_config", "");
   fault_config_reload_enabled_ = this->declare_parameter<bool>("fault_config_reload_enabled", true);
   current_nav_task_ = this->declare_parameter<std::string>("current_nav_task", "default");
-  task_status_topic_ = this->declare_parameter<std::string>("task_status_topic", "/task_status");
+  task_status_topic_ = this->declare_parameter<std::string>("task_status_topic", "/task_status_code");
   resolved_base_fault_config_path_ = resolve_config_path(base_fault_config_path_);
   load_task_fault_config_mappings();
   load_task_status_code_mappings();
@@ -679,9 +679,9 @@ void Nav2MonitorNode::on_algorithm_feedback(const msg::AlgorithmFeedback::Shared
     msg->module_name, msg->topic_name, msg->metric_name, msg->value, msg->valid, stamp);
 }
 
-void Nav2MonitorNode::on_task_status(const std_msgs::msg::String::SharedPtr msg)
+void Nav2MonitorNode::on_task_status(const master_interfaces::msg::TaskStatus::SharedPtr msg)
 {
-  const std::string raw_code = msg ? msg->data : std::string();
+  const std::string raw_code = msg ? TaskStatusMessageAdapter::extract_code(*msg) : std::string();
   const std::string mapped_task = task_status_mapper_.resolve_task_for_code(raw_code);
   if (mapped_task.empty()) {
     RCLCPP_WARN(
@@ -885,7 +885,7 @@ void Nav2MonitorNode::configure_task_status_subscription()
     return;
   }
 
-  task_status_sub_ = this->create_subscription<std_msgs::msg::String>(
+  task_status_sub_ = this->create_subscription<master_interfaces::msg::TaskStatus>(
     task_status_topic_, rclcpp::QoS(10),
     std::bind(&Nav2MonitorNode::on_task_status, this, std::placeholders::_1));
   RCLCPP_INFO(get_logger(), "Subscribed task_status topic: %s", task_status_topic_.c_str());

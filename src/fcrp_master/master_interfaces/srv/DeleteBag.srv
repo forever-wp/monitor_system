@@ -1,0 +1,8 @@
+# 请求：要删除的数据包名称
+string bag_name
+
+---
+
+# 响应
+bool success
+string message    # 操作结果消息

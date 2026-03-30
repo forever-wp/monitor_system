@@ -1,0 +1,3 @@
+bridge_py_node:
+  ros__parameters:
+    spec_file: "config/examples/generic_multi_bridge_spec.yaml"

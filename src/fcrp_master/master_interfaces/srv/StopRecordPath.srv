@@ -1,0 +1,4 @@
+---
+bool success
+string path
+int32 num
