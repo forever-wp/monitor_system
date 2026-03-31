@@ -69,6 +69,11 @@ if(BUILD_TESTING)
     APPEND_ENV PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}
   )
 
+  ament_add_pytest_test(test_monitor_ota_layout
+    test/test_monitor_ota_layout.py
+    APPEND_ENV PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}
+  )
+
   ament_lint_auto_find_test_dependencies()
 endif()
 

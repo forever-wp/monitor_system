@@ -1,6 +1,7 @@
 from .config_driven_bridge import (
     ConfigDrivenBridge,
     build_feedback_messages,
+    compute_spec_signature,
     get_field_value,
     import_message_type,
     load_spec,
@@ -10,6 +11,7 @@ from .config_driven_bridge import (
 __all__ = [
     "ConfigDrivenBridge",
     "build_feedback_messages",
+    "compute_spec_signature",
     "get_field_value",
     "import_message_type",
     "load_spec",

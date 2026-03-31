@@ -257,6 +257,11 @@
 - `source_topic` 对应 `AlgorithmFeedback.topic_name`
 - `metric_name` 对应 `AlgorithmFeedback.metric_name`
 
+### 5.2 `target_transforms`
+
+- 顶层 TF 监控列表，格式为 `frame1->frame2`
+- 若 `fault_config` 中存在该字段，则优先使用；否则回退到 `nav2_monitor_params.yaml` 的 `target_transforms`
+
 ### 5.3 `collision_detection`
 
 表示碰撞检测配置。
@@ -267,6 +272,9 @@
 - `pointcloud_topic`
 - `ultrasonic_topic`
 - `ultrasonic_widget`
+  - 8 路权重，默认编号为 `1号左前，之后顺时针`
+- `ultrasonic_blind_distance`
+- `ultrasonic_out_of_range_value`
 - `pointcloud_min_height`
 - `pointcloud_max_height`
 - `source_timeout_s`

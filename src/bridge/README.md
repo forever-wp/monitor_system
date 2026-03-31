@@ -13,3 +13,10 @@ The Python node reads a YAML file with a top-level `bridges:` list.
 Each entry defines one input topic, message type, and the metrics to publish as `AlgorithmFeedback`.
 
 See `/opt/ry/config/Monitor/bridge/generic_multi_bridge_spec.yaml`.
+
+## Hot Reload
+
+- `spec_reload_enabled`: enable periodic spec reload polling
+- `spec_reload_period_s`: polling period in seconds
+- On invalid updated specs, the node keeps the last valid bridge set running
+- Removed bridge entries are stopped immediately after a valid reload

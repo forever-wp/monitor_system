@@ -130,6 +130,11 @@ ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
   - 盲区下限，默认 `0.2`；小于该值时按盲区边界处理
 - `collision_detection.ultrasonic_out_of_range_value`
   - 超量程值，默认 `1.0`；等于或超过该值时视为“无障碍点”
+- `collision_detection.footprint_points`
+  - 车体 footprint 多边形，格式与 zone 的 `points` 一致
+  - 在 `approach / TTC` 模型下，若配置该字段，则使用“障碍点到车体 footprint 的最短距离”而不是“障碍点到原点距离”
+  - 当前 `approach / TTC` 在配置 footprint 后会使用轻量预测轨迹（常速度 / 常角速度离散前推）估算 TTC
+  - 可额外配置 `recover_time_before_collision` 作为退出阈值，以及 `min_hold_time_s` 作为最小保持时间
 - `collision_detection.zones`
   - `model` 支持：
     - 默认 zone 命中
@@ -437,7 +442,7 @@ colcon test --packages-select nav2_monitor --event-handlers console_direct+
 ## 当前缺项
 
 - 多超声波更复杂的场景策略（当前已支持单 topic 八路加权输入，推荐直接配 `ultrasonic_widget`）
-- 完整 footprint 前向离散仿真版 TTC
+- 基于 TTC 进入/退出阈值与保持时间的控制器切换策略（高速控制器 <-> 高避障权重控制器）
 - 多错误组合策略表配置化
 - 更彻底的状态组装抽象
 

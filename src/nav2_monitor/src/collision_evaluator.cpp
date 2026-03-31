@@ -47,10 +47,114 @@ bool CollisionEvaluator::is_point_inside_polygon(
   return inside;
 }
 
+double CollisionEvaluator::point_to_segment_distance(
+  const CollisionPoint & point,
+  const CollisionPoint & seg_start,
+  const CollisionPoint & seg_end)
+{
+  const double dx = seg_end.x - seg_start.x;
+  const double dy = seg_end.y - seg_start.y;
+  const double length_sq = dx * dx + dy * dy;
+  if (length_sq <= 1e-12) {
+    const double px = point.x - seg_start.x;
+    const double py = point.y - seg_start.y;
+    return std::sqrt(px * px + py * py);
+  }
+
+  const double projection =
+    ((point.x - seg_start.x) * dx + (point.y - seg_start.y) * dy) / length_sq;
+  const double clamped = std::clamp(projection, 0.0, 1.0);
+  const double nearest_x = seg_start.x + clamped * dx;
+  const double nearest_y = seg_start.y + clamped * dy;
+  const double diff_x = point.x - nearest_x;
+  const double diff_y = point.y - nearest_y;
+  return std::sqrt(diff_x * diff_x + diff_y * diff_y);
+}
+
+
+double CollisionEvaluator::point_to_polygon_distance(
+  const CollisionPoint & point,
+  const std::vector<CollisionPoint> & polygon)
+{
+  if (polygon.size() < 3) {
+    return point_norm(point);
+  }
+
+  if (is_point_inside_polygon(point, polygon)) {
+    return 0.0;
+  }
+
+  double min_distance = std::numeric_limits<double>::infinity();
+  for (size_t idx = 0; idx < polygon.size(); ++idx) {
+    const auto & start = polygon[idx];
+    const auto & end = polygon[(idx + 1) % polygon.size()];
+    min_distance = std::min(min_distance, point_to_segment_distance(point, start, end));
+  }
+  return std::isfinite(min_distance) ? min_distance : point_norm(point);
+}
+
+
+std::vector<CollisionPoint> CollisionEvaluator::transform_polygon(
+  const std::vector<CollisionPoint> & polygon,
+  double x,
+  double y,
+  double yaw)
+{
+  std::vector<CollisionPoint> transformed;
+  transformed.reserve(polygon.size());
+  const double cos_yaw = std::cos(yaw);
+  const double sin_yaw = std::sin(yaw);
+  for (const auto & point : polygon) {
+    transformed.push_back(CollisionPoint{
+      x + cos_yaw * point.x - sin_yaw * point.y,
+      y + sin_yaw * point.x + cos_yaw * point.y,
+      point.weight});
+  }
+  return transformed;
+}
+
+
+double CollisionEvaluator::estimate_trajectory_collision_time(
+  const CollisionPoint & point,
+  const std::vector<CollisionPoint> & footprint,
+  double linear_x,
+  double linear_y,
+  double angular_z,
+  double horizon_s,
+  double time_step_s,
+  double & min_clearance)
+{
+  min_clearance = std::numeric_limits<double>::infinity();
+  double pos_x = 0.0;
+  double pos_y = 0.0;
+  double yaw = 0.0;
+  const double dt = std::max(0.01, time_step_s);
+
+  for (double sim_t = 0.0; sim_t <= horizon_s + 1e-9; sim_t += dt) {
+    const auto oriented_footprint = transform_polygon(footprint, pos_x, pos_y, yaw);
+    const double clearance = point_to_polygon_distance(point, oriented_footprint);
+    min_clearance = std::min(min_clearance, clearance);
+    if (clearance <= 1e-6) {
+      return sim_t;
+    }
+
+    const double cos_yaw = std::cos(yaw);
+    const double sin_yaw = std::sin(yaw);
+    pos_x += (linear_x * cos_yaw - linear_y * sin_yaw) * dt;
+    pos_y += (linear_x * sin_yaw + linear_y * cos_yaw) * dt;
+    yaw += angular_z * dt;
+  }
+
+  return std::numeric_limits<double>::infinity();
+}
+
+
 bool CollisionEvaluator::update_multi_value_state(
   const std::string & key,
   bool abnormal,
   const std::string & reason,
+  const rclcpp::Time & now,
+  double min_hold_time_s,
   std::string & active_reason) const
 {
   auto & state = judge_states_[key];
@@ -62,13 +166,21 @@ bool CollisionEvaluator::update_multi_value_state(
     }
     if (!state.latched && state.abnormal_count >= multi_value_cfg_.trigger_count) {
       state.latched = true;
+      state.latched_since = now;
     }
   } else {
-    state.normal_count++;
-    state.abnormal_count = 0;
-    if (state.latched && state.normal_count >= multi_value_cfg_.recover_count) {
-      state.latched = false;
-      state.last_reason.clear();
+    const bool hold_active = state.latched && min_hold_time_s > 0.0 &&
+      (now - state.latched_since).seconds() < min_hold_time_s;
+    if (hold_active) {
+      state.normal_count = 0;
+    } else {
+      state.normal_count++;
+      state.abnormal_count = 0;
+      if (state.latched && state.normal_count >= multi_value_cfg_.recover_count) {
+        state.latched = false;
+        state.latched_since = rclcpp::Time(0, 0, RCL_ROS_TIME);
+        state.last_reason.clear();
+      }
     }
   }
 
@@ -137,24 +249,57 @@ std::vector<FaultInfo> CollisionEvaluator::evaluate(
       continue;
     }
 
+    const std::string key = cfg.module_name + "|collision:" + zone.name;
+    const bool currently_latched = judge_states_[key].latched;
     bool abnormal = false;
     std::string reason;
     if (zone.model == CollisionModelType::APPROACH) {
       if (current_speed > 1e-3) {
         double min_collision_time = std::numeric_limits<double>::infinity();
+        double min_clearance = std::numeric_limits<double>::infinity();
+        const bool use_trajectory_ttc = !cfg.footprint_points.empty();
+        const double active_threshold =
+          (currently_latched && zone.recover_time_before_collision > zone.time_before_collision) ?
+          zone.recover_time_before_collision : zone.time_before_collision;
         for (const auto & point : points) {
           if (!is_point_inside_polygon(point, zone.points)) {
             continue;
           }
-          const double distance = point_norm(point);
-          min_collision_time = std::min(min_collision_time, distance / current_speed);
+
+          double collision_time = std::numeric_limits<double>::infinity();
+          double clearance = point_norm(point);
+          if (use_trajectory_ttc) {
+            collision_time = estimate_trajectory_collision_time(
+              point,
+              cfg.footprint_points,
+              chassis_state.prediction_linear_x,
+              chassis_state.prediction_linear_y,
+              chassis_state.prediction_angular_z,
+              active_threshold,
+              zone.simulation_time_step,
+              clearance);
+          } else {
+            if (!cfg.footprint_points.empty()) {
+              clearance = point_to_polygon_distance(point, cfg.footprint_points);
+            }
+            collision_time = clearance / current_speed;
+          }
+
+          min_clearance = std::min(min_clearance, clearance);
+          min_collision_time = std::min(min_collision_time, collision_time);
         }
-        if (std::isfinite(min_collision_time) && min_collision_time <= zone.time_before_collision) {
+        if (std::isfinite(min_collision_time) && min_collision_time <= active_threshold) {
           abnormal = true;
           std::ostringstream oss;
           oss << "Collision approach alert: zone=" << zone.name
               << " ttc=" << min_collision_time
-              << " threshold=" << zone.time_before_collision;
+              << " threshold=" << active_threshold;
+          if (std::isfinite(min_clearance)) {
+            oss << " clearance=" << min_clearance;
+          }
+          if (use_trajectory_ttc) {
+            oss << " mode=trajectory";
+          }
           reason = oss.str();
         }
       }
@@ -178,8 +323,7 @@ std::vector<FaultInfo> CollisionEvaluator::evaluate(
     }
 
     std::string active_reason;
-    const std::string key = cfg.module_name + "|collision:" + zone.name;
-    if (update_multi_value_state(key, abnormal, reason, active_reason)) {
+    if (update_multi_value_state(key, abnormal, reason, now, zone.min_hold_time_s, active_reason)) {
       append_zone_faults(cfg, zone, active_reason, faults, now);
     }
   }

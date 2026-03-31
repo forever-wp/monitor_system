@@ -416,6 +416,20 @@ void FaultDetector::load_config(const std::string & config_file)
       if (cd["source_timeout_s"]) {
         collision_cfg_.source_timeout_s = std::max(0.0, cd["source_timeout_s"].as<double>());
       }
+      collision_cfg_.footprint_points.clear();
+      if (cd["footprint_points"] && cd["footprint_points"].IsSequence()) {
+        std::vector<double> footprint_values;
+        for (const auto & point_node : cd["footprint_points"]) {
+          footprint_values.push_back(point_node.as<double>());
+        }
+        if (footprint_values.size() >= 6 && footprint_values.size() % 2 == 0) {
+          collision_cfg_.footprint_points.reserve(footprint_values.size() / 2);
+          for (size_t idx = 0; idx < footprint_values.size(); idx += 2) {
+            collision_cfg_.footprint_points.push_back(
+              CollisionPoint{footprint_values[idx], footprint_values[idx + 1]});
+          }
+        }
+      }
       collision_cfg_.ultrasonic_sensors = make_default_ultrasonic_sensors();
       if (cd["ultrasonic_sensors"] && cd["ultrasonic_sensors"].IsSequence()) {
         collision_cfg_.ultrasonic_sensors.clear();
@@ -502,6 +516,12 @@ void FaultDetector::load_config(const std::string & config_file)
             }
             if (zone_node["time_before_collision"]) {
               zone.time_before_collision = std::max(0.0, zone_node["time_before_collision"].as<double>());
+            }
+            if (zone_node["recover_time_before_collision"]) {
+              zone.recover_time_before_collision = std::max(0.0, zone_node["recover_time_before_collision"].as<double>());
+            }
+            if (zone_node["min_hold_time_s"]) {
+              zone.min_hold_time_s = std::max(0.0, zone_node["min_hold_time_s"].as<double>());
             }
             if (zone_node["simulation_time_step"]) {
               zone.simulation_time_step = std::max(0.01, zone_node["simulation_time_step"].as<double>());

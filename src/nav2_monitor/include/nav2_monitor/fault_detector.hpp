@@ -103,6 +103,8 @@ struct CollisionZoneConfig
   bool visualize{true};
   std::string polygon_pub_topic;
   double time_before_collision{1.0};
+  double recover_time_before_collision{0.0};
+  double min_hold_time_s{0.0};
   double simulation_time_step{0.1};
 };
 
@@ -121,6 +123,7 @@ struct CollisionDetectionConfig
   double pointcloud_min_height{0.0};
   double pointcloud_max_height{2.0};
   double source_timeout_s{0.5};
+  std::vector<CollisionPoint> footprint_points;
   std::vector<UltrasonicSensorConfig> ultrasonic_sensors;
   std::vector<CollisionZoneConfig> zones;
 };

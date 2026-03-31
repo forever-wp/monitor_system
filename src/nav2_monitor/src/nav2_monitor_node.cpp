@@ -450,10 +450,8 @@ void Nav2MonitorNode::on_chassis_imu(const sensor_msgs::msg::Imu::SharedPtr msg)
 
 void Nav2MonitorNode::on_collision_prediction_cmd_vel(const geometry_msgs::msg::Twist::SharedPtr msg)
 {
-  const auto & linear = msg->linear;
-  const double speed = std::sqrt(
-    linear.x * linear.x + linear.y * linear.y + linear.z * linear.z);
-  data_store_.set_prediction_speed(speed, this->now());
+  data_store_.set_prediction_motion(
+    msg->linear.x, msg->linear.y, msg->angular.z, this->now());
 }
 
 void Nav2MonitorNode::on_collision_scan(const sensor_msgs::msg::LaserScan::SharedPtr msg)
