@@ -28,6 +28,7 @@ collision_detection:
   pointcloud_min_height: 0.2  # 点云参与碰撞检测的最小高度（米）
   pointcloud_max_height: 1.4  # 点云参与碰撞检测的最大高度（米）
   source_timeout_s: 0.5  # 各碰撞数据源的有效超时时间（秒）
+  footprint_points: [-0.37, -0.28, -0.37, 0.28, 0.37, 0.28, 0.37, -0.28]  # 车体 footprint，用于 TTC 计算时扣除车体范围
   ultrasonic_widget: [0.9, 1.0, 0.9, 0.55, 0.25, 0.2, 0.25, 0.55]  # 1号左前，顺时针编号；前视和前侧更高
   # zones 字段说明：
   # - name: 区域唯一名称
@@ -198,7 +199,7 @@ modules:
       - name: "/livox/points"
         min_hz: 5.0
       - name: "/livox/imu"
-        min_hz: 150.0
+        # min_hz: 150.0
 
   # ----------------------------------------------------------
   # 5. usb_cam — USB 摄像头
@@ -251,9 +252,9 @@ modules:
     safety_system: 0
     nodes:
       - "uss_driver_publisher"
-    watch_topics:
-      - name: "/ultrasonic_eight"
-        min_hz: 5.0
+    watch_topics: []
+      # - name: "/ultrasonic_eight"
+        # min_hz: 5.0
 
   # ----------------------------------------------------------
   # 8. navigation — Nav2 导航核心 + 辅助
@@ -313,6 +314,20 @@ modules:
       #   min_hz: 5.0
       # - name: "/fastlio2/body_cloud"
       #   min_hz: 5.0
+    feedback_rules:
+      - source_topic: "/drift_status"
+        metric_name: "drift_state"
+        min_value: 1.5
+        max_value: 2.5
+        level: "ERROR"
+        max_stale_s: 2.0
+        actions: ["supervisor"]
+      - source_topic: "/drift_status"
+        metric_name: "drift_delta_norm"
+        max_value: 10.0
+        level: "ERROR"
+        max_stale_s: 2.0
+        actions: ["supervisor"]
 
   # ----------------------------------------------------------
   # 10. localization_ekf — EKF 定位融合

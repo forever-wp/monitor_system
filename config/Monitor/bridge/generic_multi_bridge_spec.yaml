@@ -15,3 +15,19 @@ bridges:
       - name: "battery_voltage"
         field: "voltage"
         valid_field: "present"
+  - id: drift_status
+    message_type: "geometry_msgs/msg/PoseStamped"
+    input_topic: "/drift_status"
+    output_topic: "/nav2_monitor/algorithm_feedback"
+    module_name: "light-lm"
+    topic_name: "/drift_status"
+    metrics:
+      - name: "drift_state"
+        field: "pose.position.x"
+        valid_default: true
+      - name: "drift_delta_norm"
+        field: "pose.position.y"
+        valid_default: true
+      - name: "drift_reserved"
+        field: "pose.position.z"
+        valid_default: true

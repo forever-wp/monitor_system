@@ -31,3 +31,5 @@ See `/opt/ry/config/Monitor/bridge/generic_multi_bridge_spec.yaml`.
 
 - `battery_feedback_bridge`：电池状态桥接参考实现，提取电量、温度、电压
 - `test_battery_feedback_bridge.cpp`：覆盖上述指标提取逻辑的单元测试
+- `/drift_status`：`geometry_msgs/msg/PoseStamped` 配置桥接示例，输出
+  `drift_state / drift_delta_norm / drift_reserved` 三个统一反馈指标，并挂到 `light-lm`

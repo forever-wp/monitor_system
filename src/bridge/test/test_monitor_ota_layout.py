@@ -51,6 +51,38 @@ def test_monitor_bundle_uses_ota_absolute_paths():
     )
 
 
+def test_drift_status_bridge_is_registered_for_light_lm():
+    spec = yaml.safe_load((MONITOR_ROOT / "bridge" / "generic_multi_bridge_spec.yaml").read_text())
+    bridges = {entry["id"]: entry for entry in spec["bridges"]}
+
+    assert "drift_status" in bridges
+    drift_bridge = bridges["drift_status"]
+    assert drift_bridge["message_type"] == "geometry_msgs/msg/PoseStamped"
+    assert drift_bridge["input_topic"] == "/drift_status"
+    assert drift_bridge["module_name"] == "light-lm"
+    assert drift_bridge["topic_name"] == "/drift_status"
+    assert [metric["name"] for metric in drift_bridge["metrics"]] == [
+        "drift_state",
+        "drift_delta_norm",
+        "drift_reserved",
+    ]
+
+
+def test_light_lm_has_independent_drift_feedback_rules():
+    fault_config = yaml.safe_load(
+        (MONITOR_ROOT / "nav2_monitor" / "fault_detector_config.yaml").read_text()
+    )
+    modules = fault_config["modules"]
+    light_lm = next(module for module in modules if module["name"] == "light-lm")
+    feedback_rules = light_lm["feedback_rules"]
+    rules_by_metric = {rule["metric_name"]: rule for rule in feedback_rules}
+
+    assert "drift_state" in rules_by_metric
+    assert "drift_delta_norm" in rules_by_metric
+    assert rules_by_metric["drift_state"]["source_topic"] == "/drift_status"
+    assert rules_by_metric["drift_delta_norm"]["source_topic"] == "/drift_status"
+
+
 def test_launch_files_and_nav2_source_use_ota_only():
     nav2_launch = (
         REPO_ROOT / "src" / "nav2_monitor" / "launch" / "nav2_monitor.launch.py"

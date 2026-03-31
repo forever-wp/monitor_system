@@ -23,6 +23,7 @@ collision_detection:
   pointcloud_min_height: 0.2  # 点云参与碰撞检测的最小高度（米）
   pointcloud_max_height: 1.4  # 点云参与碰撞检测的最大高度（米）
   source_timeout_s: 0.5  # 各碰撞数据源的有效超时时间（秒）
+  footprint_points: [-0.37, -0.28, -0.37, 0.28, 0.37, 0.28, 0.37, -0.28]  # 车体 footprint，用于 TTC 计算时扣除车体范围
   ultrasonic_widget: [0.95, 1.0, 0.95, 0.7, 0.25, 0.2, 0.25, 0.7]  # 到门任务：前视和前侧更敏感
   # zones 字段说明见主配置 fault_detector_config.yaml，对所有任务 profile 含义一致
   zones:
@@ -81,7 +82,7 @@ chassis_stationary:
   idle_level: "WARNING"  # 久停时的故障等级
   safety_system: 2  # 触发安全动作时默认执行 SOFT_STOP
   safety_slow_down_percentage: 50.0  # 若安全动作为减速时使用的百分比
-  anomaly_actions: ["safety_system", "supervisor"]  # 异常触发后的动作列表
+  anomaly_actions: ["none"]  # 异常触发后的动作列表
   idle_actions: ["none"]  # 久停触发后的动作列表
 
 # ============================================================
@@ -280,6 +281,20 @@ modules:
       #   min_hz: 5.0
       # - name: "/fastlio2/body_cloud"
       #   min_hz: 5.0
+    feedback_rules:
+      - source_topic: "/drift_status"
+        metric_name: "drift_state"
+        min_value: 1.5
+        max_value: 2.5
+        level: "ERROR"
+        max_stale_s: 2.0
+        actions: ["supervisor"]
+      - source_topic: "/drift_status"
+        metric_name: "drift_delta_norm"
+        max_value: 10.0
+        level: "ERROR"
+        max_stale_s: 2.0
+        actions: ["supervisor"]
 
   # ----------------------------------------------------------
   # 10. localization_ekf — EKF 定位融合

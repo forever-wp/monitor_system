@@ -281,6 +281,20 @@ modules:
       #   min_hz: 5.0
       # - name: "/fastlio2/body_cloud"
       #   min_hz: 5.0
+    feedback_rules:
+      - source_topic: "/drift_status"
+        metric_name: "drift_state"
+        min_value: 1.5
+        max_value: 2.5
+        level: "ERROR"
+        max_stale_s: 2.0
+        actions: ["safety_system"]
+      - source_topic: "/drift_status"
+        metric_name: "drift_delta_norm"
+        max_value: 10.0
+        level: "ERROR"
+        max_stale_s: 2.0
+        actions: ["safety_system"]
 
   # ----------------------------------------------------------
   # 10. localization_ekf — EKF 定位融合

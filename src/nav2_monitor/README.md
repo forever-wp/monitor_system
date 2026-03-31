@@ -122,6 +122,8 @@ ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
   - 表示统一反馈规则
   - `source_topic` 对应 `AlgorithmFeedback.topic_name`
   - `metric_name` 对应 `AlgorithmFeedback.metric_name`
+  - 当前 `light-lm` 已支持 `/drift_status` 的两条独立规则：
+    `drift_state` 与 `drift_delta_norm`
 
 - `chassis_stationary.odom_topic`
   - 可选输入
@@ -429,6 +431,21 @@ colcon test --packages-select nav2_monitor --event-handlers console_direct+
 - `task_fault_configs.<task_name>` 在参数文件中维护任务到安全配置文件的映射。
 - 当 `current_nav_task` 变化时，`nav2_monitor` 会自动选择对应 `fault_config` 并复用现有热更新链路完成切换。
 - 未知状态码会被忽略并保持当前任务不变；未命中任务时，回退到 `task_fault_configs.default`；若未设置，则回退到 `fault_config`。
+
+## 漂移状态接入
+
+- `/drift_status` 通过 `bridge_py_node` 转换为 `AlgorithmFeedback`
+- `module_name` 固定为 `light-lm`
+- 当前输出三个指标：
+  - `drift_state`：`pose.position.x`，`1.0=漂移`，`2.0=正常`
+  - `drift_delta_norm`：`pose.position.y`，表示位移差模长
+  - `drift_reserved`：`pose.position.z`，保留字段
+- `light-lm` 下已提供两条独立 `feedback_rules`
+  - `drift_state`
+  - `drift_delta_norm`
+- 当前默认阈值：
+  - `drift_state` 使用区间判断，`1.0` 触发异常，`2.0` 为正常
+  - `drift_delta_norm > 10.0` 触发异常
 
 ## 动态配置更新
 
