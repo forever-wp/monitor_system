@@ -1,0 +1,143 @@
+nav2_monitor:
+  ros__parameters:
+    timeout: 5.0  # 节点/TF/反馈等通用超时时间（秒）
+    scan_rate: 5.0  # 拓扑扫描频率（Hz），用于扫描节点、topic 发布者和 TF
+    check_rate: 10.0  # 健康检查与状态发布频率（Hz）
+    safety_cooldown_s: 2.0  # 安全动作重复发布冷却时间（秒）
+    supervisor_cooldown_s: 5.0  # supervisor 重启命令重复发布冷却时间（秒）
+    algorithm_feedback_topic: "/nav2_monitor/algorithm_feedback"  # 统一反馈输入 topic
+    fault_event_topic: "/nav2_monitor/fault_event"  # 故障边沿事件输出 topic
+    supervisor_cmd_topic: "/supervisor/cmd"  # supervisor 重启命令输出 topic
+    safety_cmd_topic: "/safety_system/cmd"  # 安全执行命令输出 topic
+    reporter.heartbeat_json_topic: "/nav2_monitor/reporter/heartbeat_json"  # 心跳 JSON 上报 topic
+    reporter.event_json_topic: "/nav2_monitor/reporter/event_json"  # 事件 JSON 上报 topic
+    reporter.cmd_correlation_window_s: 2.0  # reporter 关联安全/重启动作与事件的时间窗（秒）
+    battery_state_topic: "/battery_state"  # 电池状态订阅 topic
+    battery_state_timeout_s: 90.0  # 电池数据有效超时时间（秒）
+
+    fault_config: "/opt/ry/config/Monitor/nav2_monitor/fault_detector_config.yaml"  # 默认故障检测配置文件路径
+    fault_config_reload_enabled: true  # 是否启用故障配置热重载
+    current_nav_task: "default"  # 当前导航任务名，用于选择任务对应 fault_config
+    task_status_topic: "/task_status_code"  # 外层任务状态输入 topic（master_interfaces/TaskStatus），读取 status_code 后映射到 current_nav_task
+    task_fault_configs.default: "/opt/ry/config/Monitor/nav2_monitor/fault_detector_config.yaml"  # default 任务使用的故障配置
+    task_fault_configs.todoor: "/opt/ry/config/Monitor/nav2_monitor/profiles/fault_detector_todoor.yaml"  # todoor 任务故障配置
+    task_fault_configs.elevator: "/opt/ry/config/Monitor/nav2_monitor/profiles/fault_detector_elevator.yaml"  # elevator 任务故障配置
+    task_fault_configs.reverse: "/opt/ry/config/Monitor/nav2_monitor/profiles/fault_detector_reverse.yaml"  # reverse 任务故障配置
+    task_status_code_mappings.100: "default"  # Task_Start -> default
+    task_status_code_mappings.101: "default"  # OutDoor_Tasking -> default
+    task_status_code_mappings.102: "default"  # InDoor_Tasking -> default
+    task_status_code_mappings.103: "default"  # TaskReturn_Waiting -> default
+    task_status_code_mappings.109: "default"  # Task_Complete -> default
+    task_status_code_mappings.200: "elevator"  # Elevator_Waiting -> elevator
+    task_status_code_mappings.201: "elevator"  # Elevator_In -> elevator
+    task_status_code_mappings.202: "elevator"  # Elevator_Taking -> elevator
+    task_status_code_mappings.203: "default"  # Elevator_Out -> elevator
+    task_status_code_mappings.209: "elevator"  # Elevator_Arrived -> elevator
+    task_status_code_mappings.300: "todoor"  # Door_Waiting -> todoor
+    task_status_code_mappings.301: "todoor"  # DoorM_In -> todoor
+    task_status_code_mappings.302: "todoor"  # DoorM_Out -> todoor
+    task_status_code_mappings.303: "todoor"  # DoorA_In -> todoor
+    task_status_code_mappings.304: "todoor"  # DoorA_Out -> todoor
+    task_status_code_mappings.400: "default"  # ClampWater_Waiting -> default
+    task_status_code_mappings.401: "default"  # ClampWater -> default
+    task_status_code_mappings.402: "default"  # PlaceWater_Waiting -> default
+    task_status_code_mappings.403: "default"  # PlaceWater -> default
+
+    vehicle_status_file: "/home/ry/.ros/navigate_status/navigate_todoor_status.json"  # 导航状态 JSON 文件路径
+
+    # 兼容回退配置：当 fault_config 缺失或无 modules 时生效
+    # 基于实际系统节点/topic 信息 (2026-03-12)
+    # target_nodes:
+    #   # 底盘
+    #   - "chassis_node"
+    #   - "odometry_node"
+    #   - "battery_node"
+    #   # 传感器
+    #   - "livox_lidar_publisher"
+    #   - "front_camera"
+    #   - "back_camera"
+    #   - "left_camera"
+    #   - "right_camera"
+    #   - "camera/camera"
+    #   - "uss_driver_publisher"
+    #   # 导航
+    #   - "controller_server"
+    #   - "planner_server"
+    #   - "bt_navigator"
+    #   - "behavior_server"
+    #   - "smoother_server"
+    #   - "velocity_smoother"
+    #   - "waypoint_follower"
+    #   - "lifecycle_manager_navigation"
+    #   - "map_server"
+    #   - "global_costmap/global_costmap"
+    #   - "local_costmap/local_costmap"
+    #   # 定位
+    #   - "lio_node"
+    #   - "ekf_filter_node"
+    #   - "amcl"
+    #   - "pointcloud_to_laserscan"
+    #   # 电梯
+    #   - "elevator_server"
+    #   - "elevator_state_detector"
+    #   # 视觉检测
+    #   - "object_detection_node"
+    #   - "pointcloud_processor"
+    #   # 任务
+    #   - "task_execute_server"
+    #   - "navigate_todoor_server"
+    #   # 指令转换
+    #   - "cmd_vel_to_command_node"
+
+    # watch_topics:
+    #   # 底盘
+    #   - "/moto_info"
+    #   - "/encoder_info"
+    #   - "/is_emergency_stop"
+    #   - "/odom_init"
+    #   - "/odom_base"
+    #   - "/odom_vel"
+    #   - "/command"
+    #   - "/battery_state"
+    #   # 传感器 - livox
+    #   - "/livox/lidar"
+    #   - "/livox/imu"
+    #   # 传感器 - 相机
+    #   - "/front_camera/image_raw"
+    #   - "/back_camera/image_raw"
+    #   - "/left_camera/image_raw"
+    #   - "/right_camera/image_raw"
+    #   - "/camera/color/image_raw"
+    #   - "/camera/depth/image_raw"
+    #   # 传感器 - 超声波（8路聚合单 topic）
+    #   - "/ultrasonic_eight"
+    #   # 导航
+    #   - "/cmd_vel"
+    #   - "/cmd_vel_nav"
+    #   - "/plan"
+    #   - "/local_plan"
+    #   - "/global_plan"
+    #   - "/map"
+    #   - "/global_costmap/costmap"
+    #   - "/local_costmap/costmap"
+    #   - "/goal_pose"
+    #   # 定位
+    #   - "/fastlio2/lio_odom"
+    #   - "/fastlio2/body_cloud"
+    #   - "/odometry/filtered"
+    #   - "/tf"
+    #   - "/tf_static"
+    #   - "/scan"
+    #   # 视觉检测
+    #   - "/detected_objects_nav"
+    #   - "/detected_objects_pointcloud"
+    #   - "/filtered_pointcloud"
+    #   # 电梯
+    #   - "/elevator_status"
+    #   # 其他
+    #   - "/diagnostics"
+
+    # fallback TF 监控配置：当 fault_config 未配置 target_transforms 时生效
+    # target_transforms:
+    #   - "map->odom"
+    #   - "odom->base_link"

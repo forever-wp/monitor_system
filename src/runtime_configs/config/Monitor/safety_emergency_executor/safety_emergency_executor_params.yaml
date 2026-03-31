@@ -1,0 +1,45 @@
+safety_emergency_executor:
+  ros__parameters:
+    safety_cmd_topic: "/safety_system/cmd"  # 安全动作输入 topic
+    command_output_topic: "/command"  # 最终输出到底盘的 JSON 命令 topic
+    cmd_vel_topic: "/cmd_vel"  # 速度命令输入 topic
+    pressure_update_topic: "/pressure_"  # 动态更新 acc_/press_/place_/ulock_ 的 JSON topic
+    acc_update_topic: "/acc_"  # 直接覆盖当前加速度值的 Int32 topic；未收到时使用默认 acc_
+    manual_override_service: "/set_manual_override"  # 外部手动接管切换服务：true=手动接管，false=恢复自动
+    manual_override_state_topic: "/manual_override_active"  # 当前是否处于外部手动接管的状态 topic
+    manual_override_query_service: "/get_manual_override"  # 查询当前模式服务，返回 message=manual/auto
+    wheel_odom_topic: "/odom_base"  # 轮式里程计 topic，用于打滑检测
+    loc_odom_topic: "/odom"  # 定位里程计 topic，用于双源打滑检测
+    imu_topic: "/livox/imu"  # IMU topic，用于高频打滑检测和偏置校准
+
+    acc_: 2000  # 默认加速度字段，写入最终 /command JSON
+    press_: 800  # 默认基础压力值，自动调压以此为基线增减
+    place_: -1  # 默认位置字段，透传到底盘协议
+    ulock_: -1  # 默认解锁字段，透传到底盘协议
+
+    auto_pressure:
+      enable_imu: true  # 是否启用 IMU 打滑检测
+      enable_localization: true  # 是否启用定位里程计与轮速对比
+      fallback_mode: "dual_sensor"  # 调压模式：dual_sensor/disabled
+      slip_threshold: 0.08  # 打滑触发阈值
+      slip_hysteresis: 0.03  # 打滑恢复阈值，形成滞回避免抖动
+      pressure_min: 800  # 自动调压下限
+      pressure_max: 1500  # 自动调压上限
+      rate_limit_up: 30.0  # 压力上升步进/速率限制
+      rate_limit_down: 20.0  # 压力下降步进/速率限制
+      static_vel_threshold: 0.02  # IMU 偏置校准时的静止速度阈值
+      bias_calibration_samples: 50  # IMU 偏置校准所需样本数
+      imu_trust_duration: 2.0  # IMU 积分速度可信时间窗（秒）
+      imu_decay_rate: 0.98  # IMU 积分速度衰减系数
+      weight_imu: 0.8  # IMU 打滑比率权重
+      loc_jump_threshold: 0.5  # 定位速度突变阈值，超出则降低定位可信度
+      loc_recovery_rate: 0.1  # 定位可信度恢复速率
+
+    slow_down_percentage: 50.0  # 当安全消息未给出百分比时的默认减速比例
+
+    brake_strong_speed: -1.0  # 急停制动序列第一阶段速度
+    brake_medium_speed: -0.5  # 急停制动序列第二阶段速度
+    brake_strong_repeat: 2  # 第一阶段制动命令重复次数
+    brake_medium_repeat: 2  # 第二阶段制动命令重复次数
+    brake_zero_repeat: 4  # 最终 0 速命令重复次数
+    brake_interval_ms: 20  # 急停制动序列两次命令之间的间隔（毫秒）

@@ -8,6 +8,7 @@ from bridge.config_driven_bridge import (
     get_field_value,
     import_message_type,
     load_spec,
+    resolve_spec_path,
     validate_bridge_entry,
 )
 
@@ -57,6 +58,19 @@ def test_load_spec_reads_multi_bridge_yaml_file():
         spec = load_spec(spec_file)
         assert spec["bridges"][0]["message_type"] == "sensor_msgs/msg/BatteryState"
         assert spec["bridges"][0]["metrics"][0]["name"] == "battery_percentage"
+
+
+def test_resolve_spec_path_accepts_existing_absolute_path(tmp_path):
+    spec_file = tmp_path / "spec.yaml"
+    spec_file.write_text("bridges: []")
+
+    assert resolve_spec_path(str(spec_file)) == spec_file
+
+
+def test_resolve_spec_path_does_not_expand_relative_package_path():
+    unresolved = Path("config/examples/generic_multi_bridge_spec.yaml")
+
+    assert resolve_spec_path(str(unresolved)) == unresolved
 
 
 def test_build_feedback_messages_uses_bridge_spec():

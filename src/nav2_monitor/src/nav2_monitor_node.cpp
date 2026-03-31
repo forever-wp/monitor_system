@@ -14,7 +14,6 @@
 #include <utility>
 #include <vector>
 
-#include <ament_index_cpp/get_package_share_directory.hpp>
 #include <rclcpp/serialized_message.hpp>
 #include <tf2/exceptions.h>
 #include <tf2/LinearMath/Quaternion.h>
@@ -101,24 +100,6 @@ std::string resolve_config_path(const std::string & config_file)
   const fs::path input(config_file);
   if (input.is_absolute() && fs::exists(input)) {
     return input.string();
-  }
-
-  std::error_code ec;
-  const fs::path cwd_path = fs::current_path(ec);
-  if (!ec) {
-    const fs::path cwd_candidate = cwd_path / input;
-    if (fs::exists(cwd_candidate)) {
-      return cwd_candidate.string();
-    }
-  }
-
-  try {
-    const fs::path share_dir(ament_index_cpp::get_package_share_directory("nav2_monitor"));
-    const fs::path share_candidate = share_dir / input;
-    if (fs::exists(share_candidate)) {
-      return share_candidate.string();
-    }
-  } catch (...) {
   }
 
   return config_file;

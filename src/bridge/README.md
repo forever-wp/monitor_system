@@ -12,4 +12,4 @@ Generic bridge package for `nav2_monitor/msg/AlgorithmFeedback`.
 The Python node reads a YAML file with a top-level `bridges:` list.
 Each entry defines one input topic, message type, and the metrics to publish as `AlgorithmFeedback`.
 
-See `config/examples/generic_multi_bridge_spec.yaml`.
+See `/opt/ry/config/Monitor/bridge/generic_multi_bridge_spec.yaml`.

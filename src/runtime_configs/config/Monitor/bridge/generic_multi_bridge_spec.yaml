@@ -1,0 +1,17 @@
+bridges:
+  - id: battery
+    message_type: "sensor_msgs/msg/BatteryState"
+    input_topic: "/battery_state"
+    output_topic: "/nav2_monitor/algorithm_feedback"
+    module_name: "battery_node"
+    topic_name: "/battery_state"
+    metrics:
+      - name: "battery_percentage"
+        field: "percentage"
+        valid_field: "present"
+      - name: "battery_temperature"
+        field: "temperature"
+        valid_field: "present"
+      - name: "battery_voltage"
+        field: "voltage"
+        valid_field: "present"

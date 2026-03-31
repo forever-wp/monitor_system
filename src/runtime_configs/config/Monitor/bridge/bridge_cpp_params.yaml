@@ -1,0 +1,6 @@
+bridge_cpp_node:
+  ros__parameters:
+    input_topic: "/battery_state"
+    output_topic: "/nav2_monitor/algorithm_feedback"
+    module_name: "battery_node"
+    topic_name: "/battery_state"

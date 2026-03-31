@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Any
 
 import rclpy
-from ament_index_python.packages import get_package_share_directory
 from builtin_interfaces.msg import Time
 from nav2_monitor.msg import AlgorithmFeedback
 from rclpy.node import Node
@@ -39,19 +38,10 @@ def get_field_value(message: Any, field_path: str):
     return current
 
 
-def resolve_spec_path(spec_file: str, package_name: str = "bridge") -> Path:
+def resolve_spec_path(spec_file: str) -> Path:
     path = Path(spec_file)
     if path.is_absolute() and path.exists():
         return path
-
-    share_dir = Path(get_package_share_directory(package_name))
-    share_candidate = share_dir / spec_file
-    if share_candidate.exists():
-        return share_candidate
-
-    cwd_candidate = Path.cwd() / spec_file
-    if cwd_candidate.exists():
-        return cwd_candidate
 
     return path
 
@@ -115,7 +105,7 @@ class ConfigDrivenBridge(Node):
         super().__init__("bridge_py_node")
 
         spec_file = self.declare_parameter(
-            "spec_file", "config/examples/generic_multi_bridge_spec.yaml").value
+            "spec_file", "/opt/ry/config/Monitor/bridge/generic_multi_bridge_spec.yaml").value
         spec_path = resolve_spec_path(spec_file)
         self.spec = load_spec(spec_path)
         self._publishers = {}
