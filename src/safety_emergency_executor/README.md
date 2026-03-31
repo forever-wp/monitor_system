@@ -22,6 +22,9 @@
 ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
 ```
 
+当前 OTA 参数源文件位于 `config/Monitor/safety_emergency_executor/`，
+部署后的运行时路径为 `/opt/ry/config/Monitor/safety_emergency_executor/`。
+
 ## 关键参数
 
 - `safety_cmd_topic`（默认 `/safety_system/cmd`）

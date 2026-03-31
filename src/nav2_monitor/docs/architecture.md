@@ -150,11 +150,13 @@
 - 针对每个 zone 做几何判定
 - 输出统一 `FaultInfo`
 
-当前 `approach / TTC` 是轻量版：
+当前 `approach / TTC` 已支持以下增强能力：
 
-- 使用当前线速度近似
-- 对 zone 内点估算 `distance / speed`
-- 当最短 TTC 小于阈值时触发
+- 可直接使用车体 `footprint_points` 计算障碍点到车体轮廓的最短距离
+- 可基于 `prediction_motion` 做轻量预测轨迹 TTC，而不只使用单一前向速度
+- 支持 `recover_time_before_collision` 形成退出滞回
+- 支持 `min_hold_time_s` 保持故障一段时间，避免临界抖动
+- 未配置 footprint 时，仍可回退到简化版 `distance / speed` 估算
 
 ### 3.7 FaultDetector
 

@@ -64,11 +64,16 @@ ros2 launch nav2_monitor nav2_monitor.launch.py
 ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
 ```
 
+当前 OTA 参数源文件位于 `config/Monitor/nav2_monitor/`，
+部署后的运行时路径为 `/opt/ry/config/Monitor/nav2_monitor/`。
+
 ## 关键配置
 
 ### 主参数
 
-文件：`src/nav2_monitor/config/nav2_monitor_params.yaml`
+仓库源文件：`config/Monitor/nav2_monitor/nav2_monitor_params.yaml`
+
+运行时路径：`/opt/ry/config/Monitor/nav2_monitor/nav2_monitor_params.yaml`
 
 关键字段：
 
@@ -92,7 +97,9 @@ ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
 
 ### 故障配置
 
-文件：`src/nav2_monitor/config/fault_detector_config.yaml`
+仓库源文件：`config/Monitor/nav2_monitor/fault_detector_config.yaml`
+
+运行时路径：`/opt/ry/config/Monitor/nav2_monitor/fault_detector_config.yaml`
 
 当前主要配置块：
 
@@ -335,6 +342,7 @@ ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
 - 多 source 统一聚合
 - 小计算量几何判断
 - 直接进入现有安全链路
+- `approach / TTC` 已支持 footprint clearance、轻量预测轨迹方向、恢复滞回和最小保持时间
 
 ## 常用调试命令
 
@@ -383,6 +391,7 @@ colcon test --packages-select nav2_monitor --event-handlers console_direct+
 - 故障触发 / 恢复边沿
 - 安全状态机仲裁
 - 碰撞检测 zone / slowdown / TTC / pointcloud
+- footprint TTC / trajectory TTC / recover hysteresis / min_hold_time
 
 ## 故障排查
 
@@ -429,10 +438,10 @@ colcon test --packages-select nav2_monitor --event-handlers console_direct+
 
 ## 任务配置模板
 
-- 默认配置：`src/nav2_monitor/config/fault_detector_config.yaml`
-- 到门任务：`src/nav2_monitor/config/profiles/fault_detector_todoor.yaml`
-- 电梯任务：`src/nav2_monitor/config/profiles/fault_detector_elevator.yaml`
-- 倒车任务：`src/nav2_monitor/config/profiles/fault_detector_reverse.yaml`
+- 默认配置：`config/Monitor/nav2_monitor/fault_detector_config.yaml`
+- 到门任务：`config/Monitor/nav2_monitor/profiles/fault_detector_todoor.yaml`
+- 电梯任务：`config/Monitor/nav2_monitor/profiles/fault_detector_elevator.yaml`
+- 倒车任务：`config/Monitor/nav2_monitor/profiles/fault_detector_reverse.yaml`
 
 当前模板差异：
 - `todoor`：更早前向减速，更敏感前视/前侧超声波（1号左前，顺时针编号）
@@ -442,7 +451,7 @@ colcon test --packages-select nav2_monitor --event-handlers console_direct+
 ## 当前缺项
 
 - 多超声波更复杂的场景策略（当前已支持单 topic 八路加权输入，推荐直接配 `ultrasonic_widget`）
-- 基于 TTC 进入/退出阈值与保持时间的控制器切换策略（高速控制器 <-> 高避障权重控制器）
+- 基于 TTC 结果的控制器切换策略配置化（检测侧已支持进入/退出阈值、footprint、trajectory、min_hold_time）
 - 多错误组合策略表配置化
 - 更彻底的状态组装抽象
 
