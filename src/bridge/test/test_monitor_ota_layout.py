@@ -51,6 +51,27 @@ def test_monitor_bundle_uses_ota_absolute_paths():
     )
 
 
+def test_collision_zone_direction_fields_exist_in_monitor_bundle():
+    fault_config = yaml.safe_load(
+        (MONITOR_ROOT / "nav2_monitor" / "fault_detector_config.yaml").read_text()
+    )
+    collision_cfg = fault_config["collision_detection"]
+    zones = {zone["name"]: zone for zone in collision_cfg["zones"]}
+
+    assert collision_cfg["direction_speed_threshold"] == 0.05
+    assert zones["front_slow"]["motion_direction"] == "forward"
+    assert zones["front_stop"]["motion_direction"] == "forward"
+
+
+def test_ttc_visualization_switch_exists_in_monitor_bundle():
+    fault_config = yaml.safe_load(
+        (MONITOR_ROOT / "nav2_monitor" / "fault_detector_config.yaml").read_text()
+    )
+    collision_cfg = fault_config["collision_detection"]
+
+    assert collision_cfg["ttc_visualization_enabled"] == 0
+
+
 def test_drift_status_bridge_is_registered_for_light_lm():
     spec = yaml.safe_load((MONITOR_ROOT / "bridge" / "generic_multi_bridge_spec.yaml").read_text())
     bridges = {entry["id"]: entry for entry in spec["bridges"]}
@@ -118,3 +139,4 @@ def test_launch_files_and_nav2_source_use_ota_only():
     assert " ament_index_cpp " not in nav2_cmake
     assert "<depend>ament_index_cpp</depend>" not in nav2_package
     assert "<exec_depend>runtime_configs</exec_depend>" not in nav2_package
+    assert "/nav2_monitor/collision_ttc_markers" in nav2_source

@@ -22,6 +22,7 @@ public:
     const CollisionDetectionConfig & cfg,
     const MonitorDataStore & store,
     const rclcpp::Time & now) const;
+  const CollisionTtcVisualizationState & get_ttc_visualization() const;
 
 private:
   struct RuleJudgeState
@@ -31,6 +32,13 @@ private:
     bool latched{false};
     rclcpp::Time latched_since{0, 0, RCL_ROS_TIME};
     std::string last_reason;
+  };
+
+  enum class RuntimeMotionDirection
+  {
+    UNKNOWN = 0,
+    FORWARD = 1,
+    REVERSE = 2
   };
 
   static bool is_point_inside_polygon(
@@ -57,6 +65,15 @@ private:
     double horizon_s,
     double time_step_s,
     double & min_clearance);
+  static void sample_trajectory_visualization(
+    const std::vector<CollisionPoint> & footprint,
+    double linear_x,
+    double linear_y,
+    double angular_z,
+    double horizon_s,
+    double time_step_s,
+    std::vector<CollisionPoint> & trajectory_points,
+    std::vector<std::vector<CollisionPoint>> & footprint_samples);
   bool update_multi_value_state(
     const std::string & key,
     bool abnormal,
@@ -64,6 +81,14 @@ private:
     const rclcpp::Time & now,
     double min_hold_time_s,
     std::string & active_reason) const;
+  RuntimeMotionDirection resolve_runtime_motion_direction(
+    const ChassisRuntimeState & chassis_state,
+    double direction_speed_threshold,
+    const rclcpp::Time & now,
+    double source_timeout_s) const;
+  static bool zone_matches_motion_direction(
+    CollisionMotionDirectionType zone_direction,
+    RuntimeMotionDirection runtime_direction);
   void append_zone_faults(
     const CollisionDetectionConfig & cfg,
     const CollisionZoneConfig & zone,
@@ -73,6 +98,8 @@ private:
 
   MultiValueJudgeConfig multi_value_cfg_{2, 2};
   mutable std::map<std::string, RuleJudgeState> judge_states_;
+  mutable RuntimeMotionDirection last_motion_direction_{RuntimeMotionDirection::UNKNOWN};
+  mutable CollisionTtcVisualizationState ttc_visualization_;
 };
 
 }  // namespace nav2_monitor

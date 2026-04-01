@@ -1128,6 +1128,107 @@ modules:
   std::remove(config_path.c_str());
 }
 
+TEST_F(FaultDetectorTest, CollisionDetectionParsesTtcVisualizationEnabled)
+{
+  const std::string config_text = R"(
+collision_detection:
+  enabled: 1
+  module_name: "collision_detection"
+  ttc_visualization_enabled: 1
+modules:
+  - name: "dummy"
+    supervisor: 0
+    safety_system: 0
+)";
+  const std::string config_path = write_temp_config(config_text, "collision_ttc_visualization_enabled");
+
+  auto node = std::make_shared<rclcpp::Node>("fault_detector_test_collision_ttc_visualization_enabled");
+  nav2_monitor::FaultDetector detector(node.get());
+  detector.load_config(config_path);
+
+  const auto & cfg = detector.get_collision_detection_config();
+  EXPECT_TRUE(cfg.ttc_visualization_enabled);
+
+  std::remove(config_path.c_str());
+}
+
+TEST_F(FaultDetectorTest, CollisionDetectionTtcVisualizationDefaultsToDisabled)
+{
+  const std::string config_text = R"(
+collision_detection:
+  enabled: 1
+  module_name: "collision_detection"
+modules:
+  - name: "dummy"
+    supervisor: 0
+    safety_system: 0
+)";
+  const std::string config_path = write_temp_config(config_text, "collision_ttc_visualization_default");
+
+  auto node = std::make_shared<rclcpp::Node>("fault_detector_test_collision_ttc_visualization_default");
+  nav2_monitor::FaultDetector detector(node.get());
+  detector.load_config(config_path);
+
+  const auto & cfg = detector.get_collision_detection_config();
+  EXPECT_FALSE(cfg.ttc_visualization_enabled);
+
+  std::remove(config_path.c_str());
+}
+
+TEST_F(FaultDetectorTest, CollisionDetectionTtcVisualizationCapturesTrajectoryWhenEnabled)
+{
+  const std::string config_text = R"(
+multi_value_judge:
+  trigger_count: 1
+  recover_count: 1
+collision_detection:
+  enabled: 1
+  module_name: "collision_detection"
+  source_timeout_s: 1.0
+  ttc_visualization_enabled: 1
+  footprint_points: [-0.37, -0.28, -0.37, 0.28, 0.37, 0.28, 0.37, -0.28]
+  zones:
+    - name: "front_approach"
+      enabled: 1
+      model: "approach"
+      points: [1.3, 0.4, 1.3, -0.4, 0.2, -0.4, 0.2, 0.4]
+      level: "WARNING"
+      safety_system: 1
+      safety_slow_down_percentage: 40.0
+      time_before_collision: 1.0
+      simulation_time_step: 0.1
+      actions: ["safety_system"]
+modules:
+  - name: "dummy"
+    supervisor: 0
+    safety_system: 0
+)";
+  const std::string config_path = write_temp_config(config_text, "collision_ttc_visualization_snapshot");
+
+  auto node = std::make_shared<rclcpp::Node>("fault_detector_test_collision_ttc_visualization_snapshot");
+  nav2_monitor::FaultDetector detector(node.get());
+  nav2_monitor::MonitorDataStore store;
+  detector.load_config(config_path);
+
+  const auto now = node->now();
+  store.set_prediction_motion(1.0, 0.0, 0.0, now);
+  store.set_collision_points("scan", {
+    nav2_monitor::CollisionPoint{1.2, 0.0}
+  }, now);
+
+  auto faults = detector.detect_faults(store, now);
+  ASSERT_EQ(faults.size(), 1u);
+
+  const auto & vis = detector.get_collision_ttc_visualization();
+  EXPECT_TRUE(vis.enabled);
+  EXPECT_TRUE(vis.active);
+  EXPECT_EQ(vis.zone_name, "front_approach");
+  EXPECT_FALSE(vis.trajectory_points.empty());
+  EXPECT_FALSE(vis.footprint_samples.empty());
+
+  std::remove(config_path.c_str());
+}
+
 TEST_F(FaultDetectorTest, CollisionDetectionWeightedUltrasonicPointCanTriggerZone)
 {
   const std::string config_text = R"(
@@ -1262,6 +1363,153 @@ modules:
   EXPECT_EQ(faults[0].action, nav2_monitor::ActionType::SAFETY_SYSTEM);
   EXPECT_EQ(faults[0].safety_command, nav2_monitor::SafetyCommandType::SOFT_STOP);
   EXPECT_NE(faults[0].fault_key.find("collision:front_stop"), std::string::npos);
+
+  std::remove(config_path.c_str());
+}
+
+TEST_F(FaultDetectorTest, CollisionZoneIgnoresRearStopWhenMovingForward)
+{
+  const std::string config_text = R"(
+multi_value_judge:
+  trigger_count: 1
+  recover_count: 1
+collision_detection:
+  enabled: 1
+  module_name: "collision_detection"
+  source_timeout_s: 1.0
+  direction_speed_threshold: 0.05
+  zones:
+    - name: "rear_stop"
+      enabled: 1
+      motion_direction: "reverse"
+      points: [0.0, 0.25, 0.0, -0.25, -0.45, -0.25, -0.45, 0.25]
+      min_points: 1
+      level: "CRITICAL"
+      safety_system: 2
+      actions: ["safety_system"]
+modules:
+  - name: "dummy"
+    supervisor: 0
+    safety_system: 0
+)";
+  const std::string config_path = write_temp_config(config_text, "collision_direction_forward_ignores_rear");
+
+  auto node = std::make_shared<rclcpp::Node>("fault_detector_test_collision_direction_forward_ignores_rear");
+  nav2_monitor::FaultDetector detector(node.get());
+  nav2_monitor::MonitorDataStore store;
+  detector.load_config(config_path);
+
+  const auto now = node->now();
+  store.set_prediction_motion(1.0, 0.0, 0.0, now);
+  store.set_collision_points("scan", {
+    nav2_monitor::CollisionPoint{-0.2, 0.0}
+  }, now);
+
+  auto faults = detector.detect_faults(store, now);
+  EXPECT_TRUE(faults.empty());
+
+  std::remove(config_path.c_str());
+}
+
+TEST_F(FaultDetectorTest, CollisionZoneIgnoresFrontStopWhenReversing)
+{
+  const std::string config_text = R"(
+multi_value_judge:
+  trigger_count: 1
+  recover_count: 1
+collision_detection:
+  enabled: 1
+  module_name: "collision_detection"
+  source_timeout_s: 1.0
+  direction_speed_threshold: 0.05
+  zones:
+    - name: "front_stop"
+      enabled: 1
+      motion_direction: "forward"
+      points: [0.5, 0.25, 0.5, -0.25, 0.0, -0.25, 0.0, 0.25]
+      min_points: 1
+      level: "CRITICAL"
+      safety_system: 2
+      actions: ["safety_system"]
+modules:
+  - name: "dummy"
+    supervisor: 0
+    safety_system: 0
+)";
+  const std::string config_path = write_temp_config(config_text, "collision_direction_reverse_ignores_front");
+
+  auto node = std::make_shared<rclcpp::Node>("fault_detector_test_collision_direction_reverse_ignores_front");
+  nav2_monitor::FaultDetector detector(node.get());
+  nav2_monitor::MonitorDataStore store;
+  detector.load_config(config_path);
+
+  const auto now = node->now();
+  store.set_prediction_motion(-1.0, 0.0, 0.0, now);
+  store.set_collision_points("scan", {
+    nav2_monitor::CollisionPoint{0.2, 0.0}
+  }, now);
+
+  auto faults = detector.detect_faults(store, now);
+  EXPECT_TRUE(faults.empty());
+
+  std::remove(config_path.c_str());
+}
+
+TEST_F(FaultDetectorTest, CollisionZoneKeepsLastDirectionWhenSpeedNearZero)
+{
+  const std::string config_text = R"(
+multi_value_judge:
+  trigger_count: 1
+  recover_count: 1
+collision_detection:
+  enabled: 1
+  module_name: "collision_detection"
+  source_timeout_s: 1.0
+  direction_speed_threshold: 0.05
+  zones:
+    - name: "front_stop"
+      enabled: 1
+      motion_direction: "forward"
+      points: [0.5, 0.25, 0.5, -0.25, 0.0, -0.25, 0.0, 0.25]
+      min_points: 1
+      level: "CRITICAL"
+      safety_system: 2
+      actions: ["safety_system"]
+    - name: "rear_stop"
+      enabled: 1
+      motion_direction: "reverse"
+      points: [0.0, 0.25, 0.0, -0.25, -0.45, -0.25, -0.45, 0.25]
+      min_points: 1
+      level: "CRITICAL"
+      safety_system: 2
+      actions: ["safety_system"]
+modules:
+  - name: "dummy"
+    supervisor: 0
+    safety_system: 0
+)";
+  const std::string config_path = write_temp_config(config_text, "collision_direction_hold_last");
+
+  auto node = std::make_shared<rclcpp::Node>("fault_detector_test_collision_direction_hold_last");
+  nav2_monitor::FaultDetector detector(node.get());
+  nav2_monitor::MonitorDataStore store;
+  detector.load_config(config_path);
+
+  const auto now = node->now();
+  store.set_prediction_motion(1.0, 0.0, 0.0, now);
+  store.set_collision_points("scan", {
+    nav2_monitor::CollisionPoint{2.0, 2.0}
+  }, now);
+  EXPECT_TRUE(detector.detect_faults(store, now).empty());
+
+  const auto near_zero_time = now + rclcpp::Duration::from_seconds(0.1);
+  store.set_prediction_motion(0.01, 0.0, 0.0, near_zero_time);
+  store.set_collision_points("scan", {
+    nav2_monitor::CollisionPoint{-0.2, 0.0}
+  }, near_zero_time);
+
+  auto faults = detector.detect_faults(store, near_zero_time);
+  EXPECT_TRUE(faults.empty());
 
   std::remove(config_path.c_str());
 }

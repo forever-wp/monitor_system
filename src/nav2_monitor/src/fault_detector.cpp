@@ -252,6 +252,15 @@ const CollisionDetectionConfig & FaultDetector::get_collision_detection_config()
   return collision_cfg_;
 }
 
+const CollisionTtcVisualizationState & FaultDetector::get_collision_ttc_visualization() const
+{
+  static const CollisionTtcVisualizationState empty_state{};
+  if (!collision_evaluator_) {
+    return empty_state;
+  }
+  return collision_evaluator_->get_ttc_visualization();
+}
+
 bool FaultDetector::chassis_stationary_enabled() const
 {
   return chassis_cfg_.enabled;
@@ -399,6 +408,20 @@ void FaultDetector::load_config(const std::string & config_file)
       if (cd["ultrasonic_scene_flag_key"]) {
         collision_cfg_.ultrasonic_scene_flag_key = cd["ultrasonic_scene_flag_key"].as<std::string>();
       }
+      if (cd["ttc_visualization_enabled"]) {
+        try {
+          if (cd["ttc_visualization_enabled"].IsScalar()) {
+            const std::string raw = to_lower(cd["ttc_visualization_enabled"].as<std::string>());
+            collision_cfg_.ttc_visualization_enabled = (raw == "1" || raw == "true" || raw == "yes");
+          } else {
+            collision_cfg_.ttc_visualization_enabled = cd["ttc_visualization_enabled"].as<bool>();
+          }
+        } catch (...) {
+          collision_cfg_.ttc_visualization_enabled = false;
+        }
+      } else {
+        collision_cfg_.ttc_visualization_enabled = false;
+      }
       if (cd["ultrasonic_blind_distance"]) {
         collision_cfg_.ultrasonic_blind_distance = std::max(0.0, cd["ultrasonic_blind_distance"].as<double>());
       }
@@ -415,6 +438,10 @@ void FaultDetector::load_config(const std::string & config_file)
       }
       if (cd["source_timeout_s"]) {
         collision_cfg_.source_timeout_s = std::max(0.0, cd["source_timeout_s"].as<double>());
+      }
+      if (cd["direction_speed_threshold"]) {
+        collision_cfg_.direction_speed_threshold = std::max(
+          0.0, cd["direction_speed_threshold"].as<double>());
       }
       collision_cfg_.footprint_points.clear();
       if (cd["footprint_points"] && cd["footprint_points"].IsSequence()) {
@@ -484,6 +511,16 @@ void FaultDetector::load_config(const std::string & config_file)
               const auto model = to_lower(zone_node["model"].as<std::string>());
               if (model == "approach") {
                 zone.model = CollisionModelType::APPROACH;
+              }
+            }
+            if (zone_node["motion_direction"]) {
+              const auto motion_direction = to_lower(zone_node["motion_direction"].as<std::string>());
+              if (motion_direction == "forward") {
+                zone.motion_direction = CollisionMotionDirectionType::FORWARD;
+              } else if (motion_direction == "reverse") {
+                zone.motion_direction = CollisionMotionDirectionType::REVERSE;
+              } else {
+                zone.motion_direction = CollisionMotionDirectionType::BOTH;
               }
             }
             if (zone_node["enabled"]) {

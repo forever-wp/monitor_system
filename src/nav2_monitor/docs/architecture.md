@@ -158,6 +158,20 @@
 - 支持 `min_hold_time_s` 保持故障一段时间，避免临界抖动
 - 未配置 footprint 时，仍可回退到简化版 `distance / speed` 估算
 
+`zone` 模式的缓停/急停区现在额外支持：
+
+- `motion_direction=forward/reverse/both`
+- 使用 `prediction_linear_x` 结合 `direction_speed_threshold` 判断当前运动方向
+- 当速度接近 0 时，保持上一次有效方向，避免前后区在临界值抖动
+- 该逻辑只作用于 `zone` 分支，不影响 `approach / TTC`
+
+`approach / TTC` 可视化现在支持：
+
+- 配置项：`collision_detection.ttc_visualization_enabled`
+- 话题：`/nav2_monitor/collision_ttc_markers`
+- 内容：预测轨迹、预测 footprint、最近碰撞点、TTC 文本
+- 默认关闭，避免增加现网运行开销
+
 ### 3.7 FaultDetector
 
 `FaultDetector` 现在是故障编排器，不再承担所有具体判断细节。

@@ -144,7 +144,17 @@ ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
   - 在 `approach / TTC` 模型下，若配置该字段，则使用“障碍点到车体 footprint 的最短距离”而不是“障碍点到原点距离”
   - 当前 `approach / TTC` 在配置 footprint 后会使用轻量预测轨迹（常速度 / 常角速度离散前推）估算 TTC
   - 可额外配置 `recover_time_before_collision` 作为退出阈值，以及 `min_hold_time_s` 作为最小保持时间
+- `collision_detection.direction_speed_threshold`
+  - `zone` 模式前后向判断阈值
+  - 当 `|prediction_linear_x|` 小于该值时，保持上一次有效方向，避免前后区抖动切换
+- `collision_detection.ttc_visualization_enabled`
+  - TTC 预测可视化总开关
+  - 打开后发布 `/nav2_monitor/collision_ttc_markers`
 - `collision_detection.zones`
+  - `motion_direction` 支持：
+    - `forward`
+    - `reverse`
+    - `both`
   - `model` 支持：
     - 默认 zone 命中
     - `approach`
@@ -345,6 +355,8 @@ ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
 - 小计算量几何判断
 - 直接进入现有安全链路
 - `approach / TTC` 已支持 footprint clearance、轻量预测轨迹方向、恢复滞回和最小保持时间
+- `zone` 模式已支持按当前运动方向自动筛选前向/后向区域
+- 打开 `collision_detection.ttc_visualization_enabled` 后，可在 RViz2 查看 TTC 预测轨迹、预测 footprint、最近碰撞点和 TTC 文本
 
 ## 常用调试命令
 
