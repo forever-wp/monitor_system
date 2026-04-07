@@ -10,8 +10,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(rcl_interfaces REQUIRED)
 find_package(std_msgs REQUIRED)
-find_package(std_srvs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
@@ -27,7 +27,7 @@ include_directories(
 add_executable(safety_emergency_executor_node
   src/main.cpp
   src/safety_emergency_executor_node.cpp
-  src/external_override_controller.cpp
+  src/control_source_controller.cpp
   src/velocity_converter.cpp
   src/pressure_adjuster.cpp
   src/safety_policy_executor.cpp
@@ -35,8 +35,8 @@ add_executable(safety_emergency_executor_node
 )
 ament_target_dependencies(safety_emergency_executor_node
   rclcpp
+  rcl_interfaces
   std_msgs
-  std_srvs
   geometry_msgs
   nav_msgs
   sensor_msgs
@@ -61,10 +61,43 @@ if(BUILD_TESTING)
   set(ament_cmake_cpplint_FOUND TRUE)
   find_package(ament_lint_auto REQUIRED)
   find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(test_control_source_controller
+    test/test_control_source_controller.cpp
+  )
+  if(TARGET test_control_source_controller)
+    target_include_directories(test_control_source_controller PRIVATE include)
+    target_sources(test_control_source_controller PRIVATE
+      src/control_source_controller.cpp
+    )
+  endif()
+  ament_add_gtest(test_control_source_routing
+    test/test_control_source_routing.cpp
+    src/safety_emergency_executor_node.cpp
+    src/control_source_controller.cpp
+    src/velocity_converter.cpp
+    src/pressure_adjuster.cpp
+    src/safety_policy_executor.cpp
+    src/linear_pressure_adjuster.cpp
+  )
+  if(TARGET test_control_source_routing)
+    target_include_directories(test_control_source_routing PRIVATE include)
+    ament_target_dependencies(test_control_source_routing
+      rclcpp
+      rcl_interfaces
+      geometry_msgs
+      nav_msgs
+      sensor_msgs
+      std_msgs
+      nav2_monitor
+    )
+    target_link_libraries(test_control_source_routing
+      ${jsoncpp_LIBRARIES}
+    )
+    set_tests_properties(test_control_source_routing PROPERTIES
+      ENVIRONMENT "HOME=/tmp;ROS_HOME=/tmp/.ros;ROS_LOG_DIR=/tmp/ros_logs")
+  endif()
   ament_add_gtest(test_pipeline_components
     test/test_pipeline_components.cpp
-    src/safety_emergency_executor_node.cpp
-    src/external_override_controller.cpp
     src/velocity_converter.cpp
     src/pressure_adjuster.cpp
     src/safety_policy_executor.cpp
@@ -78,7 +111,6 @@ if(BUILD_TESTING)
       nav_msgs
       sensor_msgs
       std_msgs
-      std_srvs
       nav2_monitor
     )
     target_link_libraries(test_pipeline_components
