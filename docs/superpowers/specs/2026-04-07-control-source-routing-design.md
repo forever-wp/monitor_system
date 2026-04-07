@@ -384,9 +384,12 @@ control_source_auto_preempt_enabled: false
 - `CMakeLists.txt`
   - 增加 `rosidl_default_generators`
   - 增加 `rosidl_generate_interfaces(...)`
+  - 为 `safety_emergency_executor_node` 和 `test_pipeline_components`
+    增加对生成接口目标的构建依赖，确保同包内 service 头文件先生成后编译
 - `package.xml`
   - 增加 `rosidl_default_generators`
   - 增加 `rosidl_default_runtime`
+  - 增加 `member_of_group>rosidl_interface_packages</member_of_group>`
 
 这是本次设计中唯一新增的接口类型扩展；状态 topic 继续使用 `std_msgs/msg/String`，
 避免在第一期引入额外 message 类型。
