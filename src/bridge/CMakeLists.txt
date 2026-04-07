@@ -49,6 +49,7 @@ if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   find_package(ament_cmake_gtest REQUIRED)
   find_package(ament_cmake_pytest REQUIRED)
+  set(ENV{PYTEST_DISABLE_PLUGIN_AUTOLOAD} 1)
 
   ament_add_gtest(test_sample_feedback_bridge
     test/test_sample_feedback_bridge.cpp
@@ -66,12 +67,16 @@ if(BUILD_TESTING)
 
   ament_add_pytest_test(test_config_driven_bridge
     test/test_config_driven_bridge.py
-    APPEND_ENV PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}
+    APPEND_ENV
+      PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}
+      PYTEST_DISABLE_PLUGIN_AUTOLOAD=1
   )
 
   ament_add_pytest_test(test_monitor_ota_layout
     test/test_monitor_ota_layout.py
-    APPEND_ENV PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}
+    APPEND_ENV
+      PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}
+      PYTEST_DISABLE_PLUGIN_AUTOLOAD=1
   )
 
   ament_lint_auto_find_test_dependencies()
