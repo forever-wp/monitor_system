@@ -29,6 +29,10 @@ void PressureAdjuster::on_imu(const sensor_msgs::msg::Imu::SharedPtr & msg)
 
 void PressureAdjuster::apply(CommandFrame & frame)
 {
+  if (frame.press_from_embedded_fields) {
+    return;
+  }
+
   const std::string fallback_mode = adjuster_.getFallbackMode();
   if (fallback_mode == "disabled") {
     return;

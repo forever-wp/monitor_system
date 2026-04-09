@@ -93,6 +93,30 @@ TEST_F(SafetyExecutorComponentTest, VelocityConverterAccTopicOverrideKeepsDefaul
   EXPECT_EQ(still_overridden_frame.acc, 3200);
 }
 
+TEST_F(SafetyExecutorComponentTest, VelocityConverterKeepsLegacyFallbackWhenAuxFieldsAreUnused)
+{
+  auto node = std::make_shared<rclcpp::Node>("velocity_converter_aux_field_guard_test");
+  safety_emergency_executor::VelocityConverter converter;
+  converter.configure(*node);
+
+  std::string error;
+  ASSERT_TRUE(
+    converter.update_params_from_json(
+      "{\"acc\":1500,\"press\":950,\"place\":2,\"ulock\":3}", &error));
+
+  geometry_msgs::msg::Twist msg;
+  msg.linear.x = 0.42;
+  msg.angular.z = 0.11;
+  const auto frame = converter.convert("remote", msg);
+
+  EXPECT_DOUBLE_EQ(frame.speed, 0.42);
+  EXPECT_DOUBLE_EQ(frame.angle, 0.11);
+  EXPECT_EQ(frame.acc, 1500);
+  EXPECT_EQ(frame.press, 950);
+  EXPECT_EQ(frame.place, 2);
+  EXPECT_EQ(frame.ulock, 3);
+}
+
 TEST_F(SafetyExecutorComponentTest, PressureAdjusterDisabledModeLeavesPressureUnchanged)
 {
   rclcpp::NodeOptions options;

@@ -9,6 +9,10 @@ safety_emergency_executor:
     control_source_state_topic: "/control_source_state"  # 当前控制源被动发布 topic
     active_control_source: "navigation"  # 当前激活控制源，使用标准参数服务切换
     control_source_auto_preempt_enabled: false  # 预留自动抢占开关，当前未启用
+    cmd_vel_navigation_extended_fields_enabled: false  # 导航默认不解析 Twist 辅助轴里的扩展控制字段
+    cmd_vel_miniapp_extended_fields_enabled: true  # 小程序可用 Twist 辅助轴携带 press/acc/place/ulock
+    cmd_vel_remote_extended_fields_enabled: true  # 远程驾驶可用 Twist 辅助轴携带 press/acc/place/ulock
+    cmd_vel_other_extended_fields_enabled: true  # 其他外部源可用 Twist 辅助轴携带 press/acc/place/ulock
     pressure_update_topic: "/pressure_"  # 动态更新 acc_/press_/place_/ulock_ 的 JSON topic
     acc_update_topic: "/acc_"  # 直接覆盖当前加速度值的 Int32 topic；未收到时使用默认 acc_
     wheel_odom_topic: "/odom_base"  # 轮式里程计 topic，用于打滑检测

@@ -3,6 +3,7 @@
 
 #include <optional>
 #include <string>
+#include <unordered_map>
 
 #include <geometry_msgs/msg/twist.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -26,6 +27,7 @@ public:
   VelocityConverter() = default;
 
   void configure(rclcpp::Node & node);
+  CommandFrame convert(const std::string & source, const geometry_msgs::msg::Twist & msg) const;
   CommandFrame convert(const geometry_msgs::msg::Twist & msg) const;
   bool update_params_from_json(const std::string & payload, std::string * error = nullptr);
   void update_acc_from_topic(int acc_value);
@@ -34,9 +36,17 @@ public:
 
 private:
   int effective_acc() const;
+  bool source_uses_extended_fields(const std::string & source) const;
+  bool has_embedded_command_fields(const geometry_msgs::msg::Twist & msg) const;
 
   Params params_{};
   std::optional<int> acc_override_{};
+  std::unordered_map<std::string, bool> extended_fields_enabled_{
+    {"navigation", false},
+    {"miniapp", true},
+    {"remote", true},
+    {"other", true},
+  };
 };
 
 }  // namespace safety_emergency_executor
