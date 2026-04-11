@@ -121,7 +121,7 @@ void SafetyEmergencyExecutorNode::on_cmd_vel(
     return;
   }
 
-  CommandFrame frame = velocity_converter_.convert(*msg);
+  CommandFrame frame = velocity_converter_.convert(source, *msg);
   pressure_adjuster_.apply(frame);
 
   if (!safety_policy_.apply(frame)) {

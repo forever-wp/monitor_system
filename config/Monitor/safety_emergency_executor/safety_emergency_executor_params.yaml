@@ -6,16 +6,24 @@ safety_emergency_executor:
     cmd_vel_miniapp_topic: "/cmd_vel_miniapp"  # 小程序速度命令输入 topic
     cmd_vel_remote_topic: "/cmd_vel_remote"  # 远程驾驶速度命令输入 topic
     cmd_vel_other_topic: "/cmd_vel_other"  # 其他控制源速度命令输入 topic
+    cmd_vel_topic: "/cmd_vel"  # 兼容旧版 monitor-ota 布局保留的速度命令输入 topic
     control_source_state_topic: "/control_source_state"  # 当前控制源被动发布 topic
     active_control_source: "navigation"  # 当前激活控制源，使用标准参数服务切换
     control_source_auto_preempt_enabled: false  # 预留自动抢占开关，当前未启用
+    cmd_vel_navigation_extended_fields_enabled: false  # 导航默认不解析 Twist 辅助轴里的扩展控制字段
+    cmd_vel_miniapp_extended_fields_enabled: true  # 小程序可用 Twist 辅助轴携带 press/acc/place/ulock
+    cmd_vel_remote_extended_fields_enabled: true  # 远程驾驶可用 Twist 辅助轴携带 press/acc/place/ulock
+    cmd_vel_other_extended_fields_enabled: true  # 其他外部源可用 Twist 辅助轴携带 press/acc/place/ulock
     pressure_update_topic: "/pressure_"  # 动态更新 acc_/press_/place_/ulock_ 的 JSON topic
     acc_update_topic: "/acc_"  # 直接覆盖当前加速度值的 Int32 topic；未收到时使用默认 acc_
+    manual_override_service: "/set_manual_override"  # 兼容旧版 monitor-ota 布局保留的手动接管切换服务
+    manual_override_state_topic: "/manual_override_active"  # 兼容旧版 monitor-ota 布局保留的模式状态 topic
+    manual_override_query_service: "/get_manual_override"  # 兼容旧版 monitor-ota 布局保留的模式查询服务
     wheel_odom_topic: "/odom_base"  # 轮式里程计 topic，用于打滑检测
     loc_odom_topic: "/odom"  # 定位里程计 topic，用于双源打滑检测
     imu_topic: "/livox/imu"  # IMU topic，用于高频打滑检测和偏置校准
 
-    acc_: 2000  # 默认加速度字段，写入最终 /command JSON
+    acc_: 300  # 默认加速度字段，写入最终 /command JSON
     press_: 800  # 默认基础压力值，自动调压以此为基线增减
     place_: -1  # 默认位置字段，透传到底盘协议
     ulock_: -1  # 默认解锁字段，透传到底盘协议

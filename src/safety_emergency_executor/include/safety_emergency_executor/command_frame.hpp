@@ -12,6 +12,7 @@ struct CommandFrame
   int press{1000};
   int place{-1};
   int ulock{-1};
+  bool press_from_embedded_fields{false};
 };
 
 }  // namespace safety_emergency_executor

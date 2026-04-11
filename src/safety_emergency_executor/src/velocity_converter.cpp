@@ -1,7 +1,14 @@
 #include "safety_emergency_executor/velocity_converter.hpp"
 
-#include <json/json.h>
 #include <cmath>
+#include <json/json.h>
+
+namespace
+{
+
+constexpr double kEmbeddedFieldEpsilon = 1e-6;
+
+}  // namespace
 
 namespace safety_emergency_executor
 {
@@ -12,9 +19,19 @@ void VelocityConverter::configure(rclcpp::Node & node)
   params_.press = node.declare_parameter<int>("press_", params_.press);
   params_.place = node.declare_parameter<int>("place_", params_.place);
   params_.ulock = node.declare_parameter<int>("ulock_", params_.ulock);
+  extended_fields_enabled_["navigation"] =
+    node.declare_parameter<bool>("cmd_vel_navigation_extended_fields_enabled", false);
+  extended_fields_enabled_["miniapp"] =
+    node.declare_parameter<bool>("cmd_vel_miniapp_extended_fields_enabled", true);
+  extended_fields_enabled_["remote"] =
+    node.declare_parameter<bool>("cmd_vel_remote_extended_fields_enabled", true);
+  extended_fields_enabled_["other"] =
+    node.declare_parameter<bool>("cmd_vel_other_extended_fields_enabled", true);
 }
 
-CommandFrame VelocityConverter::convert(const geometry_msgs::msg::Twist & msg) const
+CommandFrame VelocityConverter::convert(
+  const std::string & source,
+  const geometry_msgs::msg::Twist & msg) const
 {
   CommandFrame frame;
   frame.speed = std::round(msg.linear.x * 100.0) / 100.0;
@@ -23,7 +40,21 @@ CommandFrame VelocityConverter::convert(const geometry_msgs::msg::Twist & msg) c
   frame.press = params_.press;
   frame.place = params_.place;
   frame.ulock = params_.ulock;
+
+  if (source_uses_extended_fields(source) && has_embedded_command_fields(msg)) {
+    frame.press = static_cast<int>(std::lround(msg.linear.y));
+    frame.acc = static_cast<int>(std::lround(msg.linear.z));
+    frame.place = static_cast<int>(std::lround(msg.angular.x));
+    frame.ulock = static_cast<int>(std::lround(msg.angular.y));
+    frame.press_from_embedded_fields = true;
+  }
+
   return frame;
+}
+
+CommandFrame VelocityConverter::convert(const geometry_msgs::msg::Twist & msg) const
+{
+  return convert("navigation", msg);
 }
 
 bool VelocityConverter::update_params_from_json(const std::string & payload, std::string * error)
@@ -88,6 +119,20 @@ CommandFrame VelocityConverter::template_frame() const
 int VelocityConverter::effective_acc() const
 {
   return acc_override_.value_or(params_.acc);
+}
+
+bool VelocityConverter::source_uses_extended_fields(const std::string & source) const
+{
+  const auto it = extended_fields_enabled_.find(source);
+  return it != extended_fields_enabled_.end() && it->second;
+}
+
+bool VelocityConverter::has_embedded_command_fields(const geometry_msgs::msg::Twist & msg) const
+{
+  return std::abs(msg.linear.y) > kEmbeddedFieldEpsilon ||
+         std::abs(msg.linear.z) > kEmbeddedFieldEpsilon ||
+         std::abs(msg.angular.x) > kEmbeddedFieldEpsilon ||
+         std::abs(msg.angular.y) > kEmbeddedFieldEpsilon;
 }
 
 }  // namespace safety_emergency_executor
