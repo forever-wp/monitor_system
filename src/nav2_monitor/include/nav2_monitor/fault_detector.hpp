@@ -75,7 +75,15 @@ struct ModuleConfig
 enum class CollisionModelType
 {
   ZONE = 0,
-  APPROACH = 1
+  TTC = 1,
+  APPROACH = TTC
+};
+
+enum class CollisionMotionDirectionType
+{
+  BOTH = 0,
+  FORWARD = 1,
+  REVERSE = 2
 };
 
 struct UltrasonicSensorConfig
@@ -93,6 +101,7 @@ struct CollisionZoneConfig
 {
   std::string name;
   CollisionModelType model{CollisionModelType::ZONE};
+  CollisionMotionDirectionType motion_direction{CollisionMotionDirectionType::BOTH};
   std::vector<CollisionPoint> points;
   double min_points{1.0};
   FaultLevel level{FaultLevel::ERROR};
@@ -103,6 +112,11 @@ struct CollisionZoneConfig
   bool visualize{true};
   std::string polygon_pub_topic;
   double time_before_collision{1.0};
+  double recover_time_before_collision{0.0};
+  double min_hold_time_s{0.0};
+  double ttc_horizon_s{0.0};
+  double corridor_margin{0.10};
+  double candidate_downsample_resolution{0.08};
   double simulation_time_step{0.1};
 };
 
@@ -116,13 +130,31 @@ struct CollisionDetectionConfig
   std::string prediction_speed_topic{"/cmd_vel"};
   std::string ultrasonic_distances_key{"distances"};
   std::string ultrasonic_scene_flag_key{"scene_flag"};
+  bool ttc_visualization_enabled{false};
   double ultrasonic_blind_distance{0.2};
   double ultrasonic_out_of_range_value{1.0};
   double pointcloud_min_height{0.0};
   double pointcloud_max_height{2.0};
   double source_timeout_s{0.5};
+  double direction_speed_threshold{0.05};
+  size_t direction_confirm_count{3};
+  std::vector<CollisionPoint> footprint_points;
   std::vector<UltrasonicSensorConfig> ultrasonic_sensors;
   std::vector<CollisionZoneConfig> zones;
+};
+
+struct CollisionTtcVisualizationState
+{
+  bool enabled{false};
+  bool active{false};
+  std::string zone_name;
+  double ttc_s{-1.0};
+  double threshold_s{0.0};
+  double min_clearance{-1.0};
+  CollisionPoint collision_point;
+  std::vector<CollisionPoint> corridor_outline;
+  std::vector<CollisionPoint> trajectory_points;
+  std::vector<std::vector<CollisionPoint>> footprint_samples;
 };
 
 struct ChassisStationaryConfig
@@ -197,6 +229,7 @@ public:
   const MultiValueJudgeConfig & get_multi_value_judge_config() const;
   bool collision_detection_enabled() const;
   const CollisionDetectionConfig & get_collision_detection_config() const;
+  const CollisionTtcVisualizationState & get_collision_ttc_visualization() const;
 
   std::vector<FaultInfo> detect_faults();
   std::vector<FaultInfo> detect_faults(const MonitorDataStore & store, const rclcpp::Time & now);

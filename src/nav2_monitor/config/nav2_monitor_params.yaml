@@ -15,14 +15,14 @@ nav2_monitor:
     battery_state_topic: "/battery_state"  # 电池状态订阅 topic
     battery_state_timeout_s: 90.0  # 电池数据有效超时时间（秒）
 
-    fault_config: "config/fault_detector_config.yaml"  # 默认故障检测配置文件路径
+    fault_config: "fault_detector_config.yaml"  # 默认故障检测配置文件路径（包内 config）
     fault_config_reload_enabled: true  # 是否启用故障配置热重载
     current_nav_task: "default"  # 当前导航任务名，用于选择任务对应 fault_config
     task_status_topic: "/task_status_code"  # 外层任务状态输入 topic（master_interfaces/TaskStatus），读取 status_code 后映射到 current_nav_task
-    task_fault_configs.default: "config/fault_detector_config.yaml"  # default 任务使用的故障配置
-    task_fault_configs.todoor: "config/profiles/fault_detector_todoor.yaml"  # todoor 任务故障配置
-    task_fault_configs.elevator: "config/profiles/fault_detector_elevator.yaml"  # elevator 任务故障配置
-    task_fault_configs.reverse: "config/profiles/fault_detector_reverse.yaml"  # reverse 任务故障配置
+    task_fault_configs.default: "fault_detector_config.yaml"  # default 任务使用的故障配置（包内 config）
+    task_fault_configs.todoor: "profiles/fault_detector_todoor.yaml"  # todoor 任务故障配置（包内 config）
+    task_fault_configs.elevator: "profiles/fault_detector_elevator.yaml"  # elevator 任务故障配置（包内 config）
+    task_fault_configs.reverse: "profiles/fault_detector_reverse.yaml"  # reverse 任务故障配置（包内 config）
     task_status_code_mappings.100: "default"  # Task_Start -> default
     task_status_code_mappings.101: "default"  # OutDoor_Tasking -> default
     task_status_code_mappings.102: "default"  # InDoor_Tasking -> default
@@ -31,7 +31,7 @@ nav2_monitor:
     task_status_code_mappings.200: "elevator"  # Elevator_Waiting -> elevator
     task_status_code_mappings.201: "elevator"  # Elevator_In -> elevator
     task_status_code_mappings.202: "elevator"  # Elevator_Taking -> elevator
-    task_status_code_mappings.203: "elevator"  # Elevator_Out -> elevator
+    task_status_code_mappings.203: "default"  # Elevator_Out -> elevator
     task_status_code_mappings.209: "elevator"  # Elevator_Arrived -> elevator
     task_status_code_mappings.300: "todoor"  # Door_Waiting -> todoor
     task_status_code_mappings.301: "todoor"  # DoorM_In -> todoor

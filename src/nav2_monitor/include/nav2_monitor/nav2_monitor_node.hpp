@@ -13,6 +13,7 @@
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <sensor_msgs/msg/imu.hpp>
 #include <geometry_msgs/msg/polygon_stamped.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
 #include <map>
@@ -71,6 +72,7 @@ private:
   rcl_interfaces::msg::SetParametersResult on_parameter_change(const std::vector<rclcpp::Parameter>& params);
   void subscribe_watch_topics();
   void publish_collision_zones();
+  void publish_collision_ttc_markers();
   bool reload_fault_config_if_needed(bool force = false);
   void apply_loaded_fault_config();
   void configure_chassis_monitoring();
@@ -100,6 +102,7 @@ private:
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr collision_pointcloud_sub_;
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr collision_ultrasonic_sub_;
   std::map<std::string, rclcpp::Publisher<geometry_msgs::msg::PolygonStamped>::SharedPtr> collision_zone_pubs_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr collision_ttc_markers_pub_;
   rclcpp::GenericSubscription::SharedPtr moto_sub_;
 
   std::mutex mtx_;

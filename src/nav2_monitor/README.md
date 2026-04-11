@@ -31,7 +31,7 @@
 - 多故障组合与安全动作仲裁
 - 自动恢复与 `RESUME`
 - 碰撞检测：`LaserScan` / `PointCloud2` / `ultrasonic_eight(JSON)`
-- 碰撞策略：`slowdown zone` / `stop zone` / `approach(TTC)`
+- 碰撞策略：`slowdown zone` / `stop zone` / `dynamic ttc`
 - 碰撞区域可视化
 
 ## 架构摘要
@@ -64,11 +64,16 @@ ros2 launch nav2_monitor nav2_monitor.launch.py
 ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
 ```
 
+当前包内参数源文件位于 `src/nav2_monitor/config/`，
+部署后的运行时路径位于安装后的包 share：`<install>/nav2_monitor/share/nav2_monitor/config/`。
+
 ## 关键配置
 
 ### 主参数
 
-文件：`src/nav2_monitor/config/nav2_monitor_params.yaml`
+仓库源文件：`src/nav2_monitor/config/nav2_monitor_params.yaml`
+
+运行时路径：`<install>/nav2_monitor/share/nav2_monitor/config/nav2_monitor_params.yaml`
 
 关键字段：
 
@@ -92,7 +97,9 @@ ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
 
 ### 故障配置
 
-文件：`src/nav2_monitor/config/fault_detector_config.yaml`
+仓库源文件：`src/nav2_monitor/config/fault_detector_config.yaml`
+
+运行时路径：`<install>/nav2_monitor/share/nav2_monitor/config/fault_detector_config.yaml`
 
 当前主要配置块：
 
@@ -115,6 +122,8 @@ ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
   - 表示统一反馈规则
   - `source_topic` 对应 `AlgorithmFeedback.topic_name`
   - `metric_name` 对应 `AlgorithmFeedback.metric_name`
+  - 当前 `light-lm` 已支持 `/drift_status` 的两条独立规则：
+    `drift_state` 与 `drift_delta_norm`
 
 - `chassis_stationary.odom_topic`
   - 可选输入
@@ -130,10 +139,29 @@ ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
   - 盲区下限，默认 `0.2`；小于该值时按盲区边界处理
 - `collision_detection.ultrasonic_out_of_range_value`
   - 超量程值，默认 `1.0`；等于或超过该值时视为“无障碍点”
+- `collision_detection.footprint_points`
+  - 车体 footprint 多边形，格式与 zone 的 `points` 一致
+  - `ttc` 模型要求配置该字段；未配置时该 TTC 规则会被安全跳过
+  - 当前 `ttc` 会使用轻量预测轨迹（常速度 / 常角速度离散前推）生成动态 corridor，并基于车体 footprint 计算 TTC
+  - 可额外配置 `recover_time_before_collision` 作为退出阈值，以及 `min_hold_time_s` 作为最小保持时间
+- `collision_detection.direction_speed_threshold`
+  - `zone` 模式前后向判断阈值
+  - 当 `|prediction_linear_x|` 小于该值时，保持当前稳定方向；若尚未建立稳定方向，则只匹配 `motion_direction=both`
+  - 当预测速度已超时时，方向状态会被清空，重新等待稳定方向建立
+- `collision_detection.direction_confirm_count`
+  - 前后向切换确认帧数
+  - 连续收到相反方向速度达到该次数后，`zone/ttc` 才会切换到新的方向，避免单帧跳变导致方向抖动
+- `collision_detection.ttc_visualization_enabled`
+  - TTC 预测可视化总开关
+  - 打开后发布 `/nav2_monitor/collision_ttc_markers`
 - `collision_detection.zones`
+  - `motion_direction` 支持：
+    - `forward`
+    - `reverse`
+    - `both`
   - `model` 支持：
     - 默认 zone 命中
-    - `approach`
+    - `ttc`
   - `actions` 支持：
     - `safety_system`
     - `supervisor`
@@ -167,6 +195,7 @@ ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
 - `/nav2_monitor/reporter/event_json` 至少包含：错误类型、错误模块、错误等级、错误信息、措施执行；恢复事件同样上报。
 - `/command` 由 `safety_emergency_executor` 发布，不是 `nav2_monitor` 主节点直接发布。
 - `collision_detection.zones[*].polygon_pub_topic` 是按配置动态创建的 topic，不是固定单一名称。
+- `model: "ttc"` 不再发布静态 polygon，可通过 `/nav2_monitor/collision_ttc_markers` 查看动态 corridor。
 
 ## JSON 字段说明
 
@@ -330,6 +359,10 @@ ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
 - 多 source 统一聚合
 - 小计算量几何判断
 - 直接进入现有安全链路
+- `approach / TTC` 已支持 footprint clearance、轻量预测轨迹方向、恢复滞回和最小保持时间
+- `zone` / `ttc` 已支持按当前稳定运动方向筛选前向/后向区域
+- 当速度落入 `direction_speed_threshold` 以内时，会保持当前稳定方向；只有连续 `direction_confirm_count` 帧收到相反方向速度后才切换
+- 打开 `collision_detection.ttc_visualization_enabled` 后，可在 RViz2 查看 TTC 预测轨迹、预测 footprint、最近碰撞点和 TTC 文本
 
 ## 常用调试命令
 
@@ -378,6 +411,7 @@ colcon test --packages-select nav2_monitor --event-handlers console_direct+
 - 故障触发 / 恢复边沿
 - 安全状态机仲裁
 - 碰撞检测 zone / slowdown / TTC / pointcloud
+- footprint TTC / trajectory TTC / recover hysteresis / min_hold_time
 
 ## 故障排查
 
@@ -416,6 +450,21 @@ colcon test --packages-select nav2_monitor --event-handlers console_direct+
 - 当 `current_nav_task` 变化时，`nav2_monitor` 会自动选择对应 `fault_config` 并复用现有热更新链路完成切换。
 - 未知状态码会被忽略并保持当前任务不变；未命中任务时，回退到 `task_fault_configs.default`；若未设置，则回退到 `fault_config`。
 
+## 漂移状态接入
+
+- `/drift_status` 通过 `bridge_py_node` 转换为 `AlgorithmFeedback`
+- `module_name` 固定为 `light-lm`
+- 当前输出三个指标：
+  - `drift_state`：`pose.position.x`，`1.0=漂移`，`2.0=正常`
+  - `drift_delta_norm`：`pose.position.y`，表示位移差模长
+  - `drift_reserved`：`pose.position.z`，保留字段
+- `light-lm` 下已提供两条独立 `feedback_rules`
+  - `drift_state`
+  - `drift_delta_norm`
+- 当前默认阈值：
+  - `drift_state` 使用区间判断，`1.0` 触发异常，`2.0` 为正常
+  - `drift_delta_norm > 10.0` 触发异常
+
 ## 动态配置更新
 
 - `fault_config_reload_enabled=true` 时，节点会在现有定时器周期内轮询 `fault_detector_config.yaml` 的修改时间。
@@ -437,7 +486,7 @@ colcon test --packages-select nav2_monitor --event-handlers console_direct+
 ## 当前缺项
 
 - 多超声波更复杂的场景策略（当前已支持单 topic 八路加权输入，推荐直接配 `ultrasonic_widget`）
-- 完整 footprint 前向离散仿真版 TTC
+- 基于 TTC 结果的控制器切换策略配置化（检测侧已支持进入/退出阈值、footprint、trajectory、min_hold_time）
 - 多错误组合策略表配置化
 - 更彻底的状态组装抽象
 

@@ -1,5 +1,6 @@
 #include "nav2_monitor/monitor_data_store.hpp"
 
+#include <cmath>
 #include <limits>
 
 namespace nav2_monitor
@@ -108,9 +109,18 @@ void MonitorDataStore::set_command_speed(double speed, const rclcpp::Time & stam
 
 void MonitorDataStore::set_prediction_speed(double speed, const rclcpp::Time & stamp)
 {
+  set_prediction_motion(speed, 0.0, 0.0, stamp);
+}
+
+void MonitorDataStore::set_prediction_motion(
+  double linear_x, double linear_y, double angular_z, const rclcpp::Time & stamp)
+{
   std::lock_guard<std::mutex> lock(mtx_);
   chassis_state_.prediction_speed_received = true;
-  chassis_state_.prediction_speed = speed;
+  chassis_state_.prediction_linear_x = linear_x;
+  chassis_state_.prediction_linear_y = linear_y;
+  chassis_state_.prediction_angular_z = angular_z;
+  chassis_state_.prediction_speed = std::sqrt(linear_x * linear_x + linear_y * linear_y);
   chassis_state_.prediction_speed_stamp = stamp;
 }
 

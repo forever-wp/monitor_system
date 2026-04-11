@@ -21,41 +21,49 @@ collision_detection:
   scan_topic: "scan"  # LaserScan 输入 topic
   pointcloud_topic: "/livox/points"  # PointCloud2 输入 topic；留空表示不使用
   ultrasonic_topic: "/ultrasonic_eight_distance"  # 超声波 JSON 输入 topic
-  prediction_speed_topic: "/cmd_vel"  # 提前减速（approach/TTC）使用的预测速度 topic
+  prediction_speed_topic: "/cmd_vel"  # 动态 TTC 使用的预测速度 topic
+  ttc_visualization_enabled: 0  # 是否发布 TTC 预测可视化 MarkerArray
   ultrasonic_distances_key: "distances"   # JSON 中 8 路距离数组的键名
   ultrasonic_blind_distance: 0.2  # 超声盲区下限，小于此值按该值处理
   ultrasonic_out_of_range_value: 1.0  # 超声超量程值，达到该值视为“无障碍点”
   pointcloud_min_height: 0.2  # 点云参与碰撞检测的最小高度（米）
   pointcloud_max_height: 1.4  # 点云参与碰撞检测的最大高度（米）
   source_timeout_s: 0.5  # 各碰撞数据源的有效超时时间（秒）
+  direction_speed_threshold: 0.05  # 前后向判断阈值；绝对值低于该值时保持当前稳定方向，未建立稳定方向时仅匹配 both 区域（速度）
+  direction_confirm_count: 3  # 方向切换确认帧数；连续收到相反方向速度达到该次数后才切换
+  footprint_points: [-0.37, -0.28, -0.37, 0.28, 0.37, 0.28, 0.37, -0.28]  # 车体 footprint，用于 TTC 计算时扣除车体范围
   ultrasonic_widget: [0.9, 1.0, 0.9, 0.55, 0.25, 0.2, 0.25, 0.55]  # 1号左前，顺时针编号；前视和前侧更高
   # zones 字段说明：
   # - name: 区域唯一名称
   # - enabled: 是否启用该区域
-  # - model: zone/approach；approach 表示 TTC 预警模型
-  # - points: 多边形顶点，按 [x1, y1, x2, y2, ...] 展开
+  # - model: zone/ttc；ttc 表示动态 TTC 预警模型
+  # - points: zone 模式的多边形顶点，按 [x1, y1, x2, y2, ...] 展开
   # - min_points: 命中阈值；对超声波是加权点数，对 scan/pointcloud 是点数量/权重和
   # - level: 故障等级 WARNING/ERROR/CRITICAL
   # - safety_system: 0=NONE 1=SLOW_DOWN 2=SOFT_STOP 3=EMERGENCY_STOP
   # - safety_slow_down_percentage: 减速动作时的速度百分比
-  # - time_before_collision: approach 模型的 TTC 阈值（秒）
+  # - time_before_collision: ttc 模型的 TTC 阈值（秒）
   # - actions: 触发后的动作列表，可选 safety_system/supervisor
   # - visualize: 是否发布该区域的 PolygonStamped 可视化
   # - polygon_pub_topic: 区域可视化 topic
   zones:
-    - name: "front_approach"
+    - name: "front_ttc"
       enabled: 1  # 启用前向接近预警区
-      model: "approach"  # 按 TTC 预估方式触发
-      points: [1.2, 0.45, 1.2, -0.45, 0.2, -0.45, 0.2, 0.45]  # 区域轮廓
+      model: "ttc"  # 按动态 TTC 方式触发
+      motion_direction: "forward"
       level: "WARNING"  # 触发时按 WARNING 上报
       safety_system: 1  # 触发后执行减速
       safety_slow_down_percentage: 50.0  # 减速到 50%
       time_before_collision: 3.0  # TTC 小于 3 秒时触发
+      recover_time_before_collision: 3.5
+      min_hold_time_s: 0.2
+      ttc_horizon_s: 3.5
+      corridor_margin: 0.10
+      candidate_downsample_resolution: 0.08
       actions: ["safety_system"]  # 仅执行安全动作
-      visualize: 1  # 发布区域可视化
-      polygon_pub_topic: "/nav2_monitor/collision_zone/front_approach"  # 可视化 topic
     - name: "front_slow"
       enabled: 1
+      motion_direction: "forward"
       points: [0.8, 0.35, 0.8, -0.35, 0.2, -0.35, 0.2, 0.35]
       min_points: 3
       level: "ERROR"
@@ -66,6 +74,7 @@ collision_detection:
       polygon_pub_topic: "/nav2_monitor/collision_zone/front_slow"
     - name: "front_stop"
       enabled: 1
+      motion_direction: "forward"
       points: [0.5, 0.25, 0.5, -0.25, 0.0, -0.25, 0.0, 0.25]
       min_points: 3
       level: "CRITICAL"
@@ -198,7 +207,7 @@ modules:
       - name: "/livox/points"
         min_hz: 5.0
       - name: "/livox/imu"
-        min_hz: 150.0
+        # min_hz: 150.0
 
   # ----------------------------------------------------------
   # 5. usb_cam — USB 摄像头
@@ -251,9 +260,9 @@ modules:
     safety_system: 0
     nodes:
       - "uss_driver_publisher"
-    watch_topics:
-      - name: "/ultrasonic_eight"
-        min_hz: 5.0
+    watch_topics: []
+      # - name: "/ultrasonic_eight"
+        # min_hz: 5.0
 
   # ----------------------------------------------------------
   # 8. navigation — Nav2 导航核心 + 辅助
@@ -313,6 +322,20 @@ modules:
       #   min_hz: 5.0
       # - name: "/fastlio2/body_cloud"
       #   min_hz: 5.0
+    feedback_rules:
+      - source_topic: "/drift_status"
+        metric_name: "drift_state"
+        min_value: 1.5
+        max_value: 2.5
+        level: "ERROR"
+        max_stale_s: 2.0
+        actions: ["supervisor"]
+      - source_topic: "/drift_status"
+        metric_name: "drift_delta_norm"
+        max_value: 10.0
+        level: "ERROR"
+        max_stale_s: 2.0
+        actions: ["supervisor"]
 
   # ----------------------------------------------------------
   # 10. localization_ekf — EKF 定位融合

@@ -252,6 +252,15 @@ const CollisionDetectionConfig & FaultDetector::get_collision_detection_config()
   return collision_cfg_;
 }
 
+const CollisionTtcVisualizationState & FaultDetector::get_collision_ttc_visualization() const
+{
+  static const CollisionTtcVisualizationState empty_state{};
+  if (!collision_evaluator_) {
+    return empty_state;
+  }
+  return collision_evaluator_->get_ttc_visualization();
+}
+
 bool FaultDetector::chassis_stationary_enabled() const
 {
   return chassis_cfg_.enabled;
@@ -399,6 +408,20 @@ void FaultDetector::load_config(const std::string & config_file)
       if (cd["ultrasonic_scene_flag_key"]) {
         collision_cfg_.ultrasonic_scene_flag_key = cd["ultrasonic_scene_flag_key"].as<std::string>();
       }
+      if (cd["ttc_visualization_enabled"]) {
+        try {
+          if (cd["ttc_visualization_enabled"].IsScalar()) {
+            const std::string raw = to_lower(cd["ttc_visualization_enabled"].as<std::string>());
+            collision_cfg_.ttc_visualization_enabled = (raw == "1" || raw == "true" || raw == "yes");
+          } else {
+            collision_cfg_.ttc_visualization_enabled = cd["ttc_visualization_enabled"].as<bool>();
+          }
+        } catch (...) {
+          collision_cfg_.ttc_visualization_enabled = false;
+        }
+      } else {
+        collision_cfg_.ttc_visualization_enabled = false;
+      }
       if (cd["ultrasonic_blind_distance"]) {
         collision_cfg_.ultrasonic_blind_distance = std::max(0.0, cd["ultrasonic_blind_distance"].as<double>());
       }
@@ -415,6 +438,28 @@ void FaultDetector::load_config(const std::string & config_file)
       }
       if (cd["source_timeout_s"]) {
         collision_cfg_.source_timeout_s = std::max(0.0, cd["source_timeout_s"].as<double>());
+      }
+      if (cd["direction_speed_threshold"]) {
+        collision_cfg_.direction_speed_threshold = std::max(
+          0.0, cd["direction_speed_threshold"].as<double>());
+      }
+      if (cd["direction_confirm_count"]) {
+        collision_cfg_.direction_confirm_count = std::max(
+          size_t{1}, cd["direction_confirm_count"].as<size_t>());
+      }
+      collision_cfg_.footprint_points.clear();
+      if (cd["footprint_points"] && cd["footprint_points"].IsSequence()) {
+        std::vector<double> footprint_values;
+        for (const auto & point_node : cd["footprint_points"]) {
+          footprint_values.push_back(point_node.as<double>());
+        }
+        if (footprint_values.size() >= 6 && footprint_values.size() % 2 == 0) {
+          collision_cfg_.footprint_points.reserve(footprint_values.size() / 2);
+          for (size_t idx = 0; idx < footprint_values.size(); idx += 2) {
+            collision_cfg_.footprint_points.push_back(
+              CollisionPoint{footprint_values[idx], footprint_values[idx + 1]});
+          }
+        }
       }
       collision_cfg_.ultrasonic_sensors = make_default_ultrasonic_sensors();
       if (cd["ultrasonic_sensors"] && cd["ultrasonic_sensors"].IsSequence()) {
@@ -468,8 +513,24 @@ void FaultDetector::load_config(const std::string & config_file)
             zone.name = zone_node["name"].as<std::string>();
             if (zone_node["model"]) {
               const auto model = to_lower(zone_node["model"].as<std::string>());
-              if (model == "approach") {
-                zone.model = CollisionModelType::APPROACH;
+              if (model == "ttc") {
+                zone.model = CollisionModelType::TTC;
+              } else if (model == "approach") {
+                zone.model = CollisionModelType::TTC;
+                RCLCPP_WARN(
+                  node_->get_logger(),
+                  "[collision_detection][%s] model=approach is deprecated; use model=ttc",
+                  zone.name.c_str());
+              }
+            }
+            if (zone_node["motion_direction"]) {
+              const auto motion_direction = to_lower(zone_node["motion_direction"].as<std::string>());
+              if (motion_direction == "forward") {
+                zone.motion_direction = CollisionMotionDirectionType::FORWARD;
+              } else if (motion_direction == "reverse") {
+                zone.motion_direction = CollisionMotionDirectionType::REVERSE;
+              } else {
+                zone.motion_direction = CollisionMotionDirectionType::BOTH;
               }
             }
             if (zone_node["enabled"]) {
@@ -502,6 +563,22 @@ void FaultDetector::load_config(const std::string & config_file)
             }
             if (zone_node["time_before_collision"]) {
               zone.time_before_collision = std::max(0.0, zone_node["time_before_collision"].as<double>());
+            }
+            if (zone_node["recover_time_before_collision"]) {
+              zone.recover_time_before_collision = std::max(0.0, zone_node["recover_time_before_collision"].as<double>());
+            }
+            if (zone_node["min_hold_time_s"]) {
+              zone.min_hold_time_s = std::max(0.0, zone_node["min_hold_time_s"].as<double>());
+            }
+            if (zone_node["ttc_horizon_s"]) {
+              zone.ttc_horizon_s = std::max(0.0, zone_node["ttc_horizon_s"].as<double>());
+            }
+            if (zone_node["corridor_margin"]) {
+              zone.corridor_margin = std::max(0.0, zone_node["corridor_margin"].as<double>());
+            }
+            if (zone_node["candidate_downsample_resolution"]) {
+              zone.candidate_downsample_resolution = std::max(
+                0.01, zone_node["candidate_downsample_resolution"].as<double>());
             }
             if (zone_node["simulation_time_step"]) {
               zone.simulation_time_step = std::max(0.01, zone_node["simulation_time_step"].as<double>());
@@ -542,7 +619,7 @@ void FaultDetector::load_config(const std::string & config_file)
                 }
               }
             }
-            if (zone.points.size() >= 3) {
+            if (zone.model == CollisionModelType::TTC || zone.points.size() >= 3) {
               collision_cfg_.zones.push_back(std::move(zone));
             }
           } catch (const std::exception & e) {

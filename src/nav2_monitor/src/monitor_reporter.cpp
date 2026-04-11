@@ -222,11 +222,13 @@ void MonitorReporter::publish_fault_event_json(const msg::FaultEvent & event, co
       (now - last_safety_cmd_.stamp).seconds() <= cmd_correlation_window_s_;
   }
 
+  const std::string fault_type = classify_fault_type(event);
+
   std::ostringstream oss;
   oss << '{'
       << "\"timestamp\":\"" << json_escape(to_stamp_string(event.stamp)) << "\"," 
       << "\"edge\":\"" << edge_to_string(event.edge) << "\"," 
-      << "\"fault_type\":\"" << json_escape(classify_fault_type(event)) << "\"," 
+      << "\"fault_type\":\"" << json_escape(fault_type) << "\"," 
       << "\"fault_module\":\"" << json_escape(event.module_name) << "\"," 
       << "\"fault_level\":\"" << fault_level_to_string(event.fault_level) << "\"," 
       << "\"fault_message\":\"" << json_escape(event.reason) << "\"," 
@@ -253,6 +255,29 @@ void MonitorReporter::publish_fault_event_json(const msg::FaultEvent & event, co
   std_msgs::msg::String out;
   out.data = oss.str();
   event_pub_->publish(out);
+
+  if (node_ != nullptr && fault_type == "collision_detection") {
+    const auto fault_level = fault_level_to_string(event.fault_level);
+    const auto action = action_to_string(event.action);
+    if (event.edge == msg::FaultEvent::EDGE_RECOVER) {
+      RCLCPP_INFO(
+        node_->get_logger(),
+        "Collision fault recovered: level=%s action=%s reason=%s",
+        fault_level.c_str(), action.c_str(), event.reason.c_str());
+    } else if (event.fault_level == msg::FaultEvent::CRITICAL ||
+      event.fault_level == msg::FaultEvent::ERROR)
+    {
+      RCLCPP_ERROR(
+        node_->get_logger(),
+        "Collision fault triggered: level=%s action=%s reason=%s",
+        fault_level.c_str(), action.c_str(), event.reason.c_str());
+    } else {
+      RCLCPP_WARN(
+        node_->get_logger(),
+        "Collision fault triggered: level=%s action=%s reason=%s",
+        fault_level.c_str(), action.c_str(), event.reason.c_str());
+    }
+  }
 }
 
 }  // namespace nav2_monitor

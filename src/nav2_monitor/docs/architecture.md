@@ -150,11 +150,28 @@
 - 针对每个 zone 做几何判定
 - 输出统一 `FaultInfo`
 
-当前 `approach / TTC` 是轻量版：
+当前 `ttc` 动态预警区已支持以下增强能力：
 
-- 使用当前线速度近似
-- 对 zone 内点估算 `distance / speed`
-- 当最短 TTC 小于阈值时触发
+- 可直接使用车体 `footprint_points` 计算障碍点到车体轮廓的最短距离
+- 可基于 `prediction_motion` 做轻量预测轨迹 TTC，而不只使用单一前向速度
+- 支持 `recover_time_before_collision` 形成退出滞回
+- 支持 `min_hold_time_s` 保持故障一段时间，避免临界抖动
+- 未配置 footprint 时，该 TTC 规则会被安全跳过，不再回退到简化版 `distance / speed`
+
+`zone` 模式的缓停/急停区现在额外支持：
+
+- `motion_direction=forward/reverse/both`
+- 使用 `prediction_linear_x` 结合 `direction_speed_threshold` 维护当前稳定运动方向
+- 当速度接近 0 时保持当前稳定方向；若尚未建立稳定方向，则仅 `both` 区域继续生效
+- 连续 `direction_confirm_count` 帧收到相反方向速度后，`zone/ttc` 才切换到新方向
+- 预测速度超时时会清空稳定方向，重新等待方向建立
+
+`ttc` 可视化现在支持：
+
+- 配置项：`collision_detection.ttc_visualization_enabled`
+- 话题：`/nav2_monitor/collision_ttc_markers`
+- 内容：动态 corridor、预测轨迹、预测 footprint、最近碰撞点、TTC 文本
+- 默认关闭，避免增加现网运行开销
 
 ### 3.7 FaultDetector
 
@@ -257,6 +274,11 @@
 - `source_topic` 对应 `AlgorithmFeedback.topic_name`
 - `metric_name` 对应 `AlgorithmFeedback.metric_name`
 
+### 5.2 `target_transforms`
+
+- 顶层 TF 监控列表，格式为 `frame1->frame2`
+- 若 `fault_config` 中存在该字段，则优先使用；否则回退到 `nav2_monitor_params.yaml` 的 `target_transforms`
+
 ### 5.3 `collision_detection`
 
 表示碰撞检测配置。
@@ -267,9 +289,17 @@
 - `pointcloud_topic`
 - `ultrasonic_topic`
 - `ultrasonic_widget`
+  - 8 路权重，默认编号为 `1号左前，之后顺时针`
+- `ultrasonic_blind_distance`
+- `ultrasonic_out_of_range_value`
 - `pointcloud_min_height`
 - `pointcloud_max_height`
 - `source_timeout_s`
+- `direction_speed_threshold`
+- `direction_confirm_count`
+- `prediction_speed_topic`
+- `ttc_visualization_enabled`
+- `footprint_points`
 - `zones`
 
 ### 5.4 `zones`
