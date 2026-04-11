@@ -11,6 +11,7 @@
 
 #include "nav2_monitor/fault_detector.hpp"
 #include "nav2_monitor/monitor_data_store.hpp"
+#include "nav2_monitor/monitor_reporter.hpp"
 #include "nav2_monitor/fault_state_coordinator.hpp"
 #include "nav2_monitor/task_fault_config_selector.hpp"
 #include "nav2_monitor/task_status_mapper.hpp"
@@ -194,6 +195,28 @@ modules:
   EXPECT_EQ(faults[1].reason, "Node inactive");
 
   std::remove(config_path.c_str());
+}
+
+TEST_F(FaultDetectorTest, MonitorReporterLogsCollisionTriggerEvent)
+{
+  auto node = std::make_shared<rclcpp::Node>("fault_detector_test_monitor_reporter_collision_logging");
+  nav2_monitor::MonitorReporter reporter;
+  reporter.configure(node.get());
+
+  nav2_monitor::msg::FaultEvent event;
+  event.stamp = node->now();
+  event.module_name = "collision_detection";
+  event.fault_level = nav2_monitor::msg::FaultEvent::CRITICAL;
+  event.reason = "Collision zone hit: zone=front_stop weighted_points=3 raw_points=3 min_points=3";
+  event.action = nav2_monitor::msg::FaultEvent::SAFETY_SYSTEM;
+  event.edge = nav2_monitor::msg::FaultEvent::EDGE_TRIGGER;
+
+  testing::internal::CaptureStderr();
+  reporter.publish_fault_event_json(event, node->now());
+  const auto output = testing::internal::GetCapturedStderr();
+
+  EXPECT_NE(output.find("Collision"), std::string::npos);
+  EXPECT_NE(output.find("front_stop"), std::string::npos);
 }
 
 TEST_F(FaultDetectorTest, TopicLowTriggersSupervisorOnly)
@@ -746,6 +769,8 @@ collision_detection:
   module_name: "collision_detection"
   scan_topic: "/scan"
   source_timeout_s: 1.0
+  direction_confirm_count: 1
+  footprint_points: [-0.37, -0.28, -0.37, 0.28, 0.37, 0.28, 0.37, -0.28]
   zones:
     - name: "front_approach"
       enabled: 1
@@ -767,6 +792,7 @@ modules:
   nav2_monitor::FaultDetector detector(node.get());
   nav2_monitor::MonitorDataStore store;
   detector.load_config(config_path);
+  ASSERT_FALSE(detector.get_collision_detection_config().footprint_points.empty());
 
   const auto now = node->now();
   store.set_prediction_speed(1.0, now);
@@ -795,6 +821,7 @@ collision_detection:
   prediction_speed_topic: "/cmd_vel"
   scan_topic: "/scan"
   source_timeout_s: 1.0
+  footprint_points: [-0.37, -0.28, -0.37, 0.28, 0.37, 0.28, 0.37, -0.28]
   zones:
     - name: "front_approach"
       enabled: 1
@@ -816,6 +843,7 @@ modules:
   nav2_monitor::FaultDetector detector(node.get());
   nav2_monitor::MonitorDataStore store;
   detector.load_config(config_path);
+  ASSERT_FALSE(detector.get_collision_detection_config().footprint_points.empty());
 
   const auto now = node->now();
   store.set_command_speed(0.1, now);
@@ -843,6 +871,7 @@ collision_detection:
   module_name: "collision_detection"
   scan_topic: "/scan"
   source_timeout_s: 1.0
+  direction_confirm_count: 1
   footprint_points: [-0.37, -0.28, -0.37, 0.28, 0.37, 0.28, 0.37, -0.28]
   zones:
     - name: "front_approach"
@@ -892,6 +921,7 @@ collision_detection:
   module_name: "collision_detection"
   scan_topic: "/scan"
   source_timeout_s: 1.0
+  direction_confirm_count: 1
   footprint_points: [-0.37, -0.28, -0.37, 0.28, 0.37, 0.28, 0.37, -0.28]
   zones:
     - name: "front_approach"
@@ -939,6 +969,7 @@ collision_detection:
   module_name: "collision_detection"
   scan_topic: "/scan"
   source_timeout_s: 1.0
+  direction_confirm_count: 1
   footprint_points: [-0.37, -0.28, -0.37, 0.28, 0.37, 0.28, 0.37, -0.28]
   zones:
     - name: "front_approach"
@@ -991,6 +1022,7 @@ collision_detection:
   module_name: "collision_detection"
   scan_topic: "/scan"
   source_timeout_s: 1.0
+  direction_confirm_count: 1
   footprint_points: [-0.37, -0.28, -0.37, 0.28, 0.37, 0.28, 0.37, -0.28]
   zones:
     - name: "front_approach"
@@ -1046,6 +1078,171 @@ modules:
   }, recover_2);
   auto recovered_faults = detector.detect_faults(store, recover_2);
   EXPECT_TRUE(recovered_faults.empty());
+
+  std::remove(config_path.c_str());
+}
+
+TEST_F(FaultDetectorTest, CollisionDetectionDynamicTtcTriggersWithoutStaticPolygon)
+{
+  const std::string config_text = R"(
+multi_value_judge:
+  trigger_count: 1
+  recover_count: 1
+collision_detection:
+  enabled: 1
+  module_name: "collision_detection"
+  scan_topic: "/scan"
+  source_timeout_s: 1.0
+  direction_confirm_count: 1
+  footprint_points: [-0.37, -0.28, -0.37, 0.28, 0.37, 0.28, 0.37, -0.28]
+  zones:
+    - name: "front_ttc"
+      enabled: 1
+      model: "ttc"
+      motion_direction: "forward"
+      level: "WARNING"
+      safety_system: 1
+      safety_slow_down_percentage: 40.0
+      time_before_collision: 1.0
+      ttc_horizon_s: 1.5
+      corridor_margin: 0.10
+      candidate_downsample_resolution: 0.08
+      simulation_time_step: 0.1
+      actions: ["safety_system"]
+modules:
+  - name: "dummy"
+    supervisor: 0
+    safety_system: 0
+)";
+  const std::string config_path = write_temp_config(config_text, "collision_detection_dynamic_ttc");
+
+  auto node = std::make_shared<rclcpp::Node>("fault_detector_test_dynamic_ttc");
+  nav2_monitor::FaultDetector detector(node.get());
+  nav2_monitor::MonitorDataStore store;
+  detector.load_config(config_path);
+
+  const auto now = node->now();
+  store.set_prediction_motion(1.0, 0.0, 0.0, now);
+  store.set_collision_points("scan", {
+    nav2_monitor::CollisionPoint{1.2, 0.0},
+    nav2_monitor::CollisionPoint{1.25, 0.05}
+  }, now);
+
+  auto faults = detector.detect_faults(store, now);
+  ASSERT_EQ(faults.size(), 1u);
+  EXPECT_EQ(faults[0].safety_command, nav2_monitor::SafetyCommandType::SLOW_DOWN);
+  EXPECT_NE(faults[0].reason.find("ttc="), std::string::npos);
+  EXPECT_NE(faults[0].reason.find("front_ttc"), std::string::npos);
+
+  std::remove(config_path.c_str());
+}
+
+TEST_F(FaultDetectorTest, CollisionDetectionRearTtcOnlyTriggersWhenReversing)
+{
+  const std::string config_text = R"(
+multi_value_judge:
+  trigger_count: 1
+  recover_count: 1
+collision_detection:
+  enabled: 1
+  module_name: "collision_detection"
+  scan_topic: "/scan"
+  source_timeout_s: 1.0
+  direction_confirm_count: 1
+  footprint_points: [-0.37, -0.28, -0.37, 0.28, 0.37, 0.28, 0.37, -0.28]
+  zones:
+    - name: "rear_ttc"
+      enabled: 1
+      model: "ttc"
+      motion_direction: "reverse"
+      level: "WARNING"
+      safety_system: 1
+      safety_slow_down_percentage: 40.0
+      time_before_collision: 1.0
+      ttc_horizon_s: 1.5
+      corridor_margin: 0.10
+      candidate_downsample_resolution: 0.08
+      simulation_time_step: 0.1
+      actions: ["safety_system"]
+modules:
+  - name: "dummy"
+    supervisor: 0
+    safety_system: 0
+)";
+  const std::string config_path = write_temp_config(config_text, "collision_detection_rear_ttc");
+
+  auto node = std::make_shared<rclcpp::Node>("fault_detector_test_rear_ttc");
+  nav2_monitor::FaultDetector detector(node.get());
+  nav2_monitor::MonitorDataStore store;
+  detector.load_config(config_path);
+
+  const auto forward_now = node->now();
+  store.set_prediction_motion(1.0, 0.0, 0.0, forward_now);
+  store.set_collision_points("scan", {
+    nav2_monitor::CollisionPoint{-1.2, 0.0}
+  }, forward_now);
+  auto forward_faults = detector.detect_faults(store, forward_now);
+  EXPECT_TRUE(forward_faults.empty());
+
+  const auto reverse_now = forward_now + rclcpp::Duration::from_seconds(0.1);
+  store.set_prediction_motion(-1.0, 0.0, 0.0, reverse_now);
+  store.set_collision_points("scan", {
+    nav2_monitor::CollisionPoint{-1.2, 0.0},
+    nav2_monitor::CollisionPoint{-1.15, -0.03}
+  }, reverse_now);
+  auto reverse_faults = detector.detect_faults(store, reverse_now);
+  ASSERT_EQ(reverse_faults.size(), 1u);
+  EXPECT_EQ(reverse_faults[0].safety_command, nav2_monitor::SafetyCommandType::SLOW_DOWN);
+  EXPECT_NE(reverse_faults[0].reason.find("rear_ttc"), std::string::npos);
+
+  std::remove(config_path.c_str());
+}
+
+TEST_F(FaultDetectorTest, CollisionDetectionDynamicTtcSkipsWhenFootprintMissing)
+{
+  const std::string config_text = R"(
+multi_value_judge:
+  trigger_count: 1
+  recover_count: 1
+collision_detection:
+  enabled: 1
+  module_name: "collision_detection"
+  scan_topic: "/scan"
+  source_timeout_s: 1.0
+  zones:
+    - name: "front_ttc"
+      enabled: 1
+      model: "ttc"
+      motion_direction: "forward"
+      level: "WARNING"
+      safety_system: 1
+      safety_slow_down_percentage: 40.0
+      time_before_collision: 1.0
+      ttc_horizon_s: 1.5
+      corridor_margin: 0.10
+      candidate_downsample_resolution: 0.08
+      simulation_time_step: 0.1
+      actions: ["safety_system"]
+modules:
+  - name: "dummy"
+    supervisor: 0
+    safety_system: 0
+)";
+  const std::string config_path = write_temp_config(config_text, "collision_detection_dynamic_ttc_no_footprint");
+
+  auto node = std::make_shared<rclcpp::Node>("fault_detector_test_dynamic_ttc_no_footprint");
+  nav2_monitor::FaultDetector detector(node.get());
+  nav2_monitor::MonitorDataStore store;
+  detector.load_config(config_path);
+
+  const auto now = node->now();
+  store.set_prediction_motion(1.0, 0.0, 0.0, now);
+  store.set_collision_points("scan", {
+    nav2_monitor::CollisionPoint{1.2, 0.0}
+  }, now);
+
+  auto faults = detector.detect_faults(store, now);
+  EXPECT_TRUE(faults.empty());
 
   std::remove(config_path.c_str());
 }
@@ -1175,6 +1372,47 @@ modules:
   std::remove(config_path.c_str());
 }
 
+TEST_F(FaultDetectorTest, CollisionDetectionParsesDynamicTtcModel)
+{
+  const std::string config_text = R"(
+collision_detection:
+  enabled: 1
+  module_name: "collision_detection"
+  footprint_points: [-0.3, -0.2, -0.3, 0.2, 0.3, 0.2, 0.3, -0.2]
+  zones:
+    - name: "front_ttc"
+      enabled: 1
+      model: "ttc"
+      motion_direction: "forward"
+      time_before_collision: 3.0
+      ttc_horizon_s: 3.5
+      corridor_margin: 0.10
+      candidate_downsample_resolution: 0.08
+modules:
+  - name: "dummy"
+    supervisor: 0
+    safety_system: 0
+)";
+  const std::string config_path = write_temp_config(config_text, "collision_dynamic_ttc_model");
+
+  auto node = std::make_shared<rclcpp::Node>("fault_detector_test_collision_dynamic_ttc_model");
+  nav2_monitor::FaultDetector detector(node.get());
+  detector.load_config(config_path);
+
+  const auto & cfg = detector.get_collision_detection_config();
+  ASSERT_EQ(cfg.zones.size(), 1u);
+  EXPECT_EQ(cfg.zones[0].name, "front_ttc");
+  EXPECT_EQ(cfg.zones[0].model, nav2_monitor::CollisionModelType::TTC);
+  EXPECT_EQ(
+    cfg.zones[0].motion_direction, nav2_monitor::CollisionMotionDirectionType::FORWARD);
+  EXPECT_DOUBLE_EQ(cfg.zones[0].time_before_collision, 3.0);
+  EXPECT_DOUBLE_EQ(cfg.zones[0].ttc_horizon_s, 3.5);
+  EXPECT_DOUBLE_EQ(cfg.zones[0].corridor_margin, 0.10);
+  EXPECT_DOUBLE_EQ(cfg.zones[0].candidate_downsample_resolution, 0.08);
+
+  std::remove(config_path.c_str());
+}
+
 TEST_F(FaultDetectorTest, CollisionDetectionTtcVisualizationCapturesTrajectoryWhenEnabled)
 {
   const std::string config_text = R"(
@@ -1224,6 +1462,59 @@ modules:
   EXPECT_TRUE(vis.active);
   EXPECT_EQ(vis.zone_name, "front_approach");
   EXPECT_FALSE(vis.trajectory_points.empty());
+  EXPECT_FALSE(vis.footprint_samples.empty());
+
+  std::remove(config_path.c_str());
+}
+
+TEST_F(FaultDetectorTest, CollisionDetectionTtcVisualizationShowsTrajectoryWhenMovingWithoutHit)
+{
+  const std::string config_text = R"(
+multi_value_judge:
+  trigger_count: 1
+  recover_count: 1
+collision_detection:
+  enabled: 1
+  module_name: "collision_detection"
+  source_timeout_s: 1.0
+  ttc_visualization_enabled: 1
+  footprint_points: [-0.37, -0.28, -0.37, 0.28, 0.37, 0.28, 0.37, -0.28]
+  zones:
+    - name: "front_approach"
+      enabled: 1
+      model: "approach"
+      points: [1.3, 0.4, 1.3, -0.4, 0.2, -0.4, 0.2, 0.4]
+      level: "WARNING"
+      safety_system: 1
+      safety_slow_down_percentage: 40.0
+      time_before_collision: 1.0
+      simulation_time_step: 0.1
+      actions: ["safety_system"]
+modules:
+  - name: "dummy"
+    supervisor: 0
+    safety_system: 0
+)";
+  const std::string config_path = write_temp_config(config_text, "collision_ttc_visualization_no_hit");
+
+  auto node = std::make_shared<rclcpp::Node>("fault_detector_test_collision_ttc_visualization_no_hit");
+  nav2_monitor::FaultDetector detector(node.get());
+  nav2_monitor::MonitorDataStore store;
+  detector.load_config(config_path);
+
+  const auto now = node->now();
+  store.set_prediction_motion(1.0, 0.0, 0.0, now);
+
+  auto faults = detector.detect_faults(store, now);
+  EXPECT_TRUE(faults.empty());
+
+  const auto & vis = detector.get_collision_ttc_visualization();
+  EXPECT_TRUE(vis.enabled);
+  EXPECT_TRUE(vis.active);
+  EXPECT_TRUE(vis.zone_name.empty());
+  EXPECT_LT(vis.ttc_s, 0.0);
+  EXPECT_FALSE(vis.trajectory_points.empty());
+  EXPECT_FALSE(vis.corridor_outline.empty());
   EXPECT_FALSE(vis.footprint_samples.empty());
 
   std::remove(config_path.c_str());
@@ -1378,6 +1669,7 @@ collision_detection:
   module_name: "collision_detection"
   source_timeout_s: 1.0
   direction_speed_threshold: 0.05
+  direction_confirm_count: 1
   zones:
     - name: "rear_stop"
       enabled: 1
@@ -1411,6 +1703,61 @@ modules:
   std::remove(config_path.c_str());
 }
 
+TEST_F(FaultDetectorTest, CollisionZoneRequiresConfirmedDirectionBeforeForwardZoneTriggers)
+{
+  const std::string config_text = R"(
+multi_value_judge:
+  trigger_count: 1
+  recover_count: 1
+collision_detection:
+  enabled: 1
+  module_name: "collision_detection"
+  source_timeout_s: 1.0
+  direction_speed_threshold: 0.05
+  direction_confirm_count: 3
+  zones:
+    - name: "front_stop"
+      enabled: 1
+      motion_direction: "forward"
+      points: [0.5, 0.25, 0.5, -0.25, 0.0, -0.25, 0.0, 0.25]
+      min_points: 1
+      level: "CRITICAL"
+      safety_system: 2
+      actions: ["safety_system"]
+modules:
+  - name: "dummy"
+    supervisor: 0
+    safety_system: 0
+)";
+  const std::string config_path = write_temp_config(
+    config_text, "collision_direction_requires_confirmed_forward_samples");
+
+  auto node = std::make_shared<rclcpp::Node>(
+    "fault_detector_test_collision_direction_requires_confirmed_forward_samples");
+  nav2_monitor::FaultDetector detector(node.get());
+  nav2_monitor::MonitorDataStore store;
+  detector.load_config(config_path);
+
+  const auto t0 = node->now();
+  store.set_prediction_motion(1.0, 0.0, 0.0, t0);
+  store.set_collision_points("scan", {nav2_monitor::CollisionPoint{0.2, 0.0}}, t0);
+  EXPECT_TRUE(detector.detect_faults(store, t0).empty());
+
+  const auto t1 = t0 + rclcpp::Duration::from_seconds(0.1);
+  store.set_prediction_motion(1.0, 0.0, 0.0, t1);
+  store.set_collision_points("scan", {nav2_monitor::CollisionPoint{0.2, 0.0}}, t1);
+  EXPECT_TRUE(detector.detect_faults(store, t1).empty());
+
+  const auto t2 = t1 + rclcpp::Duration::from_seconds(0.1);
+  store.set_prediction_motion(1.0, 0.0, 0.0, t2);
+  store.set_collision_points("scan", {nav2_monitor::CollisionPoint{0.2, 0.0}}, t2);
+  auto faults = detector.detect_faults(store, t2);
+  ASSERT_EQ(faults.size(), 1u);
+  EXPECT_NE(faults[0].reason.find("front_stop"), std::string::npos);
+
+  std::remove(config_path.c_str());
+}
+
 TEST_F(FaultDetectorTest, CollisionZoneIgnoresFrontStopWhenReversing)
 {
   const std::string config_text = R"(
@@ -1422,6 +1769,7 @@ collision_detection:
   module_name: "collision_detection"
   source_timeout_s: 1.0
   direction_speed_threshold: 0.05
+  direction_confirm_count: 1
   zones:
     - name: "front_stop"
       enabled: 1
@@ -1455,7 +1803,7 @@ modules:
   std::remove(config_path.c_str());
 }
 
-TEST_F(FaultDetectorTest, CollisionZoneKeepsLastDirectionWhenSpeedNearZero)
+TEST_F(FaultDetectorTest, CollisionZoneRequiresConfirmedReverseSamplesBeforeSwitchingDirection)
 {
   const std::string config_text = R"(
 multi_value_judge:
@@ -1466,6 +1814,7 @@ collision_detection:
   module_name: "collision_detection"
   source_timeout_s: 1.0
   direction_speed_threshold: 0.05
+  direction_confirm_count: 3
   zones:
     - name: "front_stop"
       enabled: 1
@@ -1488,9 +1837,89 @@ modules:
     supervisor: 0
     safety_system: 0
 )";
-  const std::string config_path = write_temp_config(config_text, "collision_direction_hold_last");
+  const std::string config_path = write_temp_config(
+    config_text, "collision_direction_requires_confirmed_reverse_samples");
 
-  auto node = std::make_shared<rclcpp::Node>("fault_detector_test_collision_direction_hold_last");
+  auto node = std::make_shared<rclcpp::Node>(
+    "fault_detector_test_collision_direction_requires_confirmed_reverse_samples");
+  nav2_monitor::FaultDetector detector(node.get());
+  nav2_monitor::MonitorDataStore store;
+  detector.load_config(config_path);
+
+  const auto t0 = node->now();
+  store.set_prediction_motion(1.0, 0.0, 0.0, t0);
+  store.set_collision_points("scan", {nav2_monitor::CollisionPoint{2.0, 2.0}}, t0);
+  EXPECT_TRUE(detector.detect_faults(store, t0).empty());
+
+  const auto t1 = t0 + rclcpp::Duration::from_seconds(0.1);
+  store.set_prediction_motion(1.0, 0.0, 0.0, t1);
+  store.set_collision_points("scan", {nav2_monitor::CollisionPoint{2.0, 2.0}}, t1);
+  EXPECT_TRUE(detector.detect_faults(store, t1).empty());
+
+  const auto t2 = t1 + rclcpp::Duration::from_seconds(0.1);
+  store.set_prediction_motion(1.0, 0.0, 0.0, t2);
+  store.set_collision_points("scan", {nav2_monitor::CollisionPoint{2.0, 2.0}}, t2);
+  EXPECT_TRUE(detector.detect_faults(store, t2).empty());
+
+  const auto r0 = t2 + rclcpp::Duration::from_seconds(0.1);
+  store.set_prediction_motion(-1.0, 0.0, 0.0, r0);
+  store.set_collision_points("scan", {nav2_monitor::CollisionPoint{-0.2, 0.0}}, r0);
+  EXPECT_TRUE(detector.detect_faults(store, r0).empty());
+
+  const auto r1 = r0 + rclcpp::Duration::from_seconds(0.1);
+  store.set_prediction_motion(-1.0, 0.0, 0.0, r1);
+  store.set_collision_points("scan", {nav2_monitor::CollisionPoint{-0.2, 0.0}}, r1);
+  EXPECT_TRUE(detector.detect_faults(store, r1).empty());
+
+  const auto r2 = r1 + rclcpp::Duration::from_seconds(0.1);
+  store.set_prediction_motion(-1.0, 0.0, 0.0, r2);
+  store.set_collision_points("scan", {nav2_monitor::CollisionPoint{-0.2, 0.0}}, r2);
+  auto faults = detector.detect_faults(store, r2);
+  ASSERT_EQ(faults.size(), 1u);
+  EXPECT_NE(faults[0].reason.find("rear_stop"), std::string::npos);
+
+  std::remove(config_path.c_str());
+}
+
+TEST_F(FaultDetectorTest, CollisionZoneSkipsDirectionalZonesWhenSpeedNearZero)
+{
+  const std::string config_text = R"(
+multi_value_judge:
+  trigger_count: 1
+  recover_count: 1
+collision_detection:
+  enabled: 1
+  module_name: "collision_detection"
+  source_timeout_s: 1.0
+  direction_speed_threshold: 0.05
+  direction_confirm_count: 1
+  zones:
+    - name: "front_stop"
+      enabled: 1
+      motion_direction: "forward"
+      points: [0.5, 0.25, 0.5, -0.25, 0.0, -0.25, 0.0, 0.25]
+      min_points: 1
+      level: "CRITICAL"
+      safety_system: 2
+      actions: ["safety_system"]
+    - name: "rear_stop"
+      enabled: 1
+      motion_direction: "reverse"
+      points: [0.0, 0.25, 0.0, -0.25, -0.45, -0.25, -0.45, 0.25]
+      min_points: 1
+      level: "CRITICAL"
+      safety_system: 2
+      actions: ["safety_system"]
+modules:
+  - name: "dummy"
+    supervisor: 0
+    safety_system: 0
+)";
+  const std::string config_path = write_temp_config(
+    config_text, "collision_direction_skip_directional_zones_near_zero");
+
+  auto node = std::make_shared<rclcpp::Node>(
+    "fault_detector_test_collision_direction_skip_directional_zones_near_zero");
   nav2_monitor::FaultDetector detector(node.get());
   nav2_monitor::MonitorDataStore store;
   detector.load_config(config_path);
@@ -1510,6 +1939,62 @@ modules:
 
   auto faults = detector.detect_faults(store, near_zero_time);
   EXPECT_TRUE(faults.empty());
+
+  std::remove(config_path.c_str());
+}
+
+TEST_F(FaultDetectorTest, CollisionZoneKeepsStableDirectionalFaultWhenSpeedNearZero)
+{
+  const std::string config_text = R"(
+multi_value_judge:
+  trigger_count: 1
+  recover_count: 1
+collision_detection:
+  enabled: 1
+  module_name: "collision_detection"
+  source_timeout_s: 1.0
+  direction_speed_threshold: 0.05
+  direction_confirm_count: 1
+  zones:
+    - name: "front_stop"
+      enabled: 1
+      motion_direction: "forward"
+      points: [0.5, 0.25, 0.5, -0.25, 0.0, -0.25, 0.0, 0.25]
+      min_points: 1
+      level: "CRITICAL"
+      safety_system: 2
+      actions: ["safety_system"]
+modules:
+  - name: "dummy"
+    supervisor: 0
+    safety_system: 0
+)";
+  const std::string config_path = write_temp_config(
+    config_text, "collision_direction_near_zero_clears_directional_zone");
+
+  auto node = std::make_shared<rclcpp::Node>(
+    "fault_detector_test_collision_direction_near_zero_clears_directional_zone");
+  nav2_monitor::FaultDetector detector(node.get());
+  nav2_monitor::MonitorDataStore store;
+  detector.load_config(config_path);
+
+  const auto now = node->now();
+  store.set_prediction_motion(1.0, 0.0, 0.0, now);
+  store.set_collision_points("scan", {
+    nav2_monitor::CollisionPoint{0.2, 0.0}
+  }, now);
+  auto faults = detector.detect_faults(store, now);
+  ASSERT_EQ(faults.size(), 1u);
+
+  const auto near_zero_time = now + rclcpp::Duration::from_seconds(0.1);
+  store.set_prediction_motion(0.01, 0.0, 0.0, near_zero_time);
+  store.set_collision_points("scan", {
+    nav2_monitor::CollisionPoint{0.2, 0.0}
+  }, near_zero_time);
+
+  faults = detector.detect_faults(store, near_zero_time);
+  ASSERT_EQ(faults.size(), 1u);
+  EXPECT_EQ(faults[0].safety_command, nav2_monitor::SafetyCommandType::SOFT_STOP);
 
   std::remove(config_path.c_str());
 }

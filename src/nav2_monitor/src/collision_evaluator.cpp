@@ -1,5 +1,6 @@
 #include "nav2_monitor/collision_evaluator.hpp"
 
+#include <algorithm>
 #include <sstream>
 #include <cmath>
 #include <limits>
@@ -22,7 +23,9 @@ void CollisionEvaluator::set_multi_value_config(const MultiValueJudgeConfig & co
 void CollisionEvaluator::reset()
 {
   judge_states_.clear();
-  last_motion_direction_ = RuntimeMotionDirection::UNKNOWN;
+  stable_motion_direction_ = RuntimeMotionDirection::UNKNOWN;
+  pending_motion_direction_ = RuntimeMotionDirection::UNKNOWN;
+  pending_motion_direction_count_ = 0;
 }
 
 bool CollisionEvaluator::is_point_inside_polygon(
@@ -94,6 +97,39 @@ double CollisionEvaluator::point_to_polygon_distance(
   return std::isfinite(min_distance) ? min_distance : point_norm(point);
 }
 
+double CollisionEvaluator::point_to_polyline_distance(
+  const CollisionPoint & point,
+  const std::vector<CollisionPoint> & polyline)
+{
+  if (polyline.empty()) {
+    return point_norm(point);
+  }
+
+  if (polyline.size() == 1) {
+    const double dx = point.x - polyline.front().x;
+    const double dy = point.y - polyline.front().y;
+    return std::sqrt(dx * dx + dy * dy);
+  }
+
+  double min_distance = std::numeric_limits<double>::infinity();
+  for (size_t idx = 0; idx + 1 < polyline.size(); ++idx) {
+    min_distance = std::min(
+      min_distance,
+      point_to_segment_distance(point, polyline[idx], polyline[idx + 1]));
+  }
+  return std::isfinite(min_distance) ? min_distance : point_norm(point);
+}
+
+double CollisionEvaluator::compute_bounding_radius(
+  const std::vector<CollisionPoint> & footprint)
+{
+  double radius = 0.0;
+  for (const auto & point : footprint) {
+    radius = std::max(radius, point_norm(point));
+  }
+  return radius;
+}
+
 
 std::vector<CollisionPoint> CollisionEvaluator::transform_polygon(
   const std::vector<CollisionPoint> & polygon,
@@ -112,6 +148,128 @@ std::vector<CollisionPoint> CollisionEvaluator::transform_polygon(
       point.weight});
   }
   return transformed;
+}
+
+std::vector<CollisionPoint> CollisionEvaluator::sample_centerline(
+  double linear_x,
+  double linear_y,
+  double angular_z,
+  double horizon_s,
+  double time_step_s)
+{
+  std::vector<CollisionPoint> samples;
+  double pos_x = 0.0;
+  double pos_y = 0.0;
+  double yaw = 0.0;
+  const double dt = std::max(0.01, time_step_s);
+
+  for (double sim_t = 0.0; sim_t <= horizon_s + 1e-9; sim_t += dt) {
+    samples.push_back(CollisionPoint{pos_x, pos_y, 1.0});
+
+    const double cos_yaw = std::cos(yaw);
+    const double sin_yaw = std::sin(yaw);
+    pos_x += (linear_x * cos_yaw - linear_y * sin_yaw) * dt;
+    pos_y += (linear_x * sin_yaw + linear_y * cos_yaw) * dt;
+    yaw += angular_z * dt;
+  }
+
+  return samples;
+}
+
+std::vector<CollisionPoint> CollisionEvaluator::collect_ttc_candidate_points(
+  const std::vector<CollisionPoint> & points,
+  const std::vector<CollisionPoint> & centerline,
+  double corridor_radius)
+{
+  std::vector<CollisionPoint> candidates;
+  candidates.reserve(points.size());
+
+  for (const auto & point : points) {
+    if (point_to_polyline_distance(point, centerline) <= corridor_radius) {
+      candidates.push_back(point);
+    }
+  }
+
+  return candidates;
+}
+
+std::vector<CollisionPoint> CollisionEvaluator::downsample_candidate_points(
+  const std::vector<CollisionPoint> & points,
+  double resolution)
+{
+  if (points.empty() || resolution <= 0.0) {
+    return points;
+  }
+
+  std::map<std::pair<int, int>, CollisionPoint> selected;
+  for (const auto & point : points) {
+    const int cell_x = static_cast<int>(std::floor(point.x / resolution));
+    const int cell_y = static_cast<int>(std::floor(point.y / resolution));
+    const auto key = std::make_pair(cell_x, cell_y);
+    const auto it = selected.find(key);
+    if (it == selected.end() || point_norm(point) < point_norm(it->second)) {
+      selected[key] = point;
+    }
+  }
+
+  std::vector<CollisionPoint> filtered;
+  filtered.reserve(selected.size());
+  for (const auto & [_, point] : selected) {
+    filtered.push_back(point);
+  }
+  return filtered;
+}
+
+std::vector<CollisionPoint> CollisionEvaluator::build_corridor_outline(
+  const std::vector<CollisionPoint> & centerline,
+  double corridor_radius)
+{
+  if (centerline.empty() || corridor_radius <= 0.0) {
+    return {};
+  }
+
+  if (centerline.size() == 1) {
+    const auto & point = centerline.front();
+    return {
+      CollisionPoint{point.x - corridor_radius, point.y - corridor_radius, 1.0},
+      CollisionPoint{point.x - corridor_radius, point.y + corridor_radius, 1.0},
+      CollisionPoint{point.x + corridor_radius, point.y + corridor_radius, 1.0},
+      CollisionPoint{point.x + corridor_radius, point.y - corridor_radius, 1.0}
+    };
+  }
+
+  std::vector<CollisionPoint> left_side;
+  std::vector<CollisionPoint> right_side;
+  left_side.reserve(centerline.size());
+  right_side.reserve(centerline.size());
+
+  for (size_t idx = 0; idx < centerline.size(); ++idx) {
+    const auto & current = centerline[idx];
+    const auto & prev = idx == 0 ? centerline[idx] : centerline[idx - 1];
+    const auto & next = idx + 1 < centerline.size() ? centerline[idx + 1] : centerline[idx];
+    const double tangent_x = next.x - prev.x;
+    const double tangent_y = next.y - prev.y;
+    const double tangent_norm = std::sqrt(tangent_x * tangent_x + tangent_y * tangent_y);
+    const double normal_x = tangent_norm > 1e-6 ? -tangent_y / tangent_norm : 0.0;
+    const double normal_y = tangent_norm > 1e-6 ? tangent_x / tangent_norm : 1.0;
+
+    left_side.push_back(CollisionPoint{
+      current.x + normal_x * corridor_radius,
+      current.y + normal_y * corridor_radius,
+      1.0});
+    right_side.push_back(CollisionPoint{
+      current.x - normal_x * corridor_radius,
+      current.y - normal_y * corridor_radius,
+      1.0});
+  }
+
+  std::vector<CollisionPoint> outline;
+  outline.reserve(left_side.size() + right_side.size());
+  outline.insert(outline.end(), left_side.begin(), left_side.end());
+  for (auto it = right_side.rbegin(); it != right_side.rend(); ++it) {
+    outline.push_back(*it);
+  }
+  return outline;
 }
 
 
@@ -231,34 +389,66 @@ bool CollisionEvaluator::update_multi_value_state(
 CollisionEvaluator::RuntimeMotionDirection CollisionEvaluator::resolve_runtime_motion_direction(
   const ChassisRuntimeState & chassis_state,
   double direction_speed_threshold,
+  size_t direction_confirm_count,
   const rclcpp::Time & now,
   double source_timeout_s) const
 {
   const bool prediction_motion_fresh = chassis_state.prediction_speed_received &&
     (now - chassis_state.prediction_speed_stamp).seconds() <= source_timeout_s;
 
-  if (prediction_motion_fresh) {
-    if (chassis_state.prediction_linear_x > direction_speed_threshold) {
-      last_motion_direction_ = RuntimeMotionDirection::FORWARD;
-      return last_motion_direction_;
-    }
-    if (chassis_state.prediction_linear_x < -direction_speed_threshold) {
-      last_motion_direction_ = RuntimeMotionDirection::REVERSE;
-      return last_motion_direction_;
-    }
+  if (!prediction_motion_fresh) {
+    stable_motion_direction_ = RuntimeMotionDirection::UNKNOWN;
+    pending_motion_direction_ = RuntimeMotionDirection::UNKNOWN;
+    pending_motion_direction_count_ = 0;
+    return RuntimeMotionDirection::UNKNOWN;
   }
 
-  return last_motion_direction_;
+  RuntimeMotionDirection sample_direction = RuntimeMotionDirection::UNKNOWN;
+
+  if (chassis_state.prediction_linear_x > direction_speed_threshold) {
+    sample_direction = RuntimeMotionDirection::FORWARD;
+  } else if (chassis_state.prediction_linear_x < -direction_speed_threshold) {
+    sample_direction = RuntimeMotionDirection::REVERSE;
+  }
+
+  if (sample_direction == RuntimeMotionDirection::UNKNOWN) {
+    pending_motion_direction_ = RuntimeMotionDirection::UNKNOWN;
+    pending_motion_direction_count_ = 0;
+    return stable_motion_direction_;
+  }
+
+  if (stable_motion_direction_ == sample_direction) {
+    pending_motion_direction_ = RuntimeMotionDirection::UNKNOWN;
+    pending_motion_direction_count_ = 0;
+    return stable_motion_direction_;
+  }
+
+  if (pending_motion_direction_ != sample_direction) {
+    pending_motion_direction_ = sample_direction;
+    pending_motion_direction_count_ = 1;
+  } else {
+    pending_motion_direction_count_++;
+  }
+
+  if (pending_motion_direction_count_ >= std::max<size_t>(1, direction_confirm_count)) {
+    stable_motion_direction_ = sample_direction;
+    pending_motion_direction_ = RuntimeMotionDirection::UNKNOWN;
+    pending_motion_direction_count_ = 0;
+  }
+
+  return stable_motion_direction_;
 }
 
 bool CollisionEvaluator::zone_matches_motion_direction(
   CollisionMotionDirectionType zone_direction,
   RuntimeMotionDirection runtime_direction)
 {
-  if (zone_direction == CollisionMotionDirectionType::BOTH ||
-    runtime_direction == RuntimeMotionDirection::UNKNOWN)
-  {
+  if (zone_direction == CollisionMotionDirectionType::BOTH) {
     return true;
+  }
+
+  if (runtime_direction == RuntimeMotionDirection::UNKNOWN) {
+    return false;
   }
 
   if (zone_direction == CollisionMotionDirectionType::FORWARD) {
@@ -318,14 +508,10 @@ std::vector<FaultInfo> CollisionEvaluator::evaluate(
   ttc_visualization_.threshold_s = 0.0;
   ttc_visualization_.min_clearance = -1.0;
   ttc_visualization_.collision_point = CollisionPoint{};
+  ttc_visualization_.corridor_outline.clear();
   ttc_visualization_.trajectory_points.clear();
   ttc_visualization_.footprint_samples.clear();
   if (!cfg.enabled) {
-    return faults;
-  }
-
-  const auto points = store.get_collision_points(now, cfg.source_timeout_s);
-  if (points.empty()) {
     return faults;
   }
 
@@ -335,10 +521,60 @@ std::vector<FaultInfo> CollisionEvaluator::evaluate(
   const double current_speed = prediction_speed_fresh ?
     std::fabs(chassis_state.prediction_speed) : 0.0;
   const auto runtime_direction = resolve_runtime_motion_direction(
-    chassis_state, cfg.direction_speed_threshold, now, cfg.source_timeout_s);
+    chassis_state, cfg.direction_speed_threshold, cfg.direction_confirm_count, now,
+    cfg.source_timeout_s);
+  const auto points = store.get_collision_points(now, cfg.source_timeout_s);
+
+  if (cfg.ttc_visualization_enabled && current_speed > 1e-3) {
+    double preview_horizon = 3.0;
+    double preview_margin = 0.10;
+    for (const auto & zone : cfg.zones) {
+      if (zone.model != CollisionModelType::TTC ||
+        !zone_matches_motion_direction(zone.motion_direction, runtime_direction))
+      {
+        continue;
+      }
+      const double zone_horizon = std::max(
+        zone.time_before_collision,
+        std::max(zone.recover_time_before_collision, zone.ttc_horizon_s));
+      preview_horizon = std::max(preview_horizon, zone_horizon);
+      preview_margin = std::max(preview_margin, zone.corridor_margin);
+    }
+
+    ttc_visualization_.active = true;
+    sample_trajectory_visualization(
+      cfg.footprint_points,
+      chassis_state.prediction_linear_x,
+      chassis_state.prediction_linear_y,
+      chassis_state.prediction_angular_z,
+      preview_horizon,
+      0.1,
+      ttc_visualization_.trajectory_points,
+      ttc_visualization_.footprint_samples);
+    if (!cfg.footprint_points.empty()) {
+      const auto preview_centerline = sample_centerline(
+        chassis_state.prediction_linear_x,
+        chassis_state.prediction_linear_y,
+        chassis_state.prediction_angular_z,
+        preview_horizon,
+        0.1);
+      ttc_visualization_.corridor_outline = build_corridor_outline(
+        preview_centerline,
+        compute_bounding_radius(cfg.footprint_points) + preview_margin);
+    }
+  }
+
+  if (points.empty()) {
+    return faults;
+  }
 
   for (const auto & zone : cfg.zones) {
-    if (!zone.enabled || zone.points.size() < 3) {
+    if (!zone.enabled) {
+      continue;
+    }
+
+    const bool is_ttc_zone = zone.model == CollisionModelType::TTC;
+    if (!is_ttc_zone && zone.points.size() < 3) {
       continue;
     }
 
@@ -346,47 +582,67 @@ std::vector<FaultInfo> CollisionEvaluator::evaluate(
     const bool currently_latched = judge_states_[key].latched;
     bool abnormal = false;
     std::string reason;
-    if (zone.model == CollisionModelType::APPROACH) {
+    if (is_ttc_zone) {
+      if (!zone_matches_motion_direction(zone.motion_direction, runtime_direction)) {
+        continue;
+      }
       if (current_speed > 1e-3) {
+        if (cfg.footprint_points.empty()) {
+          RCLCPP_ERROR(
+            rclcpp::get_logger("nav2_monitor.collision_evaluator"),
+            "[collision_detection][%s] model=ttc requires footprint_points",
+            zone.name.c_str());
+          continue;
+        }
+
         double min_collision_time = std::numeric_limits<double>::infinity();
         double min_clearance = std::numeric_limits<double>::infinity();
         CollisionPoint best_point;
-        const bool use_trajectory_ttc = !cfg.footprint_points.empty();
         const double active_threshold =
           (currently_latched && zone.recover_time_before_collision > zone.time_before_collision) ?
           zone.recover_time_before_collision : zone.time_before_collision;
-        for (const auto & point : points) {
-          if (!is_point_inside_polygon(point, zone.points)) {
-            continue;
-          }
+
+        const double active_horizon = std::max(
+          active_threshold,
+          zone.ttc_horizon_s > 0.0 ? zone.ttc_horizon_s : active_threshold);
+        const auto centerline = sample_centerline(
+          chassis_state.prediction_linear_x,
+          chassis_state.prediction_linear_y,
+          chassis_state.prediction_angular_z,
+          active_horizon,
+          zone.simulation_time_step);
+        const double corridor_radius =
+          compute_bounding_radius(cfg.footprint_points) + zone.corridor_margin;
+        const auto corridor_candidates = collect_ttc_candidate_points(
+          points, centerline, corridor_radius);
+        const auto ttc_candidates = downsample_candidate_points(
+          corridor_candidates, zone.candidate_downsample_resolution);
+
+        for (const auto & point : ttc_candidates) {
 
           double collision_time = std::numeric_limits<double>::infinity();
           double clearance = point_norm(point);
-          if (use_trajectory_ttc) {
-            collision_time = estimate_trajectory_collision_time(
-              point,
-              cfg.footprint_points,
-              chassis_state.prediction_linear_x,
-              chassis_state.prediction_linear_y,
-              chassis_state.prediction_angular_z,
-              active_threshold,
-              zone.simulation_time_step,
-              clearance);
-          } else {
-            if (!cfg.footprint_points.empty()) {
-              clearance = point_to_polygon_distance(point, cfg.footprint_points);
-            }
-            collision_time = clearance / current_speed;
-          }
+          collision_time = estimate_trajectory_collision_time(
+            point,
+            cfg.footprint_points,
+            chassis_state.prediction_linear_x,
+            chassis_state.prediction_linear_y,
+            chassis_state.prediction_angular_z,
+            active_horizon,
+            zone.simulation_time_step,
+            clearance);
 
           min_clearance = std::min(min_clearance, clearance);
           if (collision_time < min_collision_time) {
             min_collision_time = collision_time;
             best_point = point;
+            if (min_collision_time <= active_threshold && min_clearance <= 1e-6) {
+              break;
+            }
           }
         }
         if (cfg.ttc_visualization_enabled && std::isfinite(min_collision_time) &&
-          (!ttc_visualization_.active || min_collision_time < ttc_visualization_.ttc_s))
+          (ttc_visualization_.ttc_s < 0.0 || min_collision_time < ttc_visualization_.ttc_s))
         {
           ttc_visualization_.active = true;
           ttc_visualization_.zone_name = zone.name;
@@ -395,6 +651,8 @@ std::vector<FaultInfo> CollisionEvaluator::evaluate(
           ttc_visualization_.min_clearance =
             std::isfinite(min_clearance) ? min_clearance : -1.0;
           ttc_visualization_.collision_point = best_point;
+          ttc_visualization_.corridor_outline = build_corridor_outline(
+            centerline, corridor_radius);
           sample_trajectory_visualization(
             cfg.footprint_points,
             chassis_state.prediction_linear_x,
@@ -414,9 +672,7 @@ std::vector<FaultInfo> CollisionEvaluator::evaluate(
           if (std::isfinite(min_clearance)) {
             oss << " clearance=" << min_clearance;
           }
-          if (use_trajectory_ttc) {
-            oss << " mode=trajectory";
-          }
+          oss << " mode=trajectory";
           reason = oss.str();
         }
       }

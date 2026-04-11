@@ -15,6 +15,7 @@
 #include <utility>
 #include <vector>
 
+#include <ament_index_cpp/get_package_share_directory.hpp>
 #include <rclcpp/serialized_message.hpp>
 #include <tf2/exceptions.h>
 #include <tf2/LinearMath/Quaternion.h>
@@ -101,6 +102,25 @@ std::string resolve_config_path(const std::string & config_file)
   const fs::path input(config_file);
   if (input.is_absolute() && fs::exists(input)) {
     return input.string();
+  }
+
+  if (fs::exists(input)) {
+    return fs::absolute(input).lexically_normal().string();
+  }
+
+  try {
+    const fs::path package_share =
+      ament_index_cpp::get_package_share_directory("nav2_monitor");
+    const std::array<fs::path, 2> candidates = {
+      package_share / input,
+      package_share / "config" / input
+    };
+    for (const auto & candidate : candidates) {
+      if (fs::exists(candidate)) {
+        return candidate.lexically_normal().string();
+      }
+    }
+  } catch (const std::exception &) {
   }
 
   return config_file;
@@ -1138,7 +1158,10 @@ void Nav2MonitorNode::configure_collision_monitoring()
       std::bind(&Nav2MonitorNode::on_collision_ultrasonic, this, std::placeholders::_1));
   }
   for (const auto & zone : cfg.zones) {
-    if (!zone.visualize || zone.points.size() < 3) {
+    if (
+      zone.model == CollisionModelType::TTC ||
+      !zone.visualize || zone.points.size() < 3)
+    {
       continue;
     }
     auto qos = rclcpp::QoS(1).transient_local().reliable();
@@ -1464,7 +1487,10 @@ void Nav2MonitorNode::publish_collision_zones()
 
   const auto & cfg = fault_detector_.get_collision_detection_config();
   for (const auto & zone : cfg.zones) {
-    if (!zone.visualize || zone.points.size() < 3) {
+    if (
+      zone.model == CollisionModelType::TTC ||
+      !zone.visualize || zone.points.size() < 3)
+    {
       continue;
     }
 
@@ -1495,10 +1521,10 @@ void Nav2MonitorNode::publish_collision_ttc_markers()
   }
 
   visualization_msgs::msg::MarkerArray marker_array;
-  const auto stamp = now();
+  builtin_interfaces::msg::Time marker_stamp;
 
   visualization_msgs::msg::Marker clear_marker;
-  clear_marker.header.stamp = stamp;
+  clear_marker.header.stamp = marker_stamp;
   clear_marker.header.frame_id = base_frame_id_;
   clear_marker.ns = "collision_ttc";
   clear_marker.id = 0;
@@ -1512,7 +1538,7 @@ void Nav2MonitorNode::publish_collision_ttc_markers()
   }
 
   visualization_msgs::msg::Marker trajectory_marker;
-  trajectory_marker.header.stamp = stamp;
+  trajectory_marker.header.stamp = marker_stamp;
   trajectory_marker.header.frame_id = base_frame_id_;
   trajectory_marker.ns = "collision_ttc_trajectory";
   trajectory_marker.id = 1;
@@ -1532,13 +1558,41 @@ void Nav2MonitorNode::publish_collision_ttc_markers()
   }
   marker_array.markers.push_back(trajectory_marker);
 
+  if (!vis.corridor_outline.empty()) {
+    visualization_msgs::msg::Marker corridor_marker;
+    corridor_marker.header.stamp = marker_stamp;
+    corridor_marker.header.frame_id = base_frame_id_;
+    corridor_marker.ns = "collision_ttc_corridor";
+    corridor_marker.id = 4;
+    corridor_marker.type = visualization_msgs::msg::Marker::LINE_STRIP;
+    corridor_marker.action = visualization_msgs::msg::Marker::ADD;
+    corridor_marker.scale.x = 0.02;
+    corridor_marker.color.r = 1.0F;
+    corridor_marker.color.g = 0.65F;
+    corridor_marker.color.b = 0.10F;
+    corridor_marker.color.a = 0.70F;
+    for (const auto & point : vis.corridor_outline) {
+      geometry_msgs::msg::Point p;
+      p.x = point.x;
+      p.y = point.y;
+      p.z = 0.02;
+      corridor_marker.points.push_back(p);
+    }
+    geometry_msgs::msg::Point close_p;
+    close_p.x = vis.corridor_outline.front().x;
+    close_p.y = vis.corridor_outline.front().y;
+    close_p.z = 0.02;
+    corridor_marker.points.push_back(close_p);
+    marker_array.markers.push_back(corridor_marker);
+  }
+
   int footprint_marker_id = 100;
   for (const auto & polygon : vis.footprint_samples) {
     if (polygon.empty()) {
       continue;
     }
     visualization_msgs::msg::Marker footprint_marker;
-    footprint_marker.header.stamp = stamp;
+    footprint_marker.header.stamp = marker_stamp;
     footprint_marker.header.frame_id = base_frame_id_;
     footprint_marker.ns = "collision_ttc_footprint";
     footprint_marker.id = footprint_marker_id++;
@@ -1564,49 +1618,54 @@ void Nav2MonitorNode::publish_collision_ttc_markers()
     marker_array.markers.push_back(footprint_marker);
   }
 
-  visualization_msgs::msg::Marker collision_point_marker;
-  collision_point_marker.header.stamp = stamp;
-  collision_point_marker.header.frame_id = base_frame_id_;
-  collision_point_marker.ns = "collision_ttc_point";
-  collision_point_marker.id = 2;
-  collision_point_marker.type = visualization_msgs::msg::Marker::SPHERE;
-  collision_point_marker.action = visualization_msgs::msg::Marker::ADD;
-  collision_point_marker.pose.position.x = vis.collision_point.x;
-  collision_point_marker.pose.position.y = vis.collision_point.y;
-  collision_point_marker.pose.position.z = 0.05;
-  collision_point_marker.pose.orientation.w = 1.0;
-  collision_point_marker.scale.x = 0.08;
-  collision_point_marker.scale.y = 0.08;
-  collision_point_marker.scale.z = 0.08;
-  collision_point_marker.color.r = 1.0F;
-  collision_point_marker.color.g = 0.2F;
-  collision_point_marker.color.b = 0.1F;
-  collision_point_marker.color.a = 0.95F;
-  marker_array.markers.push_back(collision_point_marker);
+  if (vis.ttc_s >= 0.0) {
+    visualization_msgs::msg::Marker collision_point_marker;
+    collision_point_marker.header.stamp = marker_stamp;
+    collision_point_marker.header.frame_id = base_frame_id_;
+    collision_point_marker.ns = "collision_ttc_point";
+    collision_point_marker.id = 2;
+    collision_point_marker.type = visualization_msgs::msg::Marker::SPHERE;
+    collision_point_marker.action = visualization_msgs::msg::Marker::ADD;
+    collision_point_marker.pose.position.x = vis.collision_point.x;
+    collision_point_marker.pose.position.y = vis.collision_point.y;
+    collision_point_marker.pose.position.z = 0.05;
+    collision_point_marker.pose.orientation.w = 1.0;
+    collision_point_marker.scale.x = 0.08;
+    collision_point_marker.scale.y = 0.08;
+    collision_point_marker.scale.z = 0.08;
+    collision_point_marker.color.r = 1.0F;
+    collision_point_marker.color.g = 0.2F;
+    collision_point_marker.color.b = 0.1F;
+    collision_point_marker.color.a = 0.95F;
+    marker_array.markers.push_back(collision_point_marker);
 
-  visualization_msgs::msg::Marker text_marker;
-  text_marker.header.stamp = stamp;
-  text_marker.header.frame_id = base_frame_id_;
-  text_marker.ns = "collision_ttc_text";
-  text_marker.id = 3;
-  text_marker.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
-  text_marker.action = visualization_msgs::msg::Marker::ADD;
-  text_marker.pose.position.x = vis.collision_point.x;
-  text_marker.pose.position.y = vis.collision_point.y;
-  text_marker.pose.position.z = 0.35;
-  text_marker.pose.orientation.w = 1.0;
-  text_marker.scale.z = 0.12;
-  text_marker.color.r = 1.0F;
-  text_marker.color.g = 1.0F;
-  text_marker.color.b = 1.0F;
-  text_marker.color.a = 1.0F;
-  std::ostringstream oss;
-  oss << vis.zone_name << " ttc=" << std::fixed << std::setprecision(2) << vis.ttc_s;
-  if (vis.min_clearance >= 0.0) {
-    oss << " clr=" << std::fixed << std::setprecision(2) << vis.min_clearance;
+    visualization_msgs::msg::Marker text_marker;
+    text_marker.header.stamp = marker_stamp;
+    text_marker.header.frame_id = base_frame_id_;
+    text_marker.ns = "collision_ttc_text";
+    text_marker.id = 3;
+    text_marker.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
+    text_marker.action = visualization_msgs::msg::Marker::ADD;
+    text_marker.pose.position.x = vis.collision_point.x;
+    text_marker.pose.position.y = vis.collision_point.y;
+    text_marker.pose.position.z = 0.35;
+    text_marker.pose.orientation.w = 1.0;
+    text_marker.scale.z = 0.12;
+    text_marker.color.r = 1.0F;
+    text_marker.color.g = 1.0F;
+    text_marker.color.b = 1.0F;
+    text_marker.color.a = 1.0F;
+    std::ostringstream oss;
+    if (!vis.zone_name.empty()) {
+      oss << vis.zone_name << ' ';
+    }
+    oss << "ttc=" << std::fixed << std::setprecision(2) << vis.ttc_s;
+    if (vis.min_clearance >= 0.0) {
+      oss << " clr=" << std::fixed << std::setprecision(2) << vis.min_clearance;
+    }
+    text_marker.text = oss.str();
+    marker_array.markers.push_back(text_marker);
   }
-  text_marker.text = oss.str();
-  marker_array.markers.push_back(text_marker);
 
   collision_ttc_markers_pub_->publish(marker_array);
 }

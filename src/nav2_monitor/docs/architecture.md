@@ -150,26 +150,27 @@
 - 针对每个 zone 做几何判定
 - 输出统一 `FaultInfo`
 
-当前 `approach / TTC` 已支持以下增强能力：
+当前 `ttc` 动态预警区已支持以下增强能力：
 
 - 可直接使用车体 `footprint_points` 计算障碍点到车体轮廓的最短距离
 - 可基于 `prediction_motion` 做轻量预测轨迹 TTC，而不只使用单一前向速度
 - 支持 `recover_time_before_collision` 形成退出滞回
 - 支持 `min_hold_time_s` 保持故障一段时间，避免临界抖动
-- 未配置 footprint 时，仍可回退到简化版 `distance / speed` 估算
+- 未配置 footprint 时，该 TTC 规则会被安全跳过，不再回退到简化版 `distance / speed`
 
 `zone` 模式的缓停/急停区现在额外支持：
 
 - `motion_direction=forward/reverse/both`
-- 使用 `prediction_linear_x` 结合 `direction_speed_threshold` 判断当前运动方向
-- 当速度接近 0 时，保持上一次有效方向，避免前后区在临界值抖动
-- 该逻辑只作用于 `zone` 分支，不影响 `approach / TTC`
+- 使用 `prediction_linear_x` 结合 `direction_speed_threshold` 维护当前稳定运动方向
+- 当速度接近 0 时保持当前稳定方向；若尚未建立稳定方向，则仅 `both` 区域继续生效
+- 连续 `direction_confirm_count` 帧收到相反方向速度后，`zone/ttc` 才切换到新方向
+- 预测速度超时时会清空稳定方向，重新等待方向建立
 
-`approach / TTC` 可视化现在支持：
+`ttc` 可视化现在支持：
 
 - 配置项：`collision_detection.ttc_visualization_enabled`
 - 话题：`/nav2_monitor/collision_ttc_markers`
-- 内容：预测轨迹、预测 footprint、最近碰撞点、TTC 文本
+- 内容：动态 corridor、预测轨迹、预测 footprint、最近碰撞点、TTC 文本
 - 默认关闭，避免增加现网运行开销
 
 ### 3.7 FaultDetector
@@ -294,6 +295,11 @@
 - `pointcloud_min_height`
 - `pointcloud_max_height`
 - `source_timeout_s`
+- `direction_speed_threshold`
+- `direction_confirm_count`
+- `prediction_speed_topic`
+- `ttc_visualization_enabled`
+- `footprint_points`
 - `zones`
 
 ### 5.4 `zones`

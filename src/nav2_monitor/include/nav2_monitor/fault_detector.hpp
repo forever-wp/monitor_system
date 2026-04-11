@@ -75,7 +75,8 @@ struct ModuleConfig
 enum class CollisionModelType
 {
   ZONE = 0,
-  APPROACH = 1
+  TTC = 1,
+  APPROACH = TTC
 };
 
 enum class CollisionMotionDirectionType
@@ -113,6 +114,9 @@ struct CollisionZoneConfig
   double time_before_collision{1.0};
   double recover_time_before_collision{0.0};
   double min_hold_time_s{0.0};
+  double ttc_horizon_s{0.0};
+  double corridor_margin{0.10};
+  double candidate_downsample_resolution{0.08};
   double simulation_time_step{0.1};
 };
 
@@ -133,6 +137,7 @@ struct CollisionDetectionConfig
   double pointcloud_max_height{2.0};
   double source_timeout_s{0.5};
   double direction_speed_threshold{0.05};
+  size_t direction_confirm_count{3};
   std::vector<CollisionPoint> footprint_points;
   std::vector<UltrasonicSensorConfig> ultrasonic_sensors;
   std::vector<CollisionZoneConfig> zones;
@@ -147,6 +152,7 @@ struct CollisionTtcVisualizationState
   double threshold_s{0.0};
   double min_clearance{-1.0};
   CollisionPoint collision_point;
+  std::vector<CollisionPoint> corridor_outline;
   std::vector<CollisionPoint> trajectory_points;
   std::vector<std::vector<CollisionPoint>> footprint_samples;
 };

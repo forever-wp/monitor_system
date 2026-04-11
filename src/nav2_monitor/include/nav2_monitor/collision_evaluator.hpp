@@ -51,11 +51,32 @@ private:
   static double point_to_polygon_distance(
     const CollisionPoint & point,
     const std::vector<CollisionPoint> & polygon);
+  static double point_to_polyline_distance(
+    const CollisionPoint & point,
+    const std::vector<CollisionPoint> & polyline);
+  static double compute_bounding_radius(
+    const std::vector<CollisionPoint> & footprint);
   static std::vector<CollisionPoint> transform_polygon(
     const std::vector<CollisionPoint> & polygon,
     double x,
     double y,
     double yaw);
+  static std::vector<CollisionPoint> sample_centerline(
+    double linear_x,
+    double linear_y,
+    double angular_z,
+    double horizon_s,
+    double time_step_s);
+  static std::vector<CollisionPoint> collect_ttc_candidate_points(
+    const std::vector<CollisionPoint> & points,
+    const std::vector<CollisionPoint> & centerline,
+    double corridor_radius);
+  static std::vector<CollisionPoint> downsample_candidate_points(
+    const std::vector<CollisionPoint> & points,
+    double resolution);
+  static std::vector<CollisionPoint> build_corridor_outline(
+    const std::vector<CollisionPoint> & centerline,
+    double corridor_radius);
   static double estimate_trajectory_collision_time(
     const CollisionPoint & point,
     const std::vector<CollisionPoint> & footprint,
@@ -84,6 +105,7 @@ private:
   RuntimeMotionDirection resolve_runtime_motion_direction(
     const ChassisRuntimeState & chassis_state,
     double direction_speed_threshold,
+    size_t direction_confirm_count,
     const rclcpp::Time & now,
     double source_timeout_s) const;
   static bool zone_matches_motion_direction(
@@ -98,7 +120,9 @@ private:
 
   MultiValueJudgeConfig multi_value_cfg_{2, 2};
   mutable std::map<std::string, RuleJudgeState> judge_states_;
-  mutable RuntimeMotionDirection last_motion_direction_{RuntimeMotionDirection::UNKNOWN};
+  mutable RuntimeMotionDirection stable_motion_direction_{RuntimeMotionDirection::UNKNOWN};
+  mutable RuntimeMotionDirection pending_motion_direction_{RuntimeMotionDirection::UNKNOWN};
+  mutable size_t pending_motion_direction_count_{0};
   mutable CollisionTtcVisualizationState ttc_visualization_;
 };
 

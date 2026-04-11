@@ -443,6 +443,10 @@ void FaultDetector::load_config(const std::string & config_file)
         collision_cfg_.direction_speed_threshold = std::max(
           0.0, cd["direction_speed_threshold"].as<double>());
       }
+      if (cd["direction_confirm_count"]) {
+        collision_cfg_.direction_confirm_count = std::max(
+          size_t{1}, cd["direction_confirm_count"].as<size_t>());
+      }
       collision_cfg_.footprint_points.clear();
       if (cd["footprint_points"] && cd["footprint_points"].IsSequence()) {
         std::vector<double> footprint_values;
@@ -509,8 +513,14 @@ void FaultDetector::load_config(const std::string & config_file)
             zone.name = zone_node["name"].as<std::string>();
             if (zone_node["model"]) {
               const auto model = to_lower(zone_node["model"].as<std::string>());
-              if (model == "approach") {
-                zone.model = CollisionModelType::APPROACH;
+              if (model == "ttc") {
+                zone.model = CollisionModelType::TTC;
+              } else if (model == "approach") {
+                zone.model = CollisionModelType::TTC;
+                RCLCPP_WARN(
+                  node_->get_logger(),
+                  "[collision_detection][%s] model=approach is deprecated; use model=ttc",
+                  zone.name.c_str());
               }
             }
             if (zone_node["motion_direction"]) {
@@ -560,6 +570,16 @@ void FaultDetector::load_config(const std::string & config_file)
             if (zone_node["min_hold_time_s"]) {
               zone.min_hold_time_s = std::max(0.0, zone_node["min_hold_time_s"].as<double>());
             }
+            if (zone_node["ttc_horizon_s"]) {
+              zone.ttc_horizon_s = std::max(0.0, zone_node["ttc_horizon_s"].as<double>());
+            }
+            if (zone_node["corridor_margin"]) {
+              zone.corridor_margin = std::max(0.0, zone_node["corridor_margin"].as<double>());
+            }
+            if (zone_node["candidate_downsample_resolution"]) {
+              zone.candidate_downsample_resolution = std::max(
+                0.01, zone_node["candidate_downsample_resolution"].as<double>());
+            }
             if (zone_node["simulation_time_step"]) {
               zone.simulation_time_step = std::max(0.01, zone_node["simulation_time_step"].as<double>());
             }
@@ -599,7 +619,7 @@ void FaultDetector::load_config(const std::string & config_file)
                 }
               }
             }
-            if (zone.points.size() >= 3) {
+            if (zone.model == CollisionModelType::TTC || zone.points.size() >= 3) {
               collision_cfg_.zones.push_back(std::move(zone));
             }
           } catch (const std::exception & e) {

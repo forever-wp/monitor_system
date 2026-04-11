@@ -6,6 +6,7 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 endif()
 
 find_package(ament_cmake REQUIRED)
+find_package(ament_index_cpp REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
@@ -46,7 +47,7 @@ add_executable(nav2_monitor_node
   src/watch_topic_evaluator.cpp
   src/vehicle_status_monitor.cpp
 )
-ament_target_dependencies(nav2_monitor_node rclcpp std_msgs nav_msgs sensor_msgs geometry_msgs visualization_msgs tf2_ros master_interfaces)
+ament_target_dependencies(nav2_monitor_node rclcpp std_msgs nav_msgs sensor_msgs geometry_msgs visualization_msgs tf2_ros master_interfaces ament_index_cpp)
 rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
 target_link_libraries(nav2_monitor_node "${cpp_typesupport_target}")
 target_link_libraries(nav2_monitor_node nvidia-ml yaml-cpp)

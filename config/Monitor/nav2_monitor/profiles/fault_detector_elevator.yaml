@@ -16,7 +16,7 @@ collision_detection:
   scan_topic: "scan"  # LaserScan 输入 topic
   pointcloud_topic: ""  # PointCloud2 输入 topic；电梯任务默认不使用
   ultrasonic_topic: "/ultrasonic_eight"  # 超声波 JSON 输入 topic
-  prediction_speed_topic: "/cmd_vel"  # 提前减速（approach/TTC）使用的预测速度 topic
+  prediction_speed_topic: "/cmd_vel"  # 动态 TTC 使用的预测速度 topic
   ttc_visualization_enabled: 0  # 是否发布 TTC 预测可视化 MarkerArray
   ultrasonic_distances_key: "distances"   # JSON 中 8 路距离数组的键名
   ultrasonic_blind_distance: 0.2  # 超声盲区下限，小于此值按该值处理
@@ -24,22 +24,26 @@ collision_detection:
   pointcloud_min_height: 0.2  # 点云参与碰撞检测的最小高度（米）
   pointcloud_max_height: 1.4  # 点云参与碰撞检测的最大高度（米）
   source_timeout_s: 0.5  # 各碰撞数据源的有效超时时间（秒）
-  direction_speed_threshold: 0.05  # 前后向判断阈值；绝对值低于该值时保持上一次方向
+  direction_speed_threshold: 0.05  # 前后向判断阈值；绝对值低于该值时保持当前稳定方向，未建立稳定方向时仅匹配 both 区域
+  direction_confirm_count: 3  # 方向切换确认帧数；连续收到相反方向速度达到该次数后才切换
   footprint_points: [-0.37, -0.28, -0.37, 0.28, 0.37, 0.28, 0.37, -0.28]  # 车体 footprint，用于 TTC 计算时扣除车体范围
   ultrasonic_widget: [0.9, 1.0, 0.9, 0.85, 0.65, 0.65, 0.65, 0.85]  # 电梯任务：全向更保守，侧向也抬高
   # zones 字段说明见主配置 fault_detector_config.yaml，对所有任务 profile 含义一致
   zones:
-    - name: "front_approach"
+    - name: "front_ttc"
       enabled: 1
-      model: "approach"
-      points: [1.2, 0.45, 1.2, -0.45, 0.2, -0.45, 0.2, 0.45]
+      model: "ttc"
+      motion_direction: "forward"
       level: "WARNING"
       safety_system: 1
       safety_slow_down_percentage: 50.0
       time_before_collision: 4.0     # 电梯任务更早介入
+      recover_time_before_collision: 4.5
+      min_hold_time_s: 0.2
+      ttc_horizon_s: 4.5
+      corridor_margin: 0.10
+      candidate_downsample_resolution: 0.08
       actions: ["safety_system"]
-      visualize: 1
-      polygon_pub_topic: "/nav2_monitor/collision_zone/front_approach"
     - name: "front_slow"
       enabled: 1
       motion_direction: "forward"
