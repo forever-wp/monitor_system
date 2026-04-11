@@ -19,7 +19,7 @@ safety_emergency_executor:
     loc_odom_topic: "/odom"  # 定位里程计 topic，用于双源打滑检测
     imu_topic: "/livox/imu"  # IMU topic，用于高频打滑检测和偏置校准
 
-    acc_: 2000  # 默认加速度字段，写入最终 /command JSON
+    acc_: 300  # 默认加速度字段，写入最终 /command JSON
     press_: 800  # 默认基础压力值，自动调压以此为基线增减
     place_: -1  # 默认位置字段，透传到底盘协议
     ulock_: -1  # 默认解锁字段，透传到底盘协议
