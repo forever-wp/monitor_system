@@ -71,6 +71,10 @@ private:
     const std::vector<CollisionPoint> & points,
     const std::vector<CollisionPoint> & centerline,
     double corridor_radius);
+  static std::vector<CollisionPoint> collect_evaluation_points(
+    const CollisionDetectionConfig & cfg,
+    const MonitorDataStore & store,
+    const rclcpp::Time & now);
   static std::vector<CollisionPoint> downsample_candidate_points(
     const std::vector<CollisionPoint> & points,
     double resolution);

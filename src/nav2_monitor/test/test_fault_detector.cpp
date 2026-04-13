@@ -1820,6 +1820,161 @@ modules:
   std::remove(config_path.c_str());
 }
 
+TEST_F(FaultDetectorTest, CollisionZoneUsesVoxelOccupancyWeight)
+{
+  const std::string config_text = R"(
+multi_value_judge:
+  trigger_count: 1
+  recover_count: 1
+collision_detection:
+  enabled: 1
+  module_name: "collision_detection"
+  voxel_topic: "/collision_voxel_layer/grid"
+  voxel_min_occupancy: 0.35
+  voxel_min_height: 0.0
+  voxel_max_height: 0.5
+  source_timeout_s: 1.0
+  zones:
+    - name: "front_stop"
+      enabled: 1
+      points: [0.5, 0.2, 0.5, -0.2, 0.0, -0.2, 0.0, 0.2]
+      min_points: 1.0
+      level: "CRITICAL"
+      safety_system: 2
+      actions: ["safety_system"]
+modules:
+  - name: "dummy"
+    supervisor: 0
+    safety_system: 0
+)";
+  const std::string config_path = write_temp_config(
+    config_text, "collision_detection_voxel_zone_weight");
+
+  auto node = std::make_shared<rclcpp::Node>("fault_detector_test_collision_voxel_zone_weight");
+  nav2_monitor::FaultDetector detector(node.get());
+  nav2_monitor::MonitorDataStore store;
+  detector.load_config(config_path);
+
+  const auto now = node->now();
+  store.set_collision_voxels({
+      nav2_monitor::CollisionVoxel{0.10, 0.00, 0.20, 0.60, 0x01U},
+      nav2_monitor::CollisionVoxel{0.20, 0.10, 0.20, 0.50, 0x02U},
+      nav2_monitor::CollisionVoxel{0.15, 0.05, 0.90, 0.90, 0x01U}
+    }, now);
+
+  auto faults = detector.detect_faults(store, now);
+  ASSERT_EQ(faults.size(), 1u);
+  EXPECT_NE(faults[0].reason.find("weighted_points=1.1"), std::string::npos);
+  EXPECT_EQ(faults[0].safety_command, nav2_monitor::SafetyCommandType::SOFT_STOP);
+
+  std::remove(config_path.c_str());
+}
+
+TEST_F(FaultDetectorTest, CollisionTtcUsesVoxelCellCentersAsCandidates)
+{
+  const std::string config_text = R"(
+multi_value_judge:
+  trigger_count: 1
+  recover_count: 1
+collision_detection:
+  enabled: 1
+  module_name: "collision_detection"
+  voxel_topic: "/collision_voxel_layer/grid"
+  voxel_min_occupancy: 0.35
+  source_timeout_s: 1.0
+  direction_confirm_count: 1
+  footprint_points: [-0.3, -0.2, -0.3, 0.2, 0.3, 0.2, 0.3, -0.2]
+  zones:
+    - name: "front_ttc"
+      enabled: 1
+      model: "ttc"
+      motion_direction: "forward"
+      time_before_collision: 3.0
+      ttc_horizon_s: 3.0
+      corridor_margin: 0.10
+      candidate_downsample_resolution: 0.05
+      simulation_time_step: 0.1
+modules:
+  - name: "dummy"
+    supervisor: 0
+    safety_system: 0
+)";
+  const std::string config_path = write_temp_config(
+    config_text, "collision_detection_voxel_ttc");
+
+  auto node = std::make_shared<rclcpp::Node>("fault_detector_test_collision_voxel_ttc");
+  nav2_monitor::FaultDetector detector(node.get());
+  nav2_monitor::MonitorDataStore store;
+  detector.load_config(config_path);
+
+  const auto now = node->now();
+  store.set_prediction_motion(0.30, 0.0, 0.0, now);
+  store.set_collision_voxels({
+      nav2_monitor::CollisionVoxel{0.60, 0.00, 0.20, 0.80, 0x01U}
+    }, now);
+
+  auto faults = detector.detect_faults(store, now);
+  ASSERT_EQ(faults.size(), 1u);
+  EXPECT_NE(faults[0].reason.find("Collision approach alert"), std::string::npos);
+
+  std::remove(config_path.c_str());
+}
+
+TEST_F(FaultDetectorTest, CollisionTtcIgnoresLowOccupancyVoxelCells)
+{
+  const std::string config_text = R"(
+multi_value_judge:
+  trigger_count: 1
+  recover_count: 1
+collision_detection:
+  enabled: 1
+  module_name: "collision_detection"
+  voxel_topic: "/collision_voxel_layer/grid"
+  voxel_min_occupancy: 0.50
+  ttc_visualization_enabled: 1
+  source_timeout_s: 1.0
+  direction_confirm_count: 1
+  footprint_points: [-0.3, -0.2, -0.3, 0.2, 0.3, 0.2, 0.3, -0.2]
+  zones:
+    - name: "front_ttc"
+      enabled: 1
+      model: "ttc"
+      motion_direction: "forward"
+      time_before_collision: 3.0
+      ttc_horizon_s: 3.0
+      corridor_margin: 0.10
+      candidate_downsample_resolution: 0.05
+      simulation_time_step: 0.1
+modules:
+  - name: "dummy"
+    supervisor: 0
+    safety_system: 0
+)";
+  const std::string config_path = write_temp_config(
+    config_text, "collision_detection_voxel_ttc_occupancy_filter");
+
+  auto node = std::make_shared<rclcpp::Node>(
+    "fault_detector_test_collision_voxel_ttc_occupancy_filter");
+  nav2_monitor::FaultDetector detector(node.get());
+  nav2_monitor::MonitorDataStore store;
+  detector.load_config(config_path);
+
+  const auto now = node->now();
+  store.set_prediction_motion(0.30, 0.0, 0.0, now);
+  store.set_collision_voxels({
+      nav2_monitor::CollisionVoxel{0.35, 0.00, 0.20, 0.40, 0x01U},
+      nav2_monitor::CollisionVoxel{0.90, 0.00, 0.20, 0.80, 0x02U}
+    }, now);
+
+  auto faults = detector.detect_faults(store, now);
+  ASSERT_EQ(faults.size(), 1u);
+  const auto & viz = detector.get_collision_ttc_visualization();
+  EXPECT_TRUE(viz.active);
+  EXPECT_NEAR(viz.collision_point.x, 0.90, 1e-3);
+
+  std::remove(config_path.c_str());
+}
+
 TEST_F(FaultDetectorTest, CollisionZoneIgnoresRearStopWhenMovingForward)
 {
   const std::string config_text = R"(
