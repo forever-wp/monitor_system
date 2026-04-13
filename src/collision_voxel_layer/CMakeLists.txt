@@ -34,6 +34,11 @@ add_library(sparse_voxel_grid_core
 ament_target_dependencies(sparse_voxel_grid_core rclcpp std_msgs)
 target_link_libraries(sparse_voxel_grid_core "${cpp_typesupport_target}")
 
+add_library(source_adapter_core
+  src/source_adapter.cpp
+)
+ament_target_dependencies(source_adapter_core sensor_msgs tf2_ros tf2_sensor_msgs)
+
 if(BUILD_TESTING)
   ament_add_gtest(test_sparse_voxel_grid
     test/test_sparse_voxel_grid.cpp
@@ -42,9 +47,17 @@ if(BUILD_TESTING)
     ament_target_dependencies(test_sparse_voxel_grid rclcpp std_msgs)
     target_link_libraries(test_sparse_voxel_grid sparse_voxel_grid_core "${cpp_typesupport_target}")
   endif()
+
+  ament_add_gtest(test_source_adapter
+    test/test_source_adapter.cpp
+  )
+  if(TARGET test_source_adapter)
+    ament_target_dependencies(test_source_adapter sensor_msgs tf2_ros tf2_sensor_msgs)
+    target_link_libraries(test_source_adapter source_adapter_core)
+  endif()
 endif()
 
-install(TARGETS sparse_voxel_grid_core DESTINATION lib/${PROJECT_NAME})
+install(TARGETS sparse_voxel_grid_core source_adapter_core DESTINATION lib/${PROJECT_NAME})
 install(DIRECTORY include/ DESTINATION include)
 
 ament_package()
