@@ -24,16 +24,27 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   DEPENDENCIES std_msgs builtin_interfaces
 )
 
+include_directories(include)
+
+rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
+
+add_library(sparse_voxel_grid_core
+  src/sparse_voxel_grid.cpp
+)
+ament_target_dependencies(sparse_voxel_grid_core rclcpp std_msgs)
+target_link_libraries(sparse_voxel_grid_core "${cpp_typesupport_target}")
+
 if(BUILD_TESTING)
   ament_add_gtest(test_sparse_voxel_grid
     test/test_sparse_voxel_grid.cpp
   )
   if(TARGET test_sparse_voxel_grid)
-    rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
-    target_link_libraries(test_sparse_voxel_grid "${cpp_typesupport_target}")
+    ament_target_dependencies(test_sparse_voxel_grid rclcpp std_msgs)
+    target_link_libraries(test_sparse_voxel_grid sparse_voxel_grid_core "${cpp_typesupport_target}")
   endif()
 endif()
 
+install(TARGETS sparse_voxel_grid_core DESTINATION lib/${PROJECT_NAME})
 install(DIRECTORY include/ DESTINATION include)
 
 ament_package()
