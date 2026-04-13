@@ -128,6 +128,11 @@ struct CollisionDetectionConfig
   std::string pointcloud_topic{""};
   std::string ultrasonic_topic{""};
   std::string prediction_speed_topic{"/cmd_vel"};
+  std::string control_source_state_topic{"/control_source_state"};
+  std::string prediction_speed_navigation_topic;
+  std::string prediction_speed_miniapp_topic{"/cmd_vel_miniapp"};
+  std::string prediction_speed_remote_topic{"/cmd_vel_remote"};
+  std::string prediction_speed_other_topic{"/cmd_vel_other"};
   std::string ultrasonic_distances_key{"distances"};
   std::string ultrasonic_scene_flag_key{"scene_flag"};
   bool ttc_visualization_enabled{false};

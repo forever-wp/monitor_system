@@ -580,13 +580,20 @@ std::vector<FaultInfo> CollisionEvaluator::evaluate(
 
     const std::string key = cfg.module_name + "|collision:" + zone.name;
     const bool currently_latched = judge_states_[key].latched;
+    const bool keep_latched_without_fresh_speed = currently_latched && !prediction_speed_fresh;
+    const bool zone_direction_matches =
+      zone_matches_motion_direction(zone.motion_direction, runtime_direction) ||
+      keep_latched_without_fresh_speed;
     bool abnormal = false;
     std::string reason;
     if (is_ttc_zone) {
-      if (!zone_matches_motion_direction(zone.motion_direction, runtime_direction)) {
+      if (!zone_direction_matches) {
         continue;
       }
-      if (current_speed > 1e-3) {
+      const double evaluation_speed =
+        (prediction_speed_fresh || keep_latched_without_fresh_speed) ?
+        std::fabs(chassis_state.prediction_speed) : 0.0;
+      if (evaluation_speed > 1e-3) {
         if (cfg.footprint_points.empty()) {
           RCLCPP_ERROR(
             rclcpp::get_logger("nav2_monitor.collision_evaluator"),
@@ -677,7 +684,7 @@ std::vector<FaultInfo> CollisionEvaluator::evaluate(
         }
       }
     } else {
-      if (!zone_matches_motion_direction(zone.motion_direction, runtime_direction)) {
+      if (!zone_direction_matches) {
         continue;
       }
       double inside_weight = 0.0;

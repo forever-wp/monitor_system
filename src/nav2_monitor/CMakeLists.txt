@@ -32,6 +32,7 @@ include_directories(include)
 
 add_executable(nav2_monitor_node
   src/nav2_monitor_node.cpp
+  src/collision_prediction_router.cpp
   src/system_monitor.cpp
   src/fault_detector.cpp
   src/fault_config_watcher.cpp
@@ -60,6 +61,7 @@ if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
   ament_add_gtest(test_fault_detector
     test/test_fault_detector.cpp
+    src/collision_prediction_router.cpp
     src/fault_detector.cpp
     src/fault_config_watcher.cpp
     src/task_fault_config_selector.cpp

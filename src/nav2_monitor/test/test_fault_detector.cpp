@@ -10,6 +10,7 @@
 #include <rclcpp/rclcpp.hpp>
 
 #include "nav2_monitor/fault_detector.hpp"
+#include "nav2_monitor/collision_prediction_router.hpp"
 #include "nav2_monitor/monitor_data_store.hpp"
 #include "nav2_monitor/monitor_reporter.hpp"
 #include "nav2_monitor/fault_state_coordinator.hpp"
@@ -46,6 +47,50 @@ protected:
     }
   }
 };
+
+TEST(CollisionPredictionRouterTest, UsesLegacyPredictionTopicForNavigationByDefault)
+{
+  nav2_monitor::CollisionPredictionRouter router({
+      "/cmd_vel_custom",
+      "/control_source_state",
+      "",
+      "/cmd_vel_miniapp",
+      "/cmd_vel_remote",
+      "/cmd_vel_other"});
+
+  EXPECT_EQ(router.active_source(), "navigation");
+  EXPECT_EQ(router.active_topic(), "/cmd_vel_custom");
+  EXPECT_TRUE(router.should_accept_source("navigation"));
+  EXPECT_FALSE(router.should_accept_source("miniapp"));
+
+  const auto routes = router.subscribed_sources();
+  ASSERT_EQ(routes.size(), 4u);
+  EXPECT_EQ(routes[0].source, "navigation");
+  EXPECT_EQ(routes[0].topic, "/cmd_vel_custom");
+  EXPECT_EQ(routes[1].topic, "/cmd_vel_miniapp");
+  EXPECT_EQ(routes[2].topic, "/cmd_vel_remote");
+  EXPECT_EQ(routes[3].topic, "/cmd_vel_other");
+}
+
+TEST(CollisionPredictionRouterTest, SwitchesOnlyToKnownSources)
+{
+  nav2_monitor::CollisionPredictionRouter router({
+      "/cmd_vel",
+      "/control_source_state",
+      "/cmd_vel_nav",
+      "/cmd_vel_miniapp",
+      "/cmd_vel_remote",
+      "/cmd_vel_other"});
+
+  EXPECT_TRUE(router.update_active_source(" Remote "));
+  EXPECT_EQ(router.active_source(), "remote");
+  EXPECT_EQ(router.active_topic(), "/cmd_vel_remote");
+  EXPECT_TRUE(router.should_accept_source("remote"));
+  EXPECT_FALSE(router.should_accept_source("navigation"));
+
+  EXPECT_FALSE(router.update_active_source("invalid"));
+  EXPECT_EQ(router.active_source(), "remote");
+}
 
 TEST(TaskFaultConfigSelectorTest, ResolvesMappedAndDefaultConfigs)
 {
@@ -1349,6 +1394,73 @@ modules:
   std::remove(config_path.c_str());
 }
 
+TEST_F(FaultDetectorTest, CollisionDetectionParsesControlSourcePredictionRouting)
+{
+  const std::string config_text = R"(
+collision_detection:
+  enabled: 1
+  module_name: "collision_detection"
+  prediction_speed_topic: "/cmd_vel_legacy"
+  control_source_state_topic: "/control_source_state"
+  prediction_speed_navigation_topic: "/cmd_vel_nav"
+  prediction_speed_miniapp_topic: "/cmd_vel_miniapp"
+  prediction_speed_remote_topic: "/cmd_vel_remote"
+  prediction_speed_other_topic: "/cmd_vel_other"
+modules:
+  - name: "dummy"
+    supervisor: 0
+    safety_system: 0
+)";
+  const std::string config_path = write_temp_config(
+    config_text, "collision_prediction_control_source_routing");
+
+  auto node = std::make_shared<rclcpp::Node>(
+    "fault_detector_test_collision_prediction_control_source_routing");
+  nav2_monitor::FaultDetector detector(node.get());
+  detector.load_config(config_path);
+
+  const auto & cfg = detector.get_collision_detection_config();
+  EXPECT_EQ(cfg.prediction_speed_topic, "/cmd_vel_legacy");
+  EXPECT_EQ(cfg.control_source_state_topic, "/control_source_state");
+  EXPECT_EQ(cfg.prediction_speed_navigation_topic, "/cmd_vel_nav");
+  EXPECT_EQ(cfg.prediction_speed_miniapp_topic, "/cmd_vel_miniapp");
+  EXPECT_EQ(cfg.prediction_speed_remote_topic, "/cmd_vel_remote");
+  EXPECT_EQ(cfg.prediction_speed_other_topic, "/cmd_vel_other");
+
+  std::remove(config_path.c_str());
+}
+
+TEST_F(FaultDetectorTest, CollisionDetectionDefaultsControlSourceRoutingToCurrentTopics)
+{
+  const std::string config_text = R"(
+collision_detection:
+  enabled: 1
+  module_name: "collision_detection"
+  prediction_speed_topic: "/cmd_vel_custom"
+modules:
+  - name: "dummy"
+    supervisor: 0
+    safety_system: 0
+)";
+  const std::string config_path = write_temp_config(
+    config_text, "collision_prediction_control_source_default_routing");
+
+  auto node = std::make_shared<rclcpp::Node>(
+    "fault_detector_test_collision_prediction_control_source_default_routing");
+  nav2_monitor::FaultDetector detector(node.get());
+  detector.load_config(config_path);
+
+  const auto & cfg = detector.get_collision_detection_config();
+  EXPECT_EQ(cfg.prediction_speed_topic, "/cmd_vel_custom");
+  EXPECT_EQ(cfg.control_source_state_topic, "/control_source_state");
+  EXPECT_TRUE(cfg.prediction_speed_navigation_topic.empty());
+  EXPECT_EQ(cfg.prediction_speed_miniapp_topic, "/cmd_vel_miniapp");
+  EXPECT_EQ(cfg.prediction_speed_remote_topic, "/cmd_vel_remote");
+  EXPECT_EQ(cfg.prediction_speed_other_topic, "/cmd_vel_other");
+
+  std::remove(config_path.c_str());
+}
+
 TEST_F(FaultDetectorTest, CollisionDetectionTtcVisualizationDefaultsToDisabled)
 {
   const std::string config_text = R"(
@@ -1995,6 +2107,126 @@ modules:
   faults = detector.detect_faults(store, near_zero_time);
   ASSERT_EQ(faults.size(), 1u);
   EXPECT_EQ(faults[0].safety_command, nav2_monitor::SafetyCommandType::SOFT_STOP);
+
+  std::remove(config_path.c_str());
+}
+
+TEST_F(FaultDetectorTest, CollisionZoneKeepsLatchedFaultWhenPredictionSpeedTimesOut)
+{
+  const std::string config_text = R"(
+multi_value_judge:
+  trigger_count: 1
+  recover_count: 1
+collision_detection:
+  enabled: 1
+  module_name: "collision_detection"
+  source_timeout_s: 0.2
+  direction_speed_threshold: 0.05
+  direction_confirm_count: 1
+  zones:
+    - name: "front_stop"
+      enabled: 1
+      motion_direction: "forward"
+      points: [0.5, 0.25, 0.5, -0.25, 0.0, -0.25, 0.0, 0.25]
+      min_points: 1
+      level: "CRITICAL"
+      safety_system: 2
+      actions: ["safety_system"]
+modules:
+  - name: "dummy"
+    supervisor: 0
+    safety_system: 0
+)";
+  const std::string config_path = write_temp_config(
+    config_text, "collision_direction_latched_across_prediction_timeout");
+
+  auto node = std::make_shared<rclcpp::Node>(
+    "fault_detector_test_collision_direction_latched_across_prediction_timeout");
+  nav2_monitor::FaultDetector detector(node.get());
+  nav2_monitor::MonitorDataStore store;
+  detector.load_config(config_path);
+
+  const auto now = node->now();
+  store.set_prediction_motion(1.0, 0.0, 0.0, now);
+  store.set_collision_points("scan", {nav2_monitor::CollisionPoint{0.2, 0.0}}, now);
+
+  auto faults = detector.detect_faults(store, now);
+  ASSERT_EQ(faults.size(), 1u);
+  EXPECT_NE(faults[0].fault_key.find("collision:front_stop"), std::string::npos);
+
+  const auto stale_time = now + rclcpp::Duration::from_seconds(0.3);
+  store.set_collision_points("scan", {nav2_monitor::CollisionPoint{0.2, 0.0}}, stale_time);
+  faults = detector.detect_faults(store, stale_time);
+  ASSERT_EQ(faults.size(), 1u);
+  EXPECT_NE(faults[0].fault_key.find("collision:front_stop"), std::string::npos);
+
+  const auto cleared_time = stale_time + rclcpp::Duration::from_seconds(0.1);
+  store.set_collision_points("scan", {nav2_monitor::CollisionPoint{2.0, 2.0}}, cleared_time);
+  faults = detector.detect_faults(store, cleared_time);
+  EXPECT_TRUE(faults.empty());
+
+  std::remove(config_path.c_str());
+}
+
+TEST_F(FaultDetectorTest, CollisionTtcKeepsLatchedFaultWhenPredictionSpeedTimesOut)
+{
+  const std::string config_text = R"(
+multi_value_judge:
+  trigger_count: 1
+  recover_count: 1
+collision_detection:
+  enabled: 1
+  module_name: "collision_detection"
+  scan_topic: "/scan"
+  source_timeout_s: 0.2
+  direction_confirm_count: 1
+  footprint_points: [-0.37, -0.28, -0.37, 0.28, 0.37, 0.28, 0.37, -0.28]
+  zones:
+    - name: "front_ttc"
+      enabled: 1
+      model: "ttc"
+      motion_direction: "forward"
+      level: "WARNING"
+      safety_system: 1
+      safety_slow_down_percentage: 40.0
+      time_before_collision: 1.0
+      ttc_horizon_s: 1.5
+      corridor_margin: 0.10
+      candidate_downsample_resolution: 0.08
+      simulation_time_step: 0.1
+      actions: ["safety_system"]
+modules:
+  - name: "dummy"
+    supervisor: 0
+    safety_system: 0
+)";
+  const std::string config_path = write_temp_config(
+    config_text, "collision_ttc_latched_across_prediction_timeout");
+
+  auto node = std::make_shared<rclcpp::Node>(
+    "fault_detector_test_collision_ttc_latched_across_prediction_timeout");
+  nav2_monitor::FaultDetector detector(node.get());
+  nav2_monitor::MonitorDataStore store;
+  detector.load_config(config_path);
+
+  const auto now = node->now();
+  store.set_prediction_motion(1.0, 0.0, 0.0, now);
+  store.set_collision_points("scan", {nav2_monitor::CollisionPoint{1.2, 0.0}}, now);
+
+  auto faults = detector.detect_faults(store, now);
+  ASSERT_EQ(faults.size(), 1u);
+  EXPECT_NE(faults[0].fault_key.find("collision:front_ttc"), std::string::npos);
+
+  const auto stale_time = now + rclcpp::Duration::from_seconds(0.3);
+  store.set_collision_points("scan", {nav2_monitor::CollisionPoint{1.2, 0.0}}, stale_time);
+  faults = detector.detect_faults(store, stale_time);
+  ASSERT_EQ(faults.size(), 1u);
+  EXPECT_NE(faults[0].fault_key.find("collision:front_ttc"), std::string::npos);
+
+  const auto cleared_time = stale_time + rclcpp::Duration::from_seconds(0.1);
+  store.set_collision_points("scan", {nav2_monitor::CollisionPoint{3.0, 0.0}}, cleared_time);
+  faults = detector.detect_faults(store, cleared_time);
+  EXPECT_TRUE(faults.empty());
 
   std::remove(config_path.c_str());
 }

@@ -32,6 +32,7 @@
 - 自动恢复与 `RESUME`
 - 碰撞检测：`LaserScan` / `PointCloud2` / `ultrasonic_eight(JSON)`
 - 碰撞策略：`slowdown zone` / `stop zone` / `dynamic ttc`
+- `TTC` 预测速度支持跟随 `control_source_state` 在 `navigation / miniapp / remote / other` 间切换
 - 碰撞区域可视化
 
 ## 架构摘要
@@ -151,9 +152,18 @@ ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
 - `collision_detection.direction_confirm_count`
   - 前后向切换确认帧数
   - 连续收到相反方向速度达到该次数后，`zone/ttc` 才会切换到新的方向，避免单帧跳变导致方向抖动
+- `collision_detection.control_source_state_topic`
+  - `TTC` 预测速度控制源状态 topic，默认 `/control_source_state`
+  - 收到 `navigation / miniapp / remote / other` 后，会切到对应预测速度 topic
+- `collision_detection.prediction_speed_navigation_topic`
+- `collision_detection.prediction_speed_miniapp_topic`
+- `collision_detection.prediction_speed_remote_topic`
+- `collision_detection.prediction_speed_other_topic`
+  - `TTC` 按控制源订阅四路预测速度；若未单独配置 `navigation`，则回退到旧字段 `prediction_speed_topic`
 - `collision_detection.ttc_visualization_enabled`
   - TTC 预测可视化总开关
   - 打开后发布 `/nav2_monitor/collision_ttc_markers`
+  - 节点会输出 `TTC prediction input`、`TTC markers published`、`TTC markers idle` 日志，便于确认 `TTC` 正在执行
 - `collision_detection.zones`
   - `motion_direction` 支持：
     - `forward`
@@ -187,6 +197,7 @@ ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
 | `/nav2_monitor/reporter/heartbeat_json` | `std_msgs/msg/String` | 发布系统心跳 JSON，上报系统资源/电池/导航状态 | 周期发布（随 `/nav2_monitor/status`） | `{"all_ok":true,"system":{"cpu_usage":12.3},"battery":{"percentage":0.86},"navigation":{"active":true}}` |
 | `/nav2_monitor/reporter/event_json` | `std_msgs/msg/String` | 发布异常/恢复事件 JSON | 边沿发布（随 `/nav2_monitor/fault_event`） | `{"edge":"TRIGGER","fault_type":"node_inactive","fault_module":"navigation","fault_level":"CRITICAL"}` |
 | `collision_detection.zones[*].polygon_pub_topic` | `geometry_msgs/msg/PolygonStamped` | 发布碰撞区可视化轮廓 | 周期发布（随 `check_health()`） | `/nav2_monitor/collision_zone/front_stop` |
+| `/nav2_monitor/collision_ttc_markers` | `visualization_msgs/msg/MarkerArray` | 发布 TTC 动态 corridor / footprint / 最近碰撞点 / 文本 | 周期发布（开启 `ttc_visualization_enabled` 后） | `front_ttc ttc=1.42 clr=0.08` |
 | `/command` | `std_msgs/msg/String` | 执行器输出到底盘协议命令 | 动作触发后透传/限速/制动发布 | `{"speed":0.000,"angle":0.0,"press":1000,"acc":1000,"place":-1,"ulock":-1}` |
 
 **说明**
@@ -196,6 +207,7 @@ ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
 - `/command` 由 `safety_emergency_executor` 发布，不是 `nav2_monitor` 主节点直接发布。
 - `collision_detection.zones[*].polygon_pub_topic` 是按配置动态创建的 topic，不是固定单一名称。
 - `model: "ttc"` 不再发布静态 polygon，可通过 `/nav2_monitor/collision_ttc_markers` 查看动态 corridor。
+- `TTC` 运行日志会打印当前控制源、实际使用的预测速度 topic，以及是 `preview_only`、`idle` 还是已经得到 `ttc` 命中。
 
 ## JSON 字段说明
 

@@ -402,6 +402,25 @@ void FaultDetector::load_config(const std::string & config_file)
       if (cd["prediction_speed_topic"]) {
         collision_cfg_.prediction_speed_topic = cd["prediction_speed_topic"].as<std::string>();
       }
+      if (cd["control_source_state_topic"]) {
+        collision_cfg_.control_source_state_topic = cd["control_source_state_topic"].as<std::string>();
+      }
+      if (cd["prediction_speed_navigation_topic"]) {
+        collision_cfg_.prediction_speed_navigation_topic =
+          cd["prediction_speed_navigation_topic"].as<std::string>();
+      }
+      if (cd["prediction_speed_miniapp_topic"]) {
+        collision_cfg_.prediction_speed_miniapp_topic =
+          cd["prediction_speed_miniapp_topic"].as<std::string>();
+      }
+      if (cd["prediction_speed_remote_topic"]) {
+        collision_cfg_.prediction_speed_remote_topic =
+          cd["prediction_speed_remote_topic"].as<std::string>();
+      }
+      if (cd["prediction_speed_other_topic"]) {
+        collision_cfg_.prediction_speed_other_topic =
+          cd["prediction_speed_other_topic"].as<std::string>();
+      }
       if (cd["ultrasonic_distances_key"]) {
         collision_cfg_.ultrasonic_distances_key = cd["ultrasonic_distances_key"].as<std::string>();
       }
