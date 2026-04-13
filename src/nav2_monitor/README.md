@@ -30,7 +30,7 @@
 - 底盘异常与久停判断
 - 多故障组合与安全动作仲裁
 - 自动恢复与 `RESUME`
-- 碰撞检测：`LaserScan` / `PointCloud2` / `ultrasonic_eight(JSON)`
+- 碰撞检测：`LaserScan` / `PointCloud2` / `ultrasonic_eight(JSON)` / `collision_voxel_layer/VoxelGrid`
 - 碰撞策略：`slowdown zone` / `stop zone` / `dynamic ttc`
 - `TTC` 预测速度支持跟随 `control_source_state` 在 `navigation / miniapp / remote / other` 间切换
 - 碰撞区域可视化
@@ -132,6 +132,14 @@ ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
 
 - `collision_detection.ultrasonic_topic`
   - 单 topic 八路超声波 JSON 输入
+- `collision_detection.voxel_topic`
+  - `collision_voxel_layer/msg/VoxelGrid` 统一体素输入 topic
+  - 非空时，`zone/ttc` 优先使用 voxel source，不再回退到 raw `scan/pointcloud/ultrasonic` 做重复计数
+- `collision_detection.voxel_min_occupancy`
+  - 参与 `zone/ttc` 的最小体素占用权重
+- `collision_detection.voxel_min_height`
+- `collision_detection.voxel_max_height`
+  - 参与 `zone/ttc` 的体素高度过滤范围
 - `collision_detection.ultrasonic_widget`
   - 8 个 `0~1` 权重，顺序对应 8 路超声波
   - 当前编号约定：`1号左前，之后顺时针编号`
@@ -175,7 +183,7 @@ ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
   - `actions` 支持：
     - `safety_system`
     - `supervisor`
-  - `min_points` 对 `scan/pointcloud` 表示点数阈值，对超声波表示加权后的有效点阈值
+  - `min_points` 对 `scan/pointcloud` 表示点数阈值，对超声波/voxel 表示加权后的有效点阈值
   - `safety_system` 支持：
     - `0` 不执行
     - `1` 减速
