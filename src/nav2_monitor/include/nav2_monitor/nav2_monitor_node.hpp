@@ -2,6 +2,7 @@
 #define NAV2_MONITOR__NAV2_MONITOR_NODE_HPP_
 
 #include <rclcpp/rclcpp.hpp>
+#include <collision_voxel_layer/msg/voxel_grid.hpp>
 #include <nav2_monitor/msg/monitor_status.hpp>
 #include <nav2_monitor/msg/fault_event.hpp>
 #include <nav2_monitor/msg/algorithm_feedback.hpp>
@@ -67,6 +68,8 @@ private:
     const std::string & source,
     const std::string & topic,
     const geometry_msgs::msg::Twist::SharedPtr msg);
+  void on_collision_voxel_grid(
+    const collision_voxel_layer::msg::VoxelGrid::SharedPtr msg);
   void on_collision_scan(const sensor_msgs::msg::LaserScan::SharedPtr msg);
   void on_collision_pointcloud(const sensor_msgs::msg::PointCloud2::SharedPtr msg);
   void on_collision_ultrasonic(const std_msgs::msg::String::SharedPtr msg);
@@ -105,6 +108,7 @@ private:
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr collision_control_source_state_sub_;
   std::map<std::string, rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr>
   collision_prediction_cmd_vel_subs_;
+  rclcpp::Subscription<collision_voxel_layer::msg::VoxelGrid>::SharedPtr collision_voxel_sub_;
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr collision_scan_sub_;
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr collision_pointcloud_sub_;
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr collision_ultrasonic_sub_;

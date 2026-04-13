@@ -1461,6 +1461,56 @@ modules:
   std::remove(config_path.c_str());
 }
 
+TEST_F(FaultDetectorTest, CollisionDetectionParsesVoxelTopic)
+{
+  const std::string config_text = R"(
+collision_detection:
+  enabled: 1
+  module_name: "collision_detection"
+  voxel_topic: "/collision_voxel_layer/grid"
+  voxel_min_occupancy: 0.35
+  voxel_min_height: -0.20
+  voxel_max_height: 1.10
+modules:
+  - name: "dummy"
+    supervisor: 0
+    safety_system: 0
+)";
+  const std::string config_path = write_temp_config(config_text, "collision_detection_voxel_topic");
+
+  auto node = std::make_shared<rclcpp::Node>("fault_detector_test_collision_voxel_topic");
+  nav2_monitor::FaultDetector detector(node.get());
+  detector.load_config(config_path);
+
+  const auto & cfg = detector.get_collision_detection_config();
+  EXPECT_EQ(cfg.voxel_topic, "/collision_voxel_layer/grid");
+  EXPECT_DOUBLE_EQ(cfg.voxel_min_occupancy, 0.35);
+  EXPECT_DOUBLE_EQ(cfg.voxel_min_height, -0.20);
+  EXPECT_DOUBLE_EQ(cfg.voxel_max_height, 1.10);
+
+  std::remove(config_path.c_str());
+}
+
+TEST(MonitorDataStoreTest, CollisionVoxelStateExpiresAfterTimeout)
+{
+  nav2_monitor::MonitorDataStore store;
+  const rclcpp::Time stamp(10, 0, RCL_ROS_TIME);
+
+  store.set_collision_voxels({
+      nav2_monitor::CollisionVoxel{0.1, 0.0, 0.2, 0.7, 0x01U},
+      nav2_monitor::CollisionVoxel{0.2, 0.1, 0.4, 0.5, 0x02U}
+    }, stamp);
+
+  const auto fresh = store.get_collision_voxels(stamp, 1.0);
+  ASSERT_EQ(fresh.size(), 2u);
+  EXPECT_DOUBLE_EQ(fresh[0].occupancy, 0.7);
+  EXPECT_DOUBLE_EQ(fresh[1].z, 0.4);
+
+  const auto stale = store.get_collision_voxels(
+    stamp + rclcpp::Duration::from_seconds(2.0), 1.0);
+  EXPECT_TRUE(stale.empty());
+}
+
 TEST_F(FaultDetectorTest, CollisionDetectionTtcVisualizationDefaultsToDisabled)
 {
   const std::string config_text = R"(

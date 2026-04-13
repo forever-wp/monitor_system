@@ -507,6 +507,23 @@ void Nav2MonitorNode::on_collision_prediction_cmd_vel(
     source.c_str(), topic.c_str(), msg->linear.x, msg->linear.y, msg->angular.z);
 }
 
+void Nav2MonitorNode::on_collision_voxel_grid(
+  const collision_voxel_layer::msg::VoxelGrid::SharedPtr msg)
+{
+  std::vector<CollisionVoxel> cells;
+  cells.reserve(msg->cells.size());
+  for (const auto & cell : msg->cells) {
+    cells.push_back(CollisionVoxel{
+      cell.x,
+      cell.y,
+      cell.z,
+      cell.occupancy,
+      cell.source_mask});
+  }
+
+  data_store_.set_collision_voxels(cells, stamp_or_now(msg->header.stamp));
+}
+
 void Nav2MonitorNode::on_collision_scan(const sensor_msgs::msg::LaserScan::SharedPtr msg)
 {
   std::vector<CollisionPoint> points;
@@ -1150,6 +1167,7 @@ void Nav2MonitorNode::configure_collision_monitoring()
 {
   collision_control_source_state_sub_.reset();
   collision_prediction_cmd_vel_subs_.clear();
+  collision_voxel_sub_.reset();
   collision_scan_sub_.reset();
   collision_pointcloud_sub_.reset();
   collision_ultrasonic_sub_.reset();
@@ -1195,6 +1213,13 @@ void Nav2MonitorNode::configure_collision_monitoring()
       {
         this->on_collision_prediction_cmd_vel(source, topic, msg);
       });
+  }
+  if (!cfg.voxel_topic.empty()) {
+    auto voxel_fallback = rclcpp::QoS(1).transient_local().reliable();
+    const auto voxel_qos = build_topic_subscription_qos(cfg.voxel_topic, voxel_fallback, 1);
+    collision_voxel_sub_ = this->create_subscription<collision_voxel_layer::msg::VoxelGrid>(
+      cfg.voxel_topic, voxel_qos,
+      std::bind(&Nav2MonitorNode::on_collision_voxel_grid, this, std::placeholders::_1));
   }
   if (!cfg.scan_topic.empty()) {
     auto scan_fallback = rclcpp::SensorDataQoS();
@@ -1245,8 +1270,9 @@ void Nav2MonitorNode::configure_collision_monitoring()
   publish_collision_ttc_markers();
   RCLCPP_INFO(
     get_logger(),
-    "Collision detection enabled: scan=%s pointcloud=%s ultrasonic=%s ttc_routes={%s} "
+    "Collision detection enabled: voxel=%s scan=%s pointcloud=%s ultrasonic=%s ttc_routes={%s} "
     "control_source_state=%s active_source=%s",
+    cfg.voxel_topic.empty() ? "<disabled>" : cfg.voxel_topic.c_str(),
     cfg.scan_topic.c_str(), cfg.pointcloud_topic.c_str(), cfg.ultrasonic_topic.c_str(),
     prediction_routes_oss.str().c_str(),
     collision_prediction_router_.control_source_state_topic().empty() ?

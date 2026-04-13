@@ -1,6 +1,7 @@
 #ifndef NAV2_MONITOR__FAULT_DETECTOR_HPP_
 #define NAV2_MONITOR__FAULT_DETECTOR_HPP_
 
+#include <limits>
 #include <map>
 #include <memory>
 #include <string>
@@ -126,6 +127,7 @@ struct CollisionDetectionConfig
   std::string module_name{"collision_detection"};
   std::string scan_topic{"/scan"};
   std::string pointcloud_topic{""};
+  std::string voxel_topic{""};
   std::string ultrasonic_topic{""};
   std::string prediction_speed_topic{"/cmd_vel"};
   std::string control_source_state_topic{"/control_source_state"};
@@ -140,6 +142,9 @@ struct CollisionDetectionConfig
   double ultrasonic_out_of_range_value{1.0};
   double pointcloud_min_height{0.0};
   double pointcloud_max_height{2.0};
+  double voxel_min_occupancy{0.0};
+  double voxel_min_height{-std::numeric_limits<double>::infinity()};
+  double voxel_max_height{std::numeric_limits<double>::infinity()};
   double source_timeout_s{0.5};
   double direction_speed_threshold{0.05};
   size_t direction_confirm_count{3};

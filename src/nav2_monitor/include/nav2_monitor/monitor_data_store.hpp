@@ -1,6 +1,7 @@
 #ifndef NAV2_MONITOR__MONITOR_DATA_STORE_HPP_
 #define NAV2_MONITOR__MONITOR_DATA_STORE_HPP_
 
+#include <cstdint>
 #include <deque>
 #include <map>
 #include <mutex>
@@ -71,6 +72,22 @@ struct CollisionRuntimeState
   std::vector<CollisionPoint> points;
 };
 
+struct CollisionVoxel
+{
+  double x{0.0};
+  double y{0.0};
+  double z{0.0};
+  double occupancy{0.0};
+  uint8_t source_mask{0U};
+};
+
+struct CollisionVoxelRuntimeState
+{
+  bool has_data{false};
+  rclcpp::Time last_seen{0, 0, RCL_ROS_TIME};
+  std::vector<CollisionVoxel> cells;
+};
+
 struct BatteryRuntimeState
 {
   bool has_data{false};
@@ -100,6 +117,7 @@ public:
   void set_battery_state(float temperature, float percentage, const rclcpp::Time & stamp);
   void set_collision_points(const std::vector<CollisionPoint> & points, const rclcpp::Time & stamp);
   void set_collision_points(const std::string & source_name, const std::vector<CollisionPoint> & points, const rclcpp::Time & stamp);
+  void set_collision_voxels(const std::vector<CollisionVoxel> & cells, const rclcpp::Time & stamp);
 
   bool is_node_active(const std::string & node_name, const rclcpp::Time & now, double timeout_s) const;
   double get_watch_topic_frequency(const std::string & topic) const;
@@ -108,7 +126,9 @@ public:
   const ChassisRuntimeState & get_chassis_state() const;
   const BatteryRuntimeState & get_battery_state() const;
   const CollisionRuntimeState & get_collision_state() const;
+  const CollisionVoxelRuntimeState & get_collision_voxel_state() const;
   std::vector<CollisionPoint> get_collision_points(const rclcpp::Time & now, double timeout_s) const;
+  std::vector<CollisionVoxel> get_collision_voxels(const rclcpp::Time & now, double timeout_s) const;
 
 private:
   mutable std::mutex mtx_;
@@ -125,6 +145,7 @@ private:
   ChassisRuntimeState chassis_state_;
   BatteryRuntimeState battery_state_;
   CollisionRuntimeState collision_state_;
+  CollisionVoxelRuntimeState collision_voxel_state_;
   std::map<std::string, CollisionRuntimeState> collision_sources_;
 };
 
