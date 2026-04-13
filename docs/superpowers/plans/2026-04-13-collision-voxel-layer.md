@@ -144,7 +144,7 @@ Expected:
 
 - [ ] **Step 4: Record the baseline commit SHA in the implementation notes**
 
-Append the resulting SHA to `docs/superpowers/plans/2026-04-13-collision-voxel-layer.md` under this task once created.
+Baseline save-point created: `f8fe058` (`chore: save pre-voxel-layer baseline`).
 
 - [ ] **Step 5: Commit the updated plan note**
 
