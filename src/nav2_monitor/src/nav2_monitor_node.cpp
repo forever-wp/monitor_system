@@ -469,10 +469,59 @@ void Nav2MonitorNode::on_chassis_imu(const sensor_msgs::msg::Imu::SharedPtr msg)
   data_store_.set_imu_motion(chassis_imu_speed_estimate_, yaw_rate, stamp);
 }
 
-void Nav2MonitorNode::on_collision_prediction_cmd_vel(const geometry_msgs::msg::Twist::SharedPtr msg)
+void Nav2MonitorNode::on_collision_control_source_state(const std_msgs::msg::String::SharedPtr msg)
 {
+  const auto normalized = CollisionPredictionRouter::normalize_source(msg->data);
+  if (!collision_prediction_router_.is_known_source(normalized)) {
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *get_clock(), 5000,
+      "Ignore TTC control source state '%s': expected navigation/miniapp/remote/other",
+      msg->data.c_str());
+    return;
+  }
+
+  if (!collision_prediction_router_.update_active_source(normalized)) {
+    return;
+  }
+
+  RCLCPP_INFO(
+    get_logger(), "TTC control source switched: source=%s topic=%s",
+    collision_prediction_router_.active_source().c_str(),
+    collision_prediction_router_.active_topic().c_str());
+}
+
+void Nav2MonitorNode::on_collision_prediction_cmd_vel(
+  const std::string & source,
+  const std::string & topic,
+  const geometry_msgs::msg::Twist::SharedPtr msg)
+{
+  if (!collision_prediction_router_.should_accept_source(source)) {
+    return;
+  }
+
   data_store_.set_prediction_motion(
     msg->linear.x, msg->linear.y, msg->angular.z, this->now());
+  RCLCPP_INFO_THROTTLE(
+    get_logger(), *get_clock(), 1000,
+    "TTC prediction input: source=%s topic=%s linear_x=%.3f linear_y=%.3f angular_z=%.3f",
+    source.c_str(), topic.c_str(), msg->linear.x, msg->linear.y, msg->angular.z);
+}
+
+void Nav2MonitorNode::on_collision_voxel_grid(
+  const collision_voxel_layer::msg::VoxelGrid::SharedPtr msg)
+{
+  std::vector<CollisionVoxel> cells;
+  cells.reserve(msg->cells.size());
+  for (const auto & cell : msg->cells) {
+    cells.push_back(CollisionVoxel{
+      cell.x,
+      cell.y,
+      cell.z,
+      cell.occupancy,
+      cell.source_mask});
+  }
+
+  data_store_.set_collision_voxels(cells, stamp_or_now(msg->header.stamp));
 }
 
 void Nav2MonitorNode::on_collision_scan(const sensor_msgs::msg::LaserScan::SharedPtr msg)
@@ -1116,7 +1165,9 @@ void Nav2MonitorNode::configure_chassis_monitoring()
 
 void Nav2MonitorNode::configure_collision_monitoring()
 {
-  collision_prediction_cmd_vel_sub_.reset();
+  collision_control_source_state_sub_.reset();
+  collision_prediction_cmd_vel_subs_.clear();
+  collision_voxel_sub_.reset();
   collision_scan_sub_.reset();
   collision_pointcloud_sub_.reset();
   collision_ultrasonic_sub_.reset();
@@ -1128,10 +1179,47 @@ void Nav2MonitorNode::configure_collision_monitoring()
   }
 
   const auto & cfg = fault_detector_.get_collision_detection_config();
-  if (!cfg.prediction_speed_topic.empty()) {
-    collision_prediction_cmd_vel_sub_ = this->create_subscription<geometry_msgs::msg::Twist>(
-      cfg.prediction_speed_topic, rclcpp::QoS(20),
-      std::bind(&Nav2MonitorNode::on_collision_prediction_cmd_vel, this, std::placeholders::_1));
+  collision_prediction_router_ = CollisionPredictionRouter(CollisionPredictionRoutingConfig{
+      cfg.prediction_speed_topic,
+      cfg.control_source_state_topic,
+      cfg.prediction_speed_navigation_topic,
+      cfg.prediction_speed_miniapp_topic,
+      cfg.prediction_speed_remote_topic,
+      cfg.prediction_speed_other_topic});
+
+  if (!collision_prediction_router_.control_source_state_topic().empty()) {
+    auto state_fallback = rclcpp::QoS(1).transient_local().reliable();
+    const auto state_qos = build_topic_subscription_qos(
+      collision_prediction_router_.control_source_state_topic(), state_fallback, 1);
+    collision_control_source_state_sub_ = this->create_subscription<std_msgs::msg::String>(
+      collision_prediction_router_.control_source_state_topic(), state_qos,
+      std::bind(&Nav2MonitorNode::on_collision_control_source_state, this, std::placeholders::_1));
+  }
+
+  std::ostringstream prediction_routes_oss;
+  bool first_prediction_route = true;
+  for (const auto & route : collision_prediction_router_.subscribed_sources()) {
+    if (!first_prediction_route) {
+      prediction_routes_oss << ", ";
+    }
+    prediction_routes_oss << route.source << '=' << route.topic;
+    first_prediction_route = false;
+
+    collision_prediction_cmd_vel_subs_[route.source] =
+      this->create_subscription<geometry_msgs::msg::Twist>(
+      route.topic, rclcpp::QoS(20),
+      [this, source = route.source, topic = route.topic](
+        const geometry_msgs::msg::Twist::SharedPtr msg)
+      {
+        this->on_collision_prediction_cmd_vel(source, topic, msg);
+      });
+  }
+  if (!cfg.voxel_topic.empty()) {
+    auto voxel_fallback = rclcpp::QoS(1).transient_local().reliable();
+    const auto voxel_qos = build_topic_subscription_qos(cfg.voxel_topic, voxel_fallback, 1);
+    collision_voxel_sub_ = this->create_subscription<collision_voxel_layer::msg::VoxelGrid>(
+      cfg.voxel_topic, voxel_qos,
+      std::bind(&Nav2MonitorNode::on_collision_voxel_grid, this, std::placeholders::_1));
   }
   if (!cfg.scan_topic.empty()) {
     auto scan_fallback = rclcpp::SensorDataQoS();
@@ -1173,12 +1261,23 @@ void Nav2MonitorNode::configure_collision_monitoring()
     collision_ttc_markers_pub_ =
       this->create_publisher<visualization_msgs::msg::MarkerArray>(
       "/nav2_monitor/collision_ttc_markers", qos);
+    RCLCPP_INFO(
+      get_logger(),
+      "TTC visualization publisher enabled: topic=%s frame=%s",
+      "/nav2_monitor/collision_ttc_markers", base_frame_id_.c_str());
   }
   publish_collision_zones();
   publish_collision_ttc_markers();
   RCLCPP_INFO(
-    get_logger(), "Collision detection enabled: scan=%s pointcloud=%s ultrasonic=%s",
-    cfg.scan_topic.c_str(), cfg.pointcloud_topic.c_str(), cfg.ultrasonic_topic.c_str());
+    get_logger(),
+    "Collision detection enabled: voxel=%s scan=%s pointcloud=%s ultrasonic=%s ttc_routes={%s} "
+    "control_source_state=%s active_source=%s",
+    cfg.voxel_topic.empty() ? "<disabled>" : cfg.voxel_topic.c_str(),
+    cfg.scan_topic.c_str(), cfg.pointcloud_topic.c_str(), cfg.ultrasonic_topic.c_str(),
+    prediction_routes_oss.str().c_str(),
+    collision_prediction_router_.control_source_state_topic().empty() ?
+    "<disabled>" : collision_prediction_router_.control_source_state_topic().c_str(),
+    collision_prediction_router_.active_source().c_str());
 }
 
 void Nav2MonitorNode::subscribe_watch_topics()
@@ -1520,8 +1619,19 @@ void Nav2MonitorNode::publish_collision_ttc_markers()
     return;
   }
 
+  const auto & cfg = fault_detector_.get_collision_detection_config();
+  const auto & chassis_state = data_store_.get_chassis_state();
+  const bool prediction_speed_fresh = chassis_state.prediction_speed_received &&
+    (this->now() - chassis_state.prediction_speed_stamp).seconds() <= cfg.source_timeout_s;
+  const std::string active_source = collision_prediction_router_.active_source();
+  const std::string active_topic = collision_prediction_router_.active_topic();
+
   visualization_msgs::msg::MarkerArray marker_array;
+  const auto stamp_now = this->now();
+  const auto stamp_ns = stamp_now.nanoseconds();
   builtin_interfaces::msg::Time marker_stamp;
+  marker_stamp.sec = static_cast<int32_t>(stamp_ns / 1000000000LL);
+  marker_stamp.nanosec = static_cast<uint32_t>(stamp_ns % 1000000000LL);
 
   visualization_msgs::msg::Marker clear_marker;
   clear_marker.header.stamp = marker_stamp;
@@ -1534,6 +1644,30 @@ void Nav2MonitorNode::publish_collision_ttc_markers()
   const auto & vis = fault_detector_.get_collision_ttc_visualization();
   if (!vis.enabled || !vis.active) {
     collision_ttc_markers_pub_->publish(marker_array);
+    if (!prediction_speed_fresh) {
+      const double age_s = chassis_state.prediction_speed_received ?
+        (this->now() - chassis_state.prediction_speed_stamp).seconds() :
+        -1.0;
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 2000,
+        "TTC markers idle: source=%s topic=%s reason=no_fresh_prediction_speed age=%.3fs "
+        "timeout=%.3fs",
+        active_source.c_str(), active_topic.c_str(), age_s, cfg.source_timeout_s);
+    } else if (chassis_state.prediction_speed <= 1e-3) {
+      RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 2000,
+        "TTC markers idle: source=%s topic=%s reason=zero_prediction_speed "
+        "linear_x=%.3f linear_y=%.3f angular_z=%.3f",
+        active_source.c_str(), active_topic.c_str(),
+        chassis_state.prediction_linear_x,
+        chassis_state.prediction_linear_y,
+        chassis_state.prediction_angular_z);
+    } else {
+      RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 2000,
+        "TTC markers idle: source=%s topic=%s reason=visualization_inactive",
+        active_source.c_str(), active_topic.c_str());
+    }
     return;
   }
 
@@ -1668,6 +1802,21 @@ void Nav2MonitorNode::publish_collision_ttc_markers()
   }
 
   collision_ttc_markers_pub_->publish(marker_array);
+  if (vis.ttc_s >= 0.0) {
+    RCLCPP_INFO_THROTTLE(
+      get_logger(), *get_clock(), 1000,
+      "TTC markers published: source=%s topic=%s zone=%s ttc=%.3fs threshold=%.3fs "
+      "clearance=%.3fm markers=%zu",
+      active_source.c_str(), active_topic.c_str(), vis.zone_name.c_str(),
+      vis.ttc_s, vis.threshold_s, vis.min_clearance, marker_array.markers.size());
+  } else {
+    RCLCPP_INFO_THROTTLE(
+      get_logger(), *get_clock(), 2000,
+      "TTC markers published: source=%s topic=%s preview_only=1 trajectory_points=%zu "
+      "footprints=%zu markers=%zu",
+      active_source.c_str(), active_topic.c_str(), vis.trajectory_points.size(),
+      vis.footprint_samples.size(), marker_array.markers.size());
+  }
 }
 
 rcl_interfaces::msg::SetParametersResult Nav2MonitorNode::on_parameter_change(

@@ -180,6 +180,15 @@ void MonitorDataStore::set_collision_points(
   collision_state_.points = collect_collision_points_locked(stamp, std::numeric_limits<double>::max());
 }
 
+void MonitorDataStore::set_collision_voxels(
+  const std::vector<CollisionVoxel> & cells, const rclcpp::Time & stamp)
+{
+  std::lock_guard<std::mutex> lock(mtx_);
+  collision_voxel_state_.has_data = true;
+  collision_voxel_state_.last_seen = stamp;
+  collision_voxel_state_.cells = cells;
+}
+
 bool MonitorDataStore::is_node_active(
   const std::string & node_name, const rclcpp::Time & now, double timeout_s) const
 {
@@ -227,10 +236,29 @@ const CollisionRuntimeState & MonitorDataStore::get_collision_state() const
   return collision_state_;
 }
 
+const CollisionVoxelRuntimeState & MonitorDataStore::get_collision_voxel_state() const
+{
+  std::lock_guard<std::mutex> lock(mtx_);
+  return collision_voxel_state_;
+}
+
 std::vector<CollisionPoint> MonitorDataStore::get_collision_points(const rclcpp::Time & now, double timeout_s) const
 {
   std::lock_guard<std::mutex> lock(mtx_);
   return collect_collision_points_locked(now, timeout_s);
+}
+
+std::vector<CollisionVoxel> MonitorDataStore::get_collision_voxels(
+  const rclcpp::Time & now, double timeout_s) const
+{
+  std::lock_guard<std::mutex> lock(mtx_);
+  if (!collision_voxel_state_.has_data) {
+    return {};
+  }
+  if ((now - collision_voxel_state_.last_seen).seconds() > timeout_s) {
+    return {};
+  }
+  return collision_voxel_state_.cells;
 }
 
 std::vector<CollisionPoint> MonitorDataStore::collect_collision_points_locked(

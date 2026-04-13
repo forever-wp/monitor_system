@@ -193,6 +193,32 @@ std::vector<CollisionPoint> CollisionEvaluator::collect_ttc_candidate_points(
   return candidates;
 }
 
+std::vector<CollisionPoint> CollisionEvaluator::collect_evaluation_points(
+  const CollisionDetectionConfig & cfg,
+  const MonitorDataStore & store,
+  const rclcpp::Time & now)
+{
+  if (cfg.voxel_topic.empty()) {
+    return store.get_collision_points(now, cfg.source_timeout_s);
+  }
+
+  const auto voxels = store.get_collision_voxels(now, cfg.source_timeout_s);
+  std::vector<CollisionPoint> points;
+  points.reserve(voxels.size());
+
+  for (const auto & voxel : voxels) {
+    if (voxel.occupancy < cfg.voxel_min_occupancy) {
+      continue;
+    }
+    if (voxel.z < cfg.voxel_min_height || voxel.z > cfg.voxel_max_height) {
+      continue;
+    }
+    points.push_back(CollisionPoint{voxel.x, voxel.y, voxel.occupancy});
+  }
+
+  return points;
+}
+
 std::vector<CollisionPoint> CollisionEvaluator::downsample_candidate_points(
   const std::vector<CollisionPoint> & points,
   double resolution)
@@ -523,7 +549,7 @@ std::vector<FaultInfo> CollisionEvaluator::evaluate(
   const auto runtime_direction = resolve_runtime_motion_direction(
     chassis_state, cfg.direction_speed_threshold, cfg.direction_confirm_count, now,
     cfg.source_timeout_s);
-  const auto points = store.get_collision_points(now, cfg.source_timeout_s);
+  const auto points = collect_evaluation_points(cfg, store, now);
 
   if (cfg.ttc_visualization_enabled && current_speed > 1e-3) {
     double preview_horizon = 3.0;
@@ -580,13 +606,20 @@ std::vector<FaultInfo> CollisionEvaluator::evaluate(
 
     const std::string key = cfg.module_name + "|collision:" + zone.name;
     const bool currently_latched = judge_states_[key].latched;
+    const bool keep_latched_without_fresh_speed = currently_latched && !prediction_speed_fresh;
+    const bool zone_direction_matches =
+      zone_matches_motion_direction(zone.motion_direction, runtime_direction) ||
+      keep_latched_without_fresh_speed;
     bool abnormal = false;
     std::string reason;
     if (is_ttc_zone) {
-      if (!zone_matches_motion_direction(zone.motion_direction, runtime_direction)) {
+      if (!zone_direction_matches) {
         continue;
       }
-      if (current_speed > 1e-3) {
+      const double evaluation_speed =
+        (prediction_speed_fresh || keep_latched_without_fresh_speed) ?
+        std::fabs(chassis_state.prediction_speed) : 0.0;
+      if (evaluation_speed > 1e-3) {
         if (cfg.footprint_points.empty()) {
           RCLCPP_ERROR(
             rclcpp::get_logger("nav2_monitor.collision_evaluator"),
@@ -677,7 +710,7 @@ std::vector<FaultInfo> CollisionEvaluator::evaluate(
         }
       }
     } else {
-      if (!zone_matches_motion_direction(zone.motion_direction, runtime_direction)) {
+      if (!zone_direction_matches) {
         continue;
       }
       double inside_weight = 0.0;

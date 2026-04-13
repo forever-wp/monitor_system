@@ -15,14 +15,23 @@ collision_detection:
   module_name: "collision_detection"  # 碰撞故障输出时使用的模块名
   scan_topic: "scan"  # LaserScan 输入 topic
   pointcloud_topic: "/livox/points"  # PointCloud2 输入 topic
+  voxel_topic: ""  # collision_voxel_layer/VoxelGrid 统一体素输入；非空时 zone/TTC 优先使用该源
   ultrasonic_topic: "/ultrasonic_eight"  # 超声波 JSON 输入 topic
-  prediction_speed_topic: "/cmd_vel"  # 动态 TTC 使用的预测速度 topic
-  ttc_visualization_enabled: 0  # 是否发布 TTC 预测可视化 MarkerArray
+  prediction_speed_topic: "/cmd_vel"  # 动态 TTC 预测速度兼容主 topic；navigation 未单独配置时回退使用
+  control_source_state_topic: "/control_source_state"  # 当前控制源状态 topic
+  prediction_speed_navigation_topic: "/cmd_vel"  # 导航 TTC 预测速度 topic
+  prediction_speed_miniapp_topic: "/cmd_vel_miniapp"  # 小程序 TTC 预测速度 topic
+  prediction_speed_remote_topic: "/cmd_vel_remote"  # 远程驾驶 TTC 预测速度 topic
+  prediction_speed_other_topic: "/cmd_vel_other"  # 其他控制源 TTC 预测速度 topic
+  ttc_visualization_enabled: 1  # 是否发布 TTC 预测可视化 MarkerArray
   ultrasonic_distances_key: "distances"   # JSON 中 8 路距离数组的键名
   ultrasonic_blind_distance: 0.2  # 超声盲区下限，小于此值按该值处理
   ultrasonic_out_of_range_value: 1.0  # 超声超量程值，达到该值视为“无障碍点”
   pointcloud_min_height: 0.2  # 点云参与碰撞检测的最小高度（米）
   pointcloud_max_height: 1.4  # 点云参与碰撞检测的最大高度（米）
+  voxel_min_occupancy: 0.35  # 参与 zone/TTC 的最小体素占用权重
+  voxel_min_height: 0.2  # 参与 zone/TTC 的体素最小高度（米）
+  voxel_max_height: 1.4  # 参与 zone/TTC 的体素最大高度（米）
   source_timeout_s: 0.5  # 各碰撞数据源的有效超时时间（秒）
   direction_speed_threshold: 0.05  # 前后向判断阈值；绝对值低于该值时保持当前稳定方向，未建立稳定方向时仅匹配 both 区域
   direction_confirm_count: 3  # 方向切换确认帧数；连续收到相反方向速度达到该次数后才切换

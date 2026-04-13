@@ -7,6 +7,7 @@ endif()
 
 find_package(ament_cmake REQUIRED)
 find_package(ament_index_cpp REQUIRED)
+find_package(collision_voxel_layer REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
@@ -32,6 +33,7 @@ include_directories(include)
 
 add_executable(nav2_monitor_node
   src/nav2_monitor_node.cpp
+  src/collision_prediction_router.cpp
   src/system_monitor.cpp
   src/fault_detector.cpp
   src/fault_config_watcher.cpp
@@ -47,7 +49,7 @@ add_executable(nav2_monitor_node
   src/watch_topic_evaluator.cpp
   src/vehicle_status_monitor.cpp
 )
-ament_target_dependencies(nav2_monitor_node rclcpp std_msgs nav_msgs sensor_msgs geometry_msgs visualization_msgs tf2_ros master_interfaces ament_index_cpp)
+ament_target_dependencies(nav2_monitor_node rclcpp std_msgs nav_msgs sensor_msgs geometry_msgs visualization_msgs tf2_ros master_interfaces ament_index_cpp collision_voxel_layer)
 rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
 target_link_libraries(nav2_monitor_node "${cpp_typesupport_target}")
 target_link_libraries(nav2_monitor_node nvidia-ml yaml-cpp)
@@ -60,6 +62,7 @@ if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
   ament_add_gtest(test_fault_detector
     test/test_fault_detector.cpp
+    src/collision_prediction_router.cpp
     src/fault_detector.cpp
     src/fault_config_watcher.cpp
     src/task_fault_config_selector.cpp
@@ -75,7 +78,7 @@ if(BUILD_TESTING)
   )
   if(TARGET test_fault_detector)
     target_include_directories(test_fault_detector PRIVATE include)
-    ament_target_dependencies(test_fault_detector rclcpp geometry_msgs visualization_msgs master_interfaces)
+    ament_target_dependencies(test_fault_detector rclcpp geometry_msgs visualization_msgs master_interfaces collision_voxel_layer)
     target_link_libraries(test_fault_detector yaml-cpp "${cpp_typesupport_target}")
   endif()
 endif()

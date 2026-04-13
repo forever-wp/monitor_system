@@ -1,0 +1,32 @@
+collision_voxel_layer:
+  ros__parameters:
+    base_frame: "base_link"
+    scan_topic: "/scan"
+    depth_cloud_topic: "/camera/depth/points"
+    grid_topic: "/collision_voxel_layer/grid"
+    markers_topic: "/collision_voxel_layer/markers"
+    debug_cloud_topic: "/collision_voxel_layer/debug_cloud"
+
+    publish_rate: 10.0
+    tf_timeout_s: 0.05
+    sync_queue_size: 20
+    sync_slop_s: 0.15
+
+    voxel_size_xy: 0.10
+    voxel_size_z: 0.10
+    voxel_decay_time_s: 1.0
+    prune_threshold: 0.05
+    occupancy_max: 1.0
+
+    scan_min_range: 0.05
+    scan_max_range: 8.0
+    scan_z_min: 0.0
+    scan_z_max: 0.4
+    scan_weight: 0.6
+
+    depth_min_range: 0.10
+    depth_max_range: 4.0
+    depth_min_height: -0.10
+    depth_max_height: 1.50
+    depth_weight: 0.8
+    depth_voxel_prefilter: 0.10

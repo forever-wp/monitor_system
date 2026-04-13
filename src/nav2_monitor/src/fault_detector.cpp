@@ -396,11 +396,33 @@ void FaultDetector::load_config(const std::string & config_file)
       if (cd["pointcloud_topic"]) {
         collision_cfg_.pointcloud_topic = cd["pointcloud_topic"].as<std::string>();
       }
+      if (cd["voxel_topic"]) {
+        collision_cfg_.voxel_topic = cd["voxel_topic"].as<std::string>();
+      }
       if (cd["ultrasonic_topic"]) {
         collision_cfg_.ultrasonic_topic = cd["ultrasonic_topic"].as<std::string>();
       }
       if (cd["prediction_speed_topic"]) {
         collision_cfg_.prediction_speed_topic = cd["prediction_speed_topic"].as<std::string>();
+      }
+      if (cd["control_source_state_topic"]) {
+        collision_cfg_.control_source_state_topic = cd["control_source_state_topic"].as<std::string>();
+      }
+      if (cd["prediction_speed_navigation_topic"]) {
+        collision_cfg_.prediction_speed_navigation_topic =
+          cd["prediction_speed_navigation_topic"].as<std::string>();
+      }
+      if (cd["prediction_speed_miniapp_topic"]) {
+        collision_cfg_.prediction_speed_miniapp_topic =
+          cd["prediction_speed_miniapp_topic"].as<std::string>();
+      }
+      if (cd["prediction_speed_remote_topic"]) {
+        collision_cfg_.prediction_speed_remote_topic =
+          cd["prediction_speed_remote_topic"].as<std::string>();
+      }
+      if (cd["prediction_speed_other_topic"]) {
+        collision_cfg_.prediction_speed_other_topic =
+          cd["prediction_speed_other_topic"].as<std::string>();
       }
       if (cd["ultrasonic_distances_key"]) {
         collision_cfg_.ultrasonic_distances_key = cd["ultrasonic_distances_key"].as<std::string>();
@@ -435,6 +457,16 @@ void FaultDetector::load_config(const std::string & config_file)
       }
       if (cd["pointcloud_max_height"]) {
         collision_cfg_.pointcloud_max_height = cd["pointcloud_max_height"].as<double>();
+      }
+      if (cd["voxel_min_occupancy"]) {
+        collision_cfg_.voxel_min_occupancy = std::clamp(
+          cd["voxel_min_occupancy"].as<double>(), 0.0, 1.0);
+      }
+      if (cd["voxel_min_height"]) {
+        collision_cfg_.voxel_min_height = cd["voxel_min_height"].as<double>();
+      }
+      if (cd["voxel_max_height"]) {
+        collision_cfg_.voxel_max_height = cd["voxel_max_height"].as<double>();
       }
       if (cd["source_timeout_s"]) {
         collision_cfg_.source_timeout_s = std::max(0.0, cd["source_timeout_s"].as<double>());

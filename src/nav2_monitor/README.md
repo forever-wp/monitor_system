@@ -30,8 +30,9 @@
 - 底盘异常与久停判断
 - 多故障组合与安全动作仲裁
 - 自动恢复与 `RESUME`
-- 碰撞检测：`LaserScan` / `PointCloud2` / `ultrasonic_eight(JSON)`
+- 碰撞检测：`LaserScan` / `PointCloud2` / `ultrasonic_eight(JSON)` / `collision_voxel_layer/VoxelGrid`
 - 碰撞策略：`slowdown zone` / `stop zone` / `dynamic ttc`
+- `TTC` 预测速度支持跟随 `control_source_state` 在 `navigation / miniapp / remote / other` 间切换
 - 碰撞区域可视化
 
 ## 架构摘要
@@ -64,16 +65,16 @@ ros2 launch nav2_monitor nav2_monitor.launch.py
 ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
 ```
 
-当前包内参数源文件位于 `src/nav2_monitor/config/`，
-部署后的运行时路径位于安装后的包 share：`<install>/nav2_monitor/share/nav2_monitor/config/`。
+当前 OTA 参数源文件位于 `config/Monitor/nav2_monitor/`，
+部署后的运行时路径为 `/opt/ry/config/Monitor/nav2_monitor/`。
 
 ## 关键配置
 
 ### 主参数
 
-仓库源文件：`src/nav2_monitor/config/nav2_monitor_params.yaml`
+仓库源文件：`config/Monitor/nav2_monitor/nav2_monitor_params.yaml`
 
-运行时路径：`<install>/nav2_monitor/share/nav2_monitor/config/nav2_monitor_params.yaml`
+运行时路径：`/opt/ry/config/Monitor/nav2_monitor/nav2_monitor_params.yaml`
 
 关键字段：
 
@@ -97,9 +98,9 @@ ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
 
 ### 故障配置
 
-仓库源文件：`src/nav2_monitor/config/fault_detector_config.yaml`
+仓库源文件：`config/Monitor/nav2_monitor/fault_detector_config.yaml`
 
-运行时路径：`<install>/nav2_monitor/share/nav2_monitor/config/fault_detector_config.yaml`
+运行时路径：`/opt/ry/config/Monitor/nav2_monitor/fault_detector_config.yaml`
 
 当前主要配置块：
 
@@ -131,6 +132,14 @@ ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
 
 - `collision_detection.ultrasonic_topic`
   - 单 topic 八路超声波 JSON 输入
+- `collision_detection.voxel_topic`
+  - `collision_voxel_layer/msg/VoxelGrid` 统一体素输入 topic
+  - 非空时，`zone/ttc` 优先使用 voxel source，不再回退到 raw `scan/pointcloud/ultrasonic` 做重复计数
+- `collision_detection.voxel_min_occupancy`
+  - 参与 `zone/ttc` 的最小体素占用权重
+- `collision_detection.voxel_min_height`
+- `collision_detection.voxel_max_height`
+  - 参与 `zone/ttc` 的体素高度过滤范围
 - `collision_detection.ultrasonic_widget`
   - 8 个 `0~1` 权重，顺序对应 8 路超声波
   - 当前编号约定：`1号左前，之后顺时针编号`
@@ -151,9 +160,18 @@ ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
 - `collision_detection.direction_confirm_count`
   - 前后向切换确认帧数
   - 连续收到相反方向速度达到该次数后，`zone/ttc` 才会切换到新的方向，避免单帧跳变导致方向抖动
+- `collision_detection.control_source_state_topic`
+  - `TTC` 预测速度控制源状态 topic，默认 `/control_source_state`
+  - 收到 `navigation / miniapp / remote / other` 后，会切到对应预测速度 topic
+- `collision_detection.prediction_speed_navigation_topic`
+- `collision_detection.prediction_speed_miniapp_topic`
+- `collision_detection.prediction_speed_remote_topic`
+- `collision_detection.prediction_speed_other_topic`
+  - `TTC` 按控制源订阅四路预测速度；若未单独配置 `navigation`，则回退到旧字段 `prediction_speed_topic`
 - `collision_detection.ttc_visualization_enabled`
   - TTC 预测可视化总开关
   - 打开后发布 `/nav2_monitor/collision_ttc_markers`
+  - 节点会输出 `TTC prediction input`、`TTC markers published`、`TTC markers idle` 日志，便于确认 `TTC` 正在执行
 - `collision_detection.zones`
   - `motion_direction` 支持：
     - `forward`
@@ -165,7 +183,7 @@ ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
   - `actions` 支持：
     - `safety_system`
     - `supervisor`
-  - `min_points` 对 `scan/pointcloud` 表示点数阈值，对超声波表示加权后的有效点阈值
+  - `min_points` 对 `scan/pointcloud` 表示点数阈值，对超声波/voxel 表示加权后的有效点阈值
   - `safety_system` 支持：
     - `0` 不执行
     - `1` 减速
@@ -187,6 +205,7 @@ ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
 | `/nav2_monitor/reporter/heartbeat_json` | `std_msgs/msg/String` | 发布系统心跳 JSON，上报系统资源/电池/导航状态 | 周期发布（随 `/nav2_monitor/status`） | `{"all_ok":true,"system":{"cpu_usage":12.3},"battery":{"percentage":0.86},"navigation":{"active":true}}` |
 | `/nav2_monitor/reporter/event_json` | `std_msgs/msg/String` | 发布异常/恢复事件 JSON | 边沿发布（随 `/nav2_monitor/fault_event`） | `{"edge":"TRIGGER","fault_type":"node_inactive","fault_module":"navigation","fault_level":"CRITICAL"}` |
 | `collision_detection.zones[*].polygon_pub_topic` | `geometry_msgs/msg/PolygonStamped` | 发布碰撞区可视化轮廓 | 周期发布（随 `check_health()`） | `/nav2_monitor/collision_zone/front_stop` |
+| `/nav2_monitor/collision_ttc_markers` | `visualization_msgs/msg/MarkerArray` | 发布 TTC 动态 corridor / footprint / 最近碰撞点 / 文本 | 周期发布（开启 `ttc_visualization_enabled` 后） | `front_ttc ttc=1.42 clr=0.08` |
 | `/command` | `std_msgs/msg/String` | 执行器输出到底盘协议命令 | 动作触发后透传/限速/制动发布 | `{"speed":0.000,"angle":0.0,"press":1000,"acc":1000,"place":-1,"ulock":-1}` |
 
 **说明**
@@ -196,6 +215,7 @@ ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
 - `/command` 由 `safety_emergency_executor` 发布，不是 `nav2_monitor` 主节点直接发布。
 - `collision_detection.zones[*].polygon_pub_topic` 是按配置动态创建的 topic，不是固定单一名称。
 - `model: "ttc"` 不再发布静态 polygon，可通过 `/nav2_monitor/collision_ttc_markers` 查看动态 corridor。
+- `TTC` 运行日志会打印当前控制源、实际使用的预测速度 topic，以及是 `preview_only`、`idle` 还是已经得到 `ttc` 命中。
 
 ## JSON 字段说明
 
@@ -473,10 +493,10 @@ colcon test --packages-select nav2_monitor --event-handlers console_direct+
 
 ## 任务配置模板
 
-- 默认配置：`src/nav2_monitor/config/fault_detector_config.yaml`
-- 到门任务：`src/nav2_monitor/config/profiles/fault_detector_todoor.yaml`
-- 电梯任务：`src/nav2_monitor/config/profiles/fault_detector_elevator.yaml`
-- 倒车任务：`src/nav2_monitor/config/profiles/fault_detector_reverse.yaml`
+- 默认配置：`config/Monitor/nav2_monitor/fault_detector_config.yaml`
+- 到门任务：`config/Monitor/nav2_monitor/profiles/fault_detector_todoor.yaml`
+- 电梯任务：`config/Monitor/nav2_monitor/profiles/fault_detector_elevator.yaml`
+- 倒车任务：`config/Monitor/nav2_monitor/profiles/fault_detector_reverse.yaml`
 
 当前模板差异：
 - `todoor`：更早前向减速，更敏感前视/前侧超声波（1号左前，顺时针编号）

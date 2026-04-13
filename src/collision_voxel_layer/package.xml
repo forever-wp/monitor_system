@@ -1,29 +1,33 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>nav2_monitor</name>
-  <version>2.3.0</version>
-  <description>Lightweight monitor for Nav2 nodes health status</description>
+  <name>collision_voxel_layer</name>
+  <version>0.1.0</version>
+  <description>Sparse voxel obstacle fusion for collision detection</description>
   <maintainer email="user@example.com">maintainer</maintainer>
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
   <buildtool_depend>rosidl_default_generators</buildtool_depend>
 
-  <depend>collision_voxel_layer</depend>
   <depend>rclcpp</depend>
-  <depend>ament_index_cpp</depend>
   <depend>std_msgs</depend>
-  <depend>nav_msgs</depend>
+  <depend>builtin_interfaces</depend>
   <depend>sensor_msgs</depend>
   <depend>geometry_msgs</depend>
   <depend>visualization_msgs</depend>
-  <depend>builtin_interfaces</depend>
+  <depend>tf2</depend>
   <depend>tf2_ros</depend>
-  <depend>master_interfaces</depend>
+  <depend>tf2_sensor_msgs</depend>
+  <depend>message_filters</depend>
+  <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
 
   <exec_depend>rosidl_default_runtime</exec_depend>
+
   <test_depend>ament_cmake_gtest</test_depend>
+
   <member_of_group>rosidl_interface_packages</member_of_group>
 
   <export>
