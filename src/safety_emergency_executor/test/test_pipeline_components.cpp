@@ -5,8 +5,10 @@
 #include <filesystem>
 #include <memory>
 #include <string>
+#include <thread>
 
 #include <geometry_msgs/msg/twist.hpp>
+#include <nav_msgs/msg/odometry.hpp>
 #include <nav2_monitor/msg/safety_cmd.hpp>
 #include <rclcpp/rclcpp.hpp>
 
@@ -39,6 +41,14 @@ protected:
     }
   }
 };
+
+nav_msgs::msg::Odometry::SharedPtr make_odom(double linear_x, double angular_z = 0.0)
+{
+  auto msg = std::make_shared<nav_msgs::msg::Odometry>();
+  msg->twist.twist.linear.x = linear_x;
+  msg->twist.twist.angular.z = angular_z;
+  return msg;
+}
 
 TEST_F(SafetyExecutorComponentTest, VelocityConverterPressureTopicUpdatesBaselinePress)
 {
@@ -108,6 +118,52 @@ TEST_F(SafetyExecutorComponentTest, PressureAdjusterDisabledModeLeavesPressureUn
   adjuster.apply(frame);
 
   EXPECT_EQ(frame.press, 1234);
+}
+
+TEST_F(SafetyExecutorComponentTest, ExternalPressureHoldWindowBypassesAutomaticAdjustment)
+{
+  rclcpp::NodeOptions options;
+  options.parameter_overrides(
+    {
+      rclcpp::Parameter("external_pressure_hold_s", 30.0)
+    });
+  auto node = std::make_shared<rclcpp::Node>("pressure_adjuster_hold_window_test", options);
+
+  safety_emergency_executor::PressureAdjuster adjuster;
+  adjuster.configure(*node);
+  adjuster.on_wheel_odom(make_odom(1.0));
+  adjuster.on_loc_odom(make_odom(0.0));
+  adjuster.note_external_pressure_override(node->get_clock()->now());
+
+  safety_emergency_executor::CommandFrame frame;
+  frame.press = 1100;
+  adjuster.apply(frame);
+
+  EXPECT_EQ(frame.press, 1100);
+}
+
+TEST_F(SafetyExecutorComponentTest, AutomaticAdjustmentResumesAfterHoldWindowExpires)
+{
+  rclcpp::NodeOptions options;
+  options.parameter_overrides(
+    {
+      rclcpp::Parameter("external_pressure_hold_s", 0.01)
+    });
+  auto node = std::make_shared<rclcpp::Node>("pressure_adjuster_resume_test", options);
+
+  safety_emergency_executor::PressureAdjuster adjuster;
+  adjuster.configure(*node);
+  adjuster.on_wheel_odom(make_odom(1.0));
+  adjuster.on_loc_odom(make_odom(0.0));
+  adjuster.note_external_pressure_override(node->get_clock()->now());
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(20));
+
+  safety_emergency_executor::CommandFrame frame;
+  frame.press = 1100;
+  adjuster.apply(frame);
+
+  EXPECT_NE(frame.press, 1100);
 }
 
 TEST_F(SafetyExecutorComponentTest, SafetyPolicyTransitionsPreserveExpectedSemantics)
