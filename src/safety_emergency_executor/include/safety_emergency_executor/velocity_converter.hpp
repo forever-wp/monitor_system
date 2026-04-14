@@ -29,7 +29,7 @@ public:
   void configure(rclcpp::Node & node);
   CommandFrame convert(const std::string & source, const geometry_msgs::msg::Twist & msg) const;
   CommandFrame convert(const geometry_msgs::msg::Twist & msg) const;
-  bool update_params_from_json(const std::string & payload, std::string * error = nullptr);
+  void update_press_from_topic(int press_value);
   void update_acc_from_topic(int acc_value);
   std::string to_json(const CommandFrame & frame) const;
   CommandFrame template_frame() const;

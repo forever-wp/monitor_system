@@ -78,6 +78,7 @@ if(BUILD_TESTING)
       PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}
       PYTEST_DISABLE_PLUGIN_AUTOLOAD=1
   )
+
   ament_lint_auto_find_test_dependencies()
 endif()
 

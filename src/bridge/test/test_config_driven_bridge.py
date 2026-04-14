@@ -1,13 +1,17 @@
 import tempfile
 from pathlib import Path
 
+import rclpy
+from rclpy.parameter import Parameter
 from sensor_msgs.msg import BatteryState
 
 from bridge.config_driven_bridge import (
+    ConfigDrivenBridge,
     build_feedback_messages,
     get_field_value,
     import_message_type,
     load_spec,
+    resolve_spec_path,
     validate_bridge_entry,
 )
 
@@ -59,6 +63,19 @@ def test_load_spec_reads_multi_bridge_yaml_file():
         assert spec["bridges"][0]["metrics"][0]["name"] == "battery_percentage"
 
 
+def test_resolve_spec_path_accepts_existing_absolute_path(tmp_path):
+    spec_file = tmp_path / "spec.yaml"
+    spec_file.write_text("bridges: []")
+
+    assert resolve_spec_path(str(spec_file)) == spec_file
+
+
+def test_resolve_spec_path_does_not_expand_relative_package_path():
+    unresolved = Path("config/examples/generic_multi_bridge_spec.yaml")
+
+    assert resolve_spec_path(str(unresolved)) == unresolved
+
+
 def test_build_feedback_messages_uses_bridge_spec():
     msg = BatteryState()
     msg.percentage = 0.35
@@ -94,3 +111,113 @@ def test_build_feedback_messages_uses_bridge_spec():
     assert abs(feedback_messages[0].value - 0.35) < 1e-6
     assert feedback_messages[0].valid is True
     assert feedback_messages[1].metric_name == "battery_temperature"
+
+
+def test_reload_spec_applies_new_bridge_entries(tmp_path):
+    if not rclpy.ok():
+        rclpy.init()
+
+    spec_file = tmp_path / "spec.yaml"
+    spec_file.write_text(
+        """bridges:
+  - id: battery
+    message_type: sensor_msgs/msg/BatteryState
+    input_topic: /battery_state
+    output_topic: /nav2_monitor/algorithm_feedback
+    module_name: battery_node
+    topic_name: /battery_state
+    metrics:
+      - name: battery_percentage
+        field: percentage
+        valid_field: present
+"""
+    )
+
+    node = ConfigDrivenBridge(
+        parameter_overrides=[
+            Parameter("spec_file", value=str(spec_file)),
+            Parameter("spec_reload_enabled", value=False),
+        ]
+    )
+    try:
+        assert node.bridge_ids() == ["battery"]
+
+        spec_file.write_text(
+            """bridges:
+  - id: battery
+    message_type: sensor_msgs/msg/BatteryState
+    input_topic: /battery_state
+    output_topic: /nav2_monitor/algorithm_feedback
+    module_name: battery_node
+    topic_name: /battery_state
+    metrics:
+      - name: battery_percentage
+        field: percentage
+        valid_field: present
+  - id: battery_aux
+    message_type: sensor_msgs/msg/BatteryState
+    input_topic: /battery_state_aux
+    output_topic: /nav2_monitor/algorithm_feedback
+    module_name: battery_aux_node
+    topic_name: /battery_state_aux
+    metrics:
+      - name: battery_voltage
+        field: voltage
+        valid_field: present
+"""
+        )
+
+        assert node.reload_spec_if_needed(force=True) is True
+        assert node.bridge_ids() == ["battery", "battery_aux"]
+    finally:
+        node.destroy_node()
+        if rclpy.ok():
+            rclpy.shutdown()
+
+
+def test_reload_invalid_spec_keeps_previous_bridges(tmp_path):
+    if not rclpy.ok():
+        rclpy.init()
+
+    spec_file = tmp_path / "spec.yaml"
+    spec_file.write_text(
+        """bridges:
+  - id: battery
+    message_type: sensor_msgs/msg/BatteryState
+    input_topic: /battery_state
+    output_topic: /nav2_monitor/algorithm_feedback
+    module_name: battery_node
+    topic_name: /battery_state
+    metrics:
+      - name: battery_percentage
+        field: percentage
+        valid_field: present
+"""
+    )
+
+    node = ConfigDrivenBridge(
+        parameter_overrides=[
+            Parameter("spec_file", value=str(spec_file)),
+            Parameter("spec_reload_enabled", value=False),
+        ]
+    )
+    try:
+        assert node.bridge_ids() == ["battery"]
+
+        spec_file.write_text(
+            """bridges:
+  - id: broken
+    message_type: sensor_msgs/msg/BatteryState
+    input_topic: /broken
+    output_topic: /nav2_monitor/algorithm_feedback
+    module_name: broken_node
+    topic_name: /broken
+"""
+        )
+
+        assert node.reload_spec_if_needed(force=True) is False
+        assert node.bridge_ids() == ["battery"]
+    finally:
+        node.destroy_node()
+        if rclpy.ok():
+            rclpy.shutdown()

@@ -5,10 +5,10 @@
 #include <filesystem>
 #include <memory>
 #include <string>
-
-#include <json/json.h>
+#include <thread>
 
 #include <geometry_msgs/msg/twist.hpp>
+#include <nav_msgs/msg/odometry.hpp>
 #include <nav2_monitor/msg/safety_cmd.hpp>
 #include <rclcpp/rclcpp.hpp>
 
@@ -42,67 +42,51 @@ protected:
   }
 };
 
-TEST_F(SafetyExecutorComponentTest, VelocityConverterMapsFieldsAndUpdatesParams)
+nav_msgs::msg::Odometry::SharedPtr make_odom(double linear_x, double angular_z = 0.0)
 {
-  auto node = std::make_shared<rclcpp::Node>("velocity_converter_test");
+  auto msg = std::make_shared<nav_msgs::msg::Odometry>();
+  msg->twist.twist.linear.x = linear_x;
+  msg->twist.twist.angular.z = angular_z;
+  return msg;
+}
+
+TEST_F(SafetyExecutorComponentTest, VelocityConverterPressureTopicUpdatesBaselinePress)
+{
+  auto node = std::make_shared<rclcpp::Node>("velocity_converter_pressure_override_test");
   safety_emergency_executor::VelocityConverter converter;
   converter.configure(*node);
 
-  std::string error;
-  ASSERT_TRUE(
-    converter.update_params_from_json(
-      "{\"acc\":1500,\"press\":950,\"place\":2,\"ulock\":3}", &error));
+  converter.update_press_from_topic(1100);
+  const auto frame = converter.template_frame();
 
-  geometry_msgs::msg::Twist msg;
-  msg.linear.x = 0.456;
-  msg.angular.z = -0.234;
-  const auto frame = converter.convert(msg);
-
-  EXPECT_DOUBLE_EQ(frame.speed, 0.46);
-  EXPECT_DOUBLE_EQ(frame.angle, -0.23);
-  EXPECT_EQ(frame.acc, 1500);
-  EXPECT_EQ(frame.press, 950);
-  EXPECT_EQ(frame.place, 2);
-  EXPECT_EQ(frame.ulock, 3);
-
-  const auto json = converter.to_json(frame);
-  EXPECT_NE(json.find("\"speed\""), std::string::npos);
-  EXPECT_NE(json.find("\"press\":950"), std::string::npos);
+  EXPECT_EQ(frame.press, 1100);
+  EXPECT_EQ(frame.acc, 2000);
+  EXPECT_EQ(frame.place, -1);
+  EXPECT_EQ(frame.ulock, -1);
 }
 
-TEST_F(SafetyExecutorComponentTest, VelocityConverterAccTopicOverrideKeepsDefaultFallback)
+TEST_F(SafetyExecutorComponentTest, VelocityConverterAccTopicOverrideKeepsPressureBaseline)
 {
   auto node = std::make_shared<rclcpp::Node>("velocity_converter_acc_override_test");
   safety_emergency_executor::VelocityConverter converter;
   converter.configure(*node);
 
-  geometry_msgs::msg::Twist msg;
-  msg.linear.x = 0.3;
-  msg.angular.z = 0.1;
-
-  const auto default_frame = converter.convert(msg);
-  EXPECT_EQ(default_frame.acc, 2000);
-
+  converter.update_press_from_topic(1100);
   converter.update_acc_from_topic(3200);
-  const auto overridden_frame = converter.convert(msg);
-  EXPECT_EQ(overridden_frame.acc, 3200);
+  const auto frame = converter.template_frame();
 
-  std::string error;
-  ASSERT_TRUE(converter.update_params_from_json("{\"acc\":1500}", &error));
-  const auto still_overridden_frame = converter.convert(msg);
-  EXPECT_EQ(still_overridden_frame.acc, 3200);
+  EXPECT_EQ(frame.press, 1100);
+  EXPECT_EQ(frame.acc, 3200);
 }
 
-TEST_F(SafetyExecutorComponentTest, VelocityConverterKeepsLegacyFallbackWhenAuxFieldsAreUnused)
+TEST_F(SafetyExecutorComponentTest, VelocityConverterUsesUpdatedBaselineWhenAuxFieldsAreUnused)
 {
   auto node = std::make_shared<rclcpp::Node>("velocity_converter_aux_field_guard_test");
   safety_emergency_executor::VelocityConverter converter;
   converter.configure(*node);
 
-  std::string error;
-  ASSERT_TRUE(
-    converter.update_params_from_json(
-      "{\"acc\":1500,\"press\":950,\"place\":2,\"ulock\":3}", &error));
+  converter.update_press_from_topic(950);
+  converter.update_acc_from_topic(1500);
 
   geometry_msgs::msg::Twist msg;
   msg.linear.x = 0.42;
@@ -113,8 +97,8 @@ TEST_F(SafetyExecutorComponentTest, VelocityConverterKeepsLegacyFallbackWhenAuxF
   EXPECT_DOUBLE_EQ(frame.angle, 0.11);
   EXPECT_EQ(frame.acc, 1500);
   EXPECT_EQ(frame.press, 950);
-  EXPECT_EQ(frame.place, 2);
-  EXPECT_EQ(frame.ulock, 3);
+  EXPECT_EQ(frame.place, -1);
+  EXPECT_EQ(frame.ulock, -1);
 }
 
 TEST_F(SafetyExecutorComponentTest, PressureAdjusterDisabledModeLeavesPressureUnchanged)
@@ -134,6 +118,52 @@ TEST_F(SafetyExecutorComponentTest, PressureAdjusterDisabledModeLeavesPressureUn
   adjuster.apply(frame);
 
   EXPECT_EQ(frame.press, 1234);
+}
+
+TEST_F(SafetyExecutorComponentTest, ExternalPressureHoldWindowBypassesAutomaticAdjustment)
+{
+  rclcpp::NodeOptions options;
+  options.parameter_overrides(
+    {
+      rclcpp::Parameter("external_pressure_hold_s", 30.0)
+    });
+  auto node = std::make_shared<rclcpp::Node>("pressure_adjuster_hold_window_test", options);
+
+  safety_emergency_executor::PressureAdjuster adjuster;
+  adjuster.configure(*node);
+  adjuster.on_wheel_odom(make_odom(1.0));
+  adjuster.on_loc_odom(make_odom(0.0));
+  adjuster.note_external_pressure_override(node->get_clock()->now());
+
+  safety_emergency_executor::CommandFrame frame;
+  frame.press = 1100;
+  adjuster.apply(frame);
+
+  EXPECT_EQ(frame.press, 1100);
+}
+
+TEST_F(SafetyExecutorComponentTest, AutomaticAdjustmentResumesAfterHoldWindowExpires)
+{
+  rclcpp::NodeOptions options;
+  options.parameter_overrides(
+    {
+      rclcpp::Parameter("external_pressure_hold_s", 0.01)
+    });
+  auto node = std::make_shared<rclcpp::Node>("pressure_adjuster_resume_test", options);
+
+  safety_emergency_executor::PressureAdjuster adjuster;
+  adjuster.configure(*node);
+  adjuster.on_wheel_odom(make_odom(1.0));
+  adjuster.on_loc_odom(make_odom(0.0));
+  adjuster.note_external_pressure_override(node->get_clock()->now());
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(20));
+
+  safety_emergency_executor::CommandFrame frame;
+  frame.press = 1100;
+  adjuster.apply(frame);
+
+  EXPECT_NE(frame.press, 1100);
 }
 
 TEST_F(SafetyExecutorComponentTest, SafetyPolicyTransitionsPreserveExpectedSemantics)

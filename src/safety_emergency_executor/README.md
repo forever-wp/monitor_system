@@ -13,6 +13,10 @@
 - 发布 `/control_source_state` (`std_msgs/String`) 被动反馈当前控制源
 - 任一时刻只有一个控制源能进入 `/command`，非激活源直接丢弃
 - 控制源切换或激活源停发时不补零、不保留最后一帧
+- 订阅 `/pressure_` (`std_msgs/Int32`) 作为外部单值压力覆盖入口
+  - 收到后立即更新基础 `press`
+  - `external_pressure_hold_s` 时间窗内自动调压完全不介入
+  - 时间窗结束后，以最近一次外部值为新基线继续自动调压
 - 小程序、远程驾驶、其他外部源可在 `Twist` 空闲轴里直接携带 `press/acc/place/ulock`
   - 映射为 `linear.y -> press`、`linear.z -> acc`、`angular.x -> place`、`angular.y -> ulock`
   - 仅当至少一个辅助轴非零时启用该扩展解析；否则继续沿用现有默认值和动态更新链路
@@ -48,8 +52,9 @@ ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
 - `cmd_vel_remote_extended_fields_enabled`（默认 `true`）
 - `cmd_vel_other_extended_fields_enabled`（默认 `true`）
 - `wheel_odom_topic` / `loc_odom_topic` / `imu_topic`
-- `pressure_update_topic`（动态更新 `acc_/press_/place_/ulock_`）
+- `pressure_update_topic`（`std_msgs/Int32`，只更新基础压力）
 - `acc_update_topic`（直接覆盖当前 `acc` 值；未收到消息时保留默认 `acc_`）
+- `external_pressure_hold_s`（默认 `30.0`，外部设压后自动调压冻结时长）
 - `auto_pressure.*`（打滑检测与压力调节参数）
 - `slow_down_percentage`（默认 `50.0`）
 - `brake_*`（急停制动序列）

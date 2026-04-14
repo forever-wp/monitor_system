@@ -16,7 +16,8 @@ constexpr const char * kOther = "other";
 ControlSourceController::ControlSourceController(
   std::string initial_source,
   bool auto_preempt_enabled)
-: active_source_(is_valid_source(initial_source) ? std::move(initial_source) : std::string(kNavigation)),
+: active_source_(is_valid_source(initial_source) ? std::move(initial_source) : std::string(
+      kNavigation)),
   auto_preempt_enabled_(auto_preempt_enabled)
 {
   (void)auto_preempt_enabled_;

@@ -20,6 +20,7 @@
 #include <rcl_interfaces/srv/get_parameters.hpp>
 #include <rcl_interfaces/srv/set_parameters.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <std_msgs/msg/int32.hpp>
 #include <std_msgs/msg/string.hpp>
 
 #include "safety_emergency_executor/safety_emergency_executor_node.hpp"
@@ -82,6 +83,8 @@ public:
       "/test/control_source/odom", rclcpp::QoS(20));
     safety_pub_ = this->create_publisher<nav2_monitor::msg::SafetyCmd>(
       "/test/control_source/safety_cmd", rclcpp::QoS(20));
+    pressure_pub_ = this->create_publisher<std_msgs::msg::Int32>(
+      "/test/control_source/pressure", rclcpp::QoS(20));
     set_parameters_client_ = this->create_client<rcl_interfaces::srv::SetParameters>(
       "/safety_emergency_executor/set_parameters");
     get_parameters_client_ = this->create_client<rcl_interfaces::srv::GetParameters>(
@@ -190,6 +193,13 @@ public:
     publish_odom(wheel_odom_pub_, linear_x, angular_z);
   }
 
+  void publish_pressure(int pressure)
+  {
+    std_msgs::msg::Int32 msg;
+    msg.data = pressure;
+    pressure_pub_->publish(msg);
+  }
+
   void publish_loc_odom(double linear_x, double angular_z = 0.0)
   {
     publish_odom(loc_odom_pub_, linear_x, angular_z);
@@ -283,6 +293,7 @@ private:
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr wheel_odom_pub_;
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr loc_odom_pub_;
   rclcpp::Publisher<nav2_monitor::msg::SafetyCmd>::SharedPtr safety_pub_;
+  rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr pressure_pub_;
   rclcpp::Client<rcl_interfaces::srv::SetParameters>::SharedPtr set_parameters_client_;
   rclcpp::Client<rcl_interfaces::srv::GetParameters>::SharedPtr get_parameters_client_;
 };
@@ -710,6 +721,161 @@ TEST_F(SafetyExecutorRoutingTest, EmbeddedTwistFieldsBypassPressureAdjuster)
 
   const auto command = harness->latest_command_json();
   EXPECT_EQ(command["press"].asInt(), 950);
+}
+
+TEST_F(SafetyExecutorRoutingTest, PressureTopicOverrideUpdatesOutgoingCommandPressure)
+{
+  auto harness = std::make_shared<ControlSourceHarness>();
+
+  rclcpp::NodeOptions options;
+  options.parameter_overrides(
+    {
+      rclcpp::Parameter("command_output_topic", "/test/control_source/command"),
+      rclcpp::Parameter("cmd_vel_navigation_topic", "/test/control_source/cmd_vel/navigation"),
+      rclcpp::Parameter("cmd_vel_miniapp_topic", "/test/control_source/cmd_vel/miniapp"),
+      rclcpp::Parameter("cmd_vel_remote_topic", "/test/control_source/cmd_vel/remote"),
+      rclcpp::Parameter("cmd_vel_other_topic", "/test/control_source/cmd_vel/other"),
+      rclcpp::Parameter("safety_cmd_topic", "/test/control_source/safety_cmd"),
+      rclcpp::Parameter("control_source_state_topic", "/test/control_source/state"),
+      rclcpp::Parameter("wheel_odom_topic", "/test/control_source/odom_base"),
+      rclcpp::Parameter("loc_odom_topic", "/test/control_source/odom"),
+      rclcpp::Parameter("pressure_update_topic", "/test/control_source/pressure"),
+      rclcpp::Parameter("active_control_source", "navigation")
+    });
+  auto executor_node = std::make_shared<safety_emergency_executor::SafetyEmergencyExecutorNode>(
+    options);
+
+  rclcpp::executors::SingleThreadedExecutor executor;
+  executor.add_node(harness);
+  executor.add_node(executor_node);
+  std::thread spin_thread([&executor]() {executor.spin();});
+  struct ExecutorCleanup
+  {
+    rclcpp::executors::SingleThreadedExecutor & executor;
+    std::thread & spin_thread;
+    ~ExecutorCleanup()
+    {
+      executor.cancel();
+      if (spin_thread.joinable()) {
+        spin_thread.join();
+      }
+    }
+  } cleanup{executor, spin_thread};
+
+  ASSERT_TRUE(harness->wait_for_graph_ready(std::chrono::milliseconds(2000)));
+  harness->publish_pressure(1100);
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  harness->publish_navigation(0.5, 0.2);
+  ASSERT_TRUE(harness->wait_for_command_count_at_least(1, std::chrono::milliseconds(2000)));
+
+  const auto command = harness->latest_command_json();
+  EXPECT_EQ(command["press"].asInt(), 1100);
+}
+
+TEST_F(SafetyExecutorRoutingTest, PressureTopicOverrideBypassesAutoPressureDuringHoldWindow)
+{
+  auto harness = std::make_shared<ControlSourceHarness>();
+
+  rclcpp::NodeOptions options;
+  options.parameter_overrides(
+    {
+      rclcpp::Parameter("command_output_topic", "/test/control_source/command"),
+      rclcpp::Parameter("cmd_vel_navigation_topic", "/test/control_source/cmd_vel/navigation"),
+      rclcpp::Parameter("cmd_vel_miniapp_topic", "/test/control_source/cmd_vel/miniapp"),
+      rclcpp::Parameter("cmd_vel_remote_topic", "/test/control_source/cmd_vel/remote"),
+      rclcpp::Parameter("cmd_vel_other_topic", "/test/control_source/cmd_vel/other"),
+      rclcpp::Parameter("safety_cmd_topic", "/test/control_source/safety_cmd"),
+      rclcpp::Parameter("control_source_state_topic", "/test/control_source/state"),
+      rclcpp::Parameter("wheel_odom_topic", "/test/control_source/odom_base"),
+      rclcpp::Parameter("loc_odom_topic", "/test/control_source/odom"),
+      rclcpp::Parameter("pressure_update_topic", "/test/control_source/pressure"),
+      rclcpp::Parameter("external_pressure_hold_s", 30.0),
+      rclcpp::Parameter("active_control_source", "navigation")
+    });
+  auto executor_node = std::make_shared<safety_emergency_executor::SafetyEmergencyExecutorNode>(
+    options);
+
+  rclcpp::executors::SingleThreadedExecutor executor;
+  executor.add_node(harness);
+  executor.add_node(executor_node);
+  std::thread spin_thread([&executor]() {executor.spin();});
+  struct ExecutorCleanup
+  {
+    rclcpp::executors::SingleThreadedExecutor & executor;
+    std::thread & spin_thread;
+    ~ExecutorCleanup()
+    {
+      executor.cancel();
+      if (spin_thread.joinable()) {
+        spin_thread.join();
+      }
+    }
+  } cleanup{executor, spin_thread};
+
+  ASSERT_TRUE(harness->wait_for_graph_ready(std::chrono::milliseconds(2000)));
+  harness->publish_wheel_odom(1.0);
+  harness->publish_loc_odom(0.0);
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  harness->publish_pressure(1100);
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  harness->publish_navigation(0.5, 0.2);
+  ASSERT_TRUE(harness->wait_for_command_count_at_least(1, std::chrono::milliseconds(2000)));
+
+  const auto command = harness->latest_command_json();
+  EXPECT_EQ(command["press"].asInt(), 1100);
+}
+
+TEST_F(SafetyExecutorRoutingTest, AutoPressureResumesAfterPressureHoldWindowExpires)
+{
+  auto harness = std::make_shared<ControlSourceHarness>();
+
+  rclcpp::NodeOptions options;
+  options.parameter_overrides(
+    {
+      rclcpp::Parameter("command_output_topic", "/test/control_source/command"),
+      rclcpp::Parameter("cmd_vel_navigation_topic", "/test/control_source/cmd_vel/navigation"),
+      rclcpp::Parameter("cmd_vel_miniapp_topic", "/test/control_source/cmd_vel/miniapp"),
+      rclcpp::Parameter("cmd_vel_remote_topic", "/test/control_source/cmd_vel/remote"),
+      rclcpp::Parameter("cmd_vel_other_topic", "/test/control_source/cmd_vel/other"),
+      rclcpp::Parameter("safety_cmd_topic", "/test/control_source/safety_cmd"),
+      rclcpp::Parameter("control_source_state_topic", "/test/control_source/state"),
+      rclcpp::Parameter("wheel_odom_topic", "/test/control_source/odom_base"),
+      rclcpp::Parameter("loc_odom_topic", "/test/control_source/odom"),
+      rclcpp::Parameter("pressure_update_topic", "/test/control_source/pressure"),
+      rclcpp::Parameter("external_pressure_hold_s", 0.01),
+      rclcpp::Parameter("active_control_source", "navigation")
+    });
+  auto executor_node = std::make_shared<safety_emergency_executor::SafetyEmergencyExecutorNode>(
+    options);
+
+  rclcpp::executors::SingleThreadedExecutor executor;
+  executor.add_node(harness);
+  executor.add_node(executor_node);
+  std::thread spin_thread([&executor]() {executor.spin();});
+  struct ExecutorCleanup
+  {
+    rclcpp::executors::SingleThreadedExecutor & executor;
+    std::thread & spin_thread;
+    ~ExecutorCleanup()
+    {
+      executor.cancel();
+      if (spin_thread.joinable()) {
+        spin_thread.join();
+      }
+    }
+  } cleanup{executor, spin_thread};
+
+  ASSERT_TRUE(harness->wait_for_graph_ready(std::chrono::milliseconds(2000)));
+  harness->publish_wheel_odom(1.0);
+  harness->publish_loc_odom(0.0);
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  harness->publish_pressure(1100);
+  std::this_thread::sleep_for(std::chrono::milliseconds(30));
+  harness->publish_navigation(0.5, 0.2);
+  ASSERT_TRUE(harness->wait_for_command_count_at_least(1, std::chrono::milliseconds(2000)));
+
+  const auto command = harness->latest_command_json();
+  EXPECT_GT(command["press"].asInt(), 1100);
 }
 
 }  // namespace

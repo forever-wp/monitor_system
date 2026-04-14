@@ -13,8 +13,9 @@ safety_emergency_executor:
     cmd_vel_miniapp_extended_fields_enabled: true  # 小程序可用 Twist 辅助轴携带 press/acc/place/ulock
     cmd_vel_remote_extended_fields_enabled: true  # 远程驾驶可用 Twist 辅助轴携带 press/acc/place/ulock
     cmd_vel_other_extended_fields_enabled: true  # 其他外部源可用 Twist 辅助轴携带 press/acc/place/ulock
-    pressure_update_topic: "/pressure_"  # 动态更新 acc_/press_/place_/ulock_ 的 JSON topic
+    pressure_update_topic: "/pressure_"  # 外部单值压力覆盖 topic，std_msgs/Int32
     acc_update_topic: "/acc_"  # 直接覆盖当前加速度值的 Int32 topic；未收到时使用默认 acc_
+    external_pressure_hold_s: 30.0  # 外部设压后自动调压冻结时长（秒），超时后以该值为新基线继续调压
     wheel_odom_topic: "/odom_base"  # 轮式里程计 topic，用于打滑检测
     loc_odom_topic: "/odom"  # 定位里程计 topic，用于双源打滑检测
     imu_topic: "/livox/imu"  # IMU topic，用于高频打滑检测和偏置校准
