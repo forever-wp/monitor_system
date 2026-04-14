@@ -57,35 +57,6 @@ CommandFrame VelocityConverter::convert(const geometry_msgs::msg::Twist & msg) c
   return convert("navigation", msg);
 }
 
-bool VelocityConverter::update_params_from_json(const std::string & payload, std::string * error)
-{
-  Json::CharReaderBuilder builder;
-  Json::Value root;
-  std::string parse_error;
-  std::unique_ptr<Json::CharReader> reader(builder.newCharReader());
-  if (!reader->parse(payload.c_str(), payload.c_str() + payload.size(), &root, &parse_error)) {
-    if (error != nullptr) {
-      *error = parse_error;
-    }
-    return false;
-  }
-
-  if (root.isMember("acc")) {
-    params_.acc = root["acc"].asInt();
-  }
-  if (root.isMember("press")) {
-    params_.press = root["press"].asInt();
-  }
-  if (root.isMember("place")) {
-    params_.place = root["place"].asInt();
-  }
-  if (root.isMember("ulock")) {
-    params_.ulock = root["ulock"].asInt();
-  }
-
-  return true;
-}
-
 void VelocityConverter::update_press_from_topic(int press_value)
 {
   params_.press = press_value;

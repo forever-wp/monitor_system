@@ -71,7 +71,7 @@ SafetyEmergencyExecutorNode::SafetyEmergencyExecutorNode(const rclcpp::NodeOptio
   create_cmd_vel_subscription("miniapp", cmd_vel_miniapp_topic);
   create_cmd_vel_subscription("remote", cmd_vel_remote_topic);
   create_cmd_vel_subscription("other", cmd_vel_other_topic);
-  pressure_sub_ = this->create_subscription<std_msgs::msg::String>(
+  pressure_sub_ = this->create_subscription<std_msgs::msg::Int32>(
     pressure_update_topic, rclcpp::QoS(10),
     std::bind(&SafetyEmergencyExecutorNode::on_pressure_update, this, std::placeholders::_1));
   acc_update_sub_ = this->create_subscription<std_msgs::msg::Int32>(
@@ -134,14 +134,10 @@ void SafetyEmergencyExecutorNode::on_cmd_vel(
   publish_frame(frame);
 }
 
-void SafetyEmergencyExecutorNode::on_pressure_update(const std_msgs::msg::String::SharedPtr msg)
+void SafetyEmergencyExecutorNode::on_pressure_update(const std_msgs::msg::Int32::SharedPtr msg)
 {
-  std::string error;
-  if (!velocity_converter_.update_params_from_json(msg->data, &error)) {
-    RCLCPP_WARN_THROTTLE(
-      get_logger(), *get_clock(), 2000,
-      "Failed to parse pressure update: %s", error.c_str());
-  }
+  velocity_converter_.update_press_from_topic(msg->data);
+  pressure_adjuster_.note_external_pressure_override(this->get_clock()->now());
 }
 
 void SafetyEmergencyExecutorNode::on_acc_update(const std_msgs::msg::Int32::SharedPtr msg)

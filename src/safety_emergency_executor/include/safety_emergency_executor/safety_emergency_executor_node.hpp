@@ -30,7 +30,7 @@ public:
 
 private:
   void on_cmd_vel(const std::string & source, const geometry_msgs::msg::Twist::SharedPtr msg);
-  void on_pressure_update(const std_msgs::msg::String::SharedPtr msg);
+  void on_pressure_update(const std_msgs::msg::Int32::SharedPtr msg);
   void on_acc_update(const std_msgs::msg::Int32::SharedPtr msg);
   void on_wheel_odom(const nav_msgs::msg::Odometry::SharedPtr msg);
   void on_loc_odom(const nav_msgs::msg::Odometry::SharedPtr msg);
@@ -44,7 +44,7 @@ private:
   rclcpp::Subscription<nav2_monitor::msg::SafetyCmd>::SharedPtr safety_cmd_sub_;
   std::unordered_map<std::string, rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr>
   cmd_vel_subscriptions_;
-  rclcpp::Subscription<std_msgs::msg::String>::SharedPtr pressure_sub_;
+  rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr pressure_sub_;
   rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr acc_update_sub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr wheel_odom_sub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr loc_odom_sub_;
