@@ -86,6 +86,11 @@ bool VelocityConverter::update_params_from_json(const std::string & payload, std
   return true;
 }
 
+void VelocityConverter::update_press_from_topic(int press_value)
+{
+  params_.press = press_value;
+}
+
 void VelocityConverter::update_acc_from_topic(int acc_value)
 {
   acc_override_ = acc_value;
