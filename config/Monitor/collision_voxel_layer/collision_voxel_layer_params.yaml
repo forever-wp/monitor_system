@@ -1,6 +1,6 @@
 collision_voxel_layer:
   ros__parameters:
-    config_file: "collision_voxel_layer_params.yaml"
+    config_file: "/opt/ry/config/Monitor/collision_voxel_layer/collision_voxel_layer_params.yaml"
     config_reload_enabled: true
     config_reload_period_s: 1.0
 

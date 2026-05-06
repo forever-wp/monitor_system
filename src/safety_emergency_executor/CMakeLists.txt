@@ -16,6 +16,7 @@ find_package(geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(nav2_monitor REQUIRED)
+find_package(std_srvs REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(jsoncpp REQUIRED jsoncpp)
 
@@ -40,6 +41,7 @@ ament_target_dependencies(safety_emergency_executor_node
   geometry_msgs
   nav_msgs
   sensor_msgs
+  std_srvs
   nav2_monitor
 )
 target_link_libraries(safety_emergency_executor_node
@@ -88,6 +90,7 @@ if(BUILD_TESTING)
       nav_msgs
       sensor_msgs
       std_msgs
+      std_srvs
       nav2_monitor
     )
     target_link_libraries(test_control_source_routing

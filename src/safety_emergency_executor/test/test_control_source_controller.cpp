@@ -16,6 +16,7 @@ TEST(ControlSourceControllerTest, SwitchesBetweenCanonicalSources)
   EXPECT_TRUE(result.success);
   EXPECT_TRUE(result.changed);
   EXPECT_EQ(result.active_source, "remote");
+  EXPECT_EQ(result.message, "control source switched: navigation -> remote");
   EXPECT_EQ(controller.active_source(), "remote");
 }
 

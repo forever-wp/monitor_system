@@ -499,12 +499,13 @@ void Nav2MonitorNode::on_collision_prediction_cmd_vel(
     return;
   }
 
+  const auto motion = CollisionPredictionRouter::extract_prediction_motion(source, *msg);
   data_store_.set_prediction_motion(
-    msg->linear.x, msg->linear.y, msg->angular.z, this->now());
+    motion.linear_x, motion.linear_y, motion.angular_z, this->now());
   RCLCPP_INFO_THROTTLE(
     get_logger(), *get_clock(), 1000,
     "TTC prediction input: source=%s topic=%s linear_x=%.3f linear_y=%.3f angular_z=%.3f",
-    source.c_str(), topic.c_str(), msg->linear.x, msg->linear.y, msg->angular.z);
+    source.c_str(), topic.c_str(), motion.linear_x, motion.linear_y, motion.angular_z);
 }
 
 void Nav2MonitorNode::on_collision_voxel_grid(

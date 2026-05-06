@@ -9,6 +9,7 @@
 #include <sensor_msgs/msg/imu.hpp>
 #include <std_msgs/msg/int32.hpp>
 #include <std_msgs/msg/string.hpp>
+#include <std_srvs/srv/trigger.hpp>
 
 #include <string>
 #include <unordered_map>
@@ -32,6 +33,10 @@ private:
   void on_cmd_vel(const std::string & source, const geometry_msgs::msg::Twist::SharedPtr msg);
   void on_pressure_update(const std_msgs::msg::Int32::SharedPtr msg);
   void on_acc_update(const std_msgs::msg::Int32::SharedPtr msg);
+  void on_control_source_command(const std_msgs::msg::String::SharedPtr msg);
+  void on_query_control_source(
+    const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+    std::shared_ptr<std_srvs::srv::Trigger::Response> response);
   void on_wheel_odom(const nav_msgs::msg::Odometry::SharedPtr msg);
   void on_loc_odom(const nav_msgs::msg::Odometry::SharedPtr msg);
   void on_imu(const sensor_msgs::msg::Imu::SharedPtr msg);
@@ -40,18 +45,27 @@ private:
     const std::vector<rclcpp::Parameter> & parameters);
   void publish_frame(const CommandFrame & frame);
   void publish_control_source_state();
+  bool is_safety_enabled_for_source(const std::string & source) const;
+  bool is_active_source_safety_enabled() const;
+  void log_control_source_change(const ControlSourceChange & change) const;
 
   rclcpp::Subscription<nav2_monitor::msg::SafetyCmd>::SharedPtr safety_cmd_sub_;
   std::unordered_map<std::string, rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr>
   cmd_vel_subscriptions_;
+  std::unordered_map<std::string, bool> control_source_safety_enabled_;
   rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr pressure_sub_;
   rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr acc_update_sub_;
+  rclcpp::Subscription<std_msgs::msg::String>::SharedPtr control_source_cmd_sub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr wheel_odom_sub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr loc_odom_sub_;
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
+  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr query_control_source_srv_;
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr command_pub_;
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr control_source_state_pub_;
+  rclcpp::TimerBase::SharedPtr control_source_state_timer_;
   rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr parameter_callback_handle_;
+  rclcpp::CallbackGroup::SharedPtr io_callback_group_;
+  rclcpp::CallbackGroup::SharedPtr service_callback_group_;
 
   VelocityConverter velocity_converter_;
   PressureAdjuster pressure_adjuster_;

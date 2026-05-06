@@ -3,12 +3,15 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cmath>
 
 namespace nav2_monitor
 {
 
 namespace
 {
+
+constexpr double kEmbeddedFieldEpsilon = 1e-6;
 
 std::string trim_copy(const std::string & value)
 {
@@ -118,6 +121,39 @@ std::string CollisionPredictionRouter::normalize_source(const std::string & raw_
     normalized.begin(), normalized.end(), normalized.begin(),
     [](unsigned char c) {return static_cast<char>(std::tolower(c));});
   return normalized;
+}
+
+CollisionPredictionRouter::PredictionMotion CollisionPredictionRouter::extract_prediction_motion(
+  const std::string & raw_source,
+  const geometry_msgs::msg::Twist & msg)
+{
+  const auto normalized = normalize_source(raw_source);
+  PredictionMotion motion;
+  motion.linear_x = msg.linear.x;
+  motion.linear_y = msg.linear.y;
+  motion.angular_z = msg.angular.z;
+
+  if (source_uses_embedded_command_fields(normalized) && has_embedded_command_fields(msg)) {
+    motion.linear_y = 0.0;
+  }
+
+  return motion;
+}
+
+bool CollisionPredictionRouter::source_uses_embedded_command_fields(
+  const std::string & normalized_source)
+{
+  return normalized_source == "miniapp" ||
+         normalized_source == "remote" ||
+         normalized_source == "other";
+}
+
+bool CollisionPredictionRouter::has_embedded_command_fields(const geometry_msgs::msg::Twist & msg)
+{
+  return std::abs(msg.linear.y) > kEmbeddedFieldEpsilon ||
+         std::abs(msg.linear.z) > kEmbeddedFieldEpsilon ||
+         std::abs(msg.angular.x) > kEmbeddedFieldEpsilon ||
+         std::abs(msg.angular.y) > kEmbeddedFieldEpsilon;
 }
 
 }  // namespace nav2_monitor
