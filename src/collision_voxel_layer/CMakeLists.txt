@@ -7,9 +7,11 @@ endif()
 
 find_package(ament_cmake REQUIRED)
 find_package(ament_cmake_gtest REQUIRED)
+find_package(ament_index_cpp REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(rcl_interfaces REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(builtin_interfaces REQUIRED)
 find_package(sensor_msgs REQUIRED)
@@ -45,9 +47,11 @@ add_library(collision_voxel_layer_node_core
 )
 ament_target_dependencies(
   collision_voxel_layer_node_core
+  ament_index_cpp
   builtin_interfaces
   geometry_msgs
   message_filters
+  rcl_interfaces
   rclcpp
   sensor_msgs
   std_msgs
@@ -86,7 +90,7 @@ if(BUILD_TESTING)
     test/test_collision_voxel_layer_node.cpp
   )
   if(TARGET test_collision_voxel_layer_node)
-    ament_target_dependencies(test_collision_voxel_layer_node rclcpp)
+    ament_target_dependencies(test_collision_voxel_layer_node rclcpp ament_index_cpp rcl_interfaces)
     target_link_libraries(test_collision_voxel_layer_node collision_voxel_layer_node_core)
   endif()
 endif()

@@ -16,6 +16,11 @@ def test_monitor_bundle_moves_to_repo_root_config_directory():
     assert (MONITOR_ROOT / "bridge" / "bridge_py_params.yaml").exists()
     assert (
         MONITOR_ROOT
+        / "collision_voxel_layer"
+        / "collision_voxel_layer_params.yaml"
+    ).exists()
+    assert (
+        MONITOR_ROOT
         / "safety_emergency_executor"
         / "safety_emergency_executor_params.yaml"
     ).exists()
@@ -62,6 +67,13 @@ def test_monitor_bundle_uses_ota_absolute_paths():
     nav2_params = yaml.safe_load(
         (MONITOR_ROOT / "nav2_monitor" / "nav2_monitor_params.yaml").read_text()
     )
+    voxel_params = yaml.safe_load(
+        (
+            MONITOR_ROOT
+            / "collision_voxel_layer"
+            / "collision_voxel_layer_params.yaml"
+        ).read_text()
+    )
 
     assert (
         bridge_params["bridge_py_node"]["ros__parameters"]["spec_file"]
@@ -72,6 +84,10 @@ def test_monitor_bundle_uses_ota_absolute_paths():
     assert (
         ros_params["fault_config"]
         == "/opt/ry/config/Monitor/nav2_monitor/fault_detector_config.yaml"
+    )
+    assert (
+        voxel_params["collision_voxel_layer"]["ros__parameters"]["config_file"]
+        == "/opt/ry/config/Monitor/collision_voxel_layer/collision_voxel_layer_params.yaml"
     )
 
 
@@ -93,7 +109,7 @@ def test_ttc_visualization_switch_exists_in_monitor_bundle():
     )
     collision_cfg = fault_config["collision_detection"]
 
-    assert collision_cfg["ttc_visualization_enabled"] == 0
+    assert collision_cfg["ttc_visualization_enabled"] == 1
 
 
 def test_dynamic_ttc_defaults_exist_in_monitor_bundle():
@@ -174,10 +190,26 @@ def test_launch_files_and_nav2_source_use_ota_only():
         '"safety_emergency_executor_params.yaml")'
         in safety_launch_compact
     )
-    assert "ament_index_cpp" not in nav2_source
     assert "runtime_configs" not in nav2_source
-    assert "find_package(ament_index_cpp REQUIRED)" not in nav2_cmake
-    assert " ament_index_cpp " not in nav2_cmake
-    assert "<depend>ament_index_cpp</depend>" not in nav2_package
     assert "<exec_depend>runtime_configs</exec_depend>" not in nav2_package
+    assert 'ament_index_cpp::get_package_share_directory("nav2_monitor")' in nav2_source
+    assert "find_package(ament_index_cpp REQUIRED)" in nav2_cmake
+    assert "ament_index_cpp" in nav2_cmake
+    assert "<depend>ament_index_cpp</depend>" in nav2_package
     assert "/nav2_monitor/collision_ttc_markers" in nav2_source
+
+
+def test_collision_voxel_launch_uses_ota_absolute_path():
+    voxel_launch = (
+        REPO_ROOT
+        / "src"
+        / "collision_voxel_layer"
+        / "launch"
+        / "collision_voxel_layer.launch.py"
+    ).read_text()
+    voxel_launch_compact = "".join(voxel_launch.split())
+
+    assert (
+        'config="/opt/ry/config/Monitor/collision_voxel_layer/collision_voxel_layer_params.yaml"'
+        in voxel_launch_compact
+    )
