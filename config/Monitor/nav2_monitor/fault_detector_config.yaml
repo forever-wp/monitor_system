@@ -7,6 +7,23 @@ multi_value_judge:
   trigger_count: 2  # 同一规则连续异常多少次后才正式触发
   recover_count: 2  # 同一规则连续恢复多少次后才正式清除
 
+# 多错误组合策略（第一版）
+# - name: 组合规则唯一名称
+# - when_all: 需要同时存在的 fault_key 列表；当前仅支持精确匹配 fault_key
+# - level: 组合故障等级 WARNING/ERROR/CRITICAL
+# - actions: 组合故障动作列表，可选 supervisor/safety_system/none
+# - safety_system: 当 actions 包含 safety_system 时生效，0=NONE 1=SLOW_DOWN 2=SOFT_STOP 3=EMERGENCY_STOP
+# - safety_slow_down_percentage: 组合故障触发减速时使用的百分比
+# - reason: 组合故障上报原因；未配置时默认 "Combined fault triggered: <name>"
+combined_fault_rules:
+  - name: "camera_and_lidar_missing"
+    when_all:
+      - "usb_cam|topic_legacy:/front_camera/image_raw|action=0"
+      - "livox|topic_legacy:/livox/points|action=1"
+    level: "CRITICAL"
+    actions: ["supervisor"]
+    reason: "Combined fault: front camera and livox points both unavailable"
+
 # 需要持续监控的 TF 变换对，格式为 "parent->child"
 target_transforms:
   - "map->odom"
