@@ -305,6 +305,136 @@ modules:
   std::remove(config_path.c_str());
 }
 
+TEST_F(FaultDetectorTest, CombinedFaultRuleTriggersOnlyWhenAllFaultKeysPresent)
+{
+  const std::string config_text = R"(
+multi_value_judge:
+  trigger_count: 1
+  recover_count: 1
+combined_fault_rules:
+  - name: "nav_and_plan_both_low"
+    when_all:
+      - "navigation|topic_legacy:/cmd_vel|action=1"
+      - "navigation|topic_legacy:/plan|action=1"
+    level: "CRITICAL"
+    actions: ["supervisor"]
+    reason: "Combined fault: cmd_vel and plan both low"
+modules:
+  - name: "navigation"
+    supervisor: 1
+    safety_system: 0
+    nodes:
+      - "controller_server"
+    watch_topics:
+      - name: "/cmd_vel"
+        min_hz: 5.0
+      - name: "/plan"
+        min_hz: 1.0
+)";
+  const std::string config_path = write_temp_config(config_text, "combined_fault_when_all");
+
+  auto node = std::make_shared<rclcpp::Node>("fault_detector_test_combined_fault_when_all");
+  nav2_monitor::FaultDetector detector(node.get());
+  detector.load_config(config_path);
+
+  detector.update_node_status({{"controller_server", true}});
+  detector.update_topic_freq({{"/cmd_vel", 1.0}, {"/plan", 5.0}});
+
+  auto faults_single = detector.detect_faults();
+  ASSERT_EQ(faults_single.size(), 1u);
+  EXPECT_EQ(faults_single[0].fault_key, "navigation|topic_legacy:/cmd_vel|action=1");
+
+  detector.update_topic_freq({{"/cmd_vel", 1.0}, {"/plan", 0.1}});
+  auto faults_both = detector.detect_faults();
+
+  ASSERT_EQ(faults_both.size(), 3u);
+  EXPECT_EQ(faults_both[0].fault_key, "navigation|topic_legacy:/cmd_vel|action=1");
+  EXPECT_EQ(faults_both[1].fault_key, "navigation|topic_legacy:/plan|action=1");
+  EXPECT_EQ(faults_both[2].fault_key, "combined_fault|nav_and_plan_both_low|action=1");
+  EXPECT_EQ(faults_both[2].module_name, "combined_fault");
+  EXPECT_EQ(faults_both[2].level, nav2_monitor::FaultLevel::CRITICAL);
+  EXPECT_EQ(faults_both[2].action, nav2_monitor::ActionType::SUPERVISOR);
+  EXPECT_EQ(faults_both[2].reason, "Combined fault: cmd_vel and plan both low");
+
+  std::remove(config_path.c_str());
+}
+
+TEST_F(FaultDetectorTest, CombinedFaultRuleCanEmitSafetyCommand)
+{
+  const std::string config_text = R"(
+multi_value_judge:
+  trigger_count: 1
+  recover_count: 1
+combined_fault_rules:
+  - name: "nav_combo_stop"
+    when_all:
+      - "navigation|topic_legacy:/cmd_vel|action=1"
+      - "navigation|feedback:/nav_state:error_rate|action=2"
+    level: "ERROR"
+    actions: ["safety_system"]
+    safety_system: 1
+    safety_slow_down_percentage: 15.0
+    reason: "Combined fault: nav cmd low + feedback error"
+modules:
+  - name: "navigation"
+    supervisor: 1
+    safety_system: 2
+    nodes:
+      - "controller_server"
+    watch_topics:
+      - name: "/cmd_vel"
+        min_hz: 5.0
+    feedback_rules:
+      - source_topic: "/nav_state"
+        metric_name: "error_rate"
+        max_value: 0.2
+        level: "WARNING"
+        actions: ["safety_system"]
+        safety_system: 2
+        max_stale_s: 10.0
+)";
+  const std::string config_path = write_temp_config(config_text, "combined_fault_safety");
+
+  auto node = std::make_shared<rclcpp::Node>("fault_detector_test_combined_fault_safety");
+  nav2_monitor::FaultDetector detector(node.get());
+  detector.load_config(config_path);
+
+  detector.update_node_status({{"controller_server", true}});
+  detector.update_topic_freq({{"/cmd_vel", 1.0}});
+  detector.update_feedback_sample(
+    "navigation", "/nav_state", "error_rate", 0.5, true, node->now());
+
+  auto faults = detector.detect_faults();
+  ASSERT_EQ(faults.size(), 3u);
+  bool saw_topic_fault = false;
+  bool saw_feedback_fault = false;
+  bool saw_combined_fault = false;
+  for (const auto & fault : faults) {
+    if (fault.fault_key == "navigation|topic_legacy:/cmd_vel|action=1") {
+      saw_topic_fault = true;
+      continue;
+    }
+    if (fault.fault_key == "navigation|feedback:/nav_state:error_rate|action=2") {
+      saw_feedback_fault = true;
+      continue;
+    }
+    if (fault.fault_key == "combined_fault|nav_combo_stop|action=2") {
+      saw_combined_fault = true;
+      EXPECT_EQ(fault.module_name, "combined_fault");
+      EXPECT_EQ(fault.level, nav2_monitor::FaultLevel::ERROR);
+      EXPECT_EQ(fault.action, nav2_monitor::ActionType::SAFETY_SYSTEM);
+      EXPECT_EQ(fault.safety_command, nav2_monitor::SafetyCommandType::SLOW_DOWN);
+      EXPECT_DOUBLE_EQ(fault.safety_slow_down_percentage, 15.0);
+      EXPECT_EQ(fault.reason, "Combined fault: nav cmd low + feedback error");
+    }
+  }
+  EXPECT_TRUE(saw_topic_fault);
+  EXPECT_TRUE(saw_feedback_fault);
+  EXPECT_TRUE(saw_combined_fault);
+
+  std::remove(config_path.c_str());
+}
+
 TEST_F(FaultDetectorTest, LegacyTopicsUseIndependentFaultKeysPerTopic)
 {
   const std::string config_text = R"(

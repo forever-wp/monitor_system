@@ -343,8 +343,15 @@
 - 更复杂的超声波场景策略（当前已支持单 topic 八路加权输入，推荐直接配 `ultrasonic_widget`）
 - 完整 footprint 前向离散仿真版 TTC
 - 碰撞 source 抽象层进一步统一
-- 多错误组合策略表配置化
 - 状态组装进一步独立成 `StatusAssembler`
+
+### 多错误组合策略（已支持第一版）
+
+- 配置入口：`combined_fault_rules`
+- 匹配方式：按 `fault_key` 精确匹配 `when_all`
+- 输出方式：命中后附加一条新的 `FaultInfo`，`module_name` 固定为 `combined_fault`
+- 仲裁方式：不新增单独仲裁器，继续复用 `FaultStateCoordinator`
+- 当前边界：不支持 `when_any`、层级表达式、时间窗聚合、排除条件
 
 ---
 

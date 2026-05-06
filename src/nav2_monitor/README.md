@@ -507,8 +507,15 @@ colcon test --packages-select nav2_monitor --event-handlers console_direct+
 
 - 多超声波更复杂的场景策略（当前已支持单 topic 八路加权输入，推荐直接配 `ultrasonic_widget`）
 - 基于 TTC 结果的控制器切换策略配置化（检测侧已支持进入/退出阈值、footprint、trajectory、min_hold_time）
-- 多错误组合策略表配置化
 - 更彻底的状态组装抽象
+
+## 多错误组合策略
+
+- 已支持第一版 `combined_fault_rules`
+- 当前仅支持 `when_all`，并且按 `fault_key` 精确匹配组合
+- 组合命中后会额外产出一条 `combined_fault|<name>|action=<n>` 故障
+- 该组合故障继续走现有 supervisor / safety_system 仲裁链路
+- 当前不支持 `when_any`、时间窗、排除条件、模糊匹配
 
 ## 许可证
 

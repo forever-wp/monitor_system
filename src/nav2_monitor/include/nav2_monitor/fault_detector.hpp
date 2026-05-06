@@ -199,6 +199,17 @@ struct MultiValueJudgeConfig
   size_t recover_count;
 };
 
+struct CombinedFaultRuleConfig
+{
+  std::string name;
+  std::vector<std::string> when_all_fault_keys;
+  FaultLevel level{FaultLevel::ERROR};
+  std::vector<ActionType> actions;
+  SafetyCommandType safety_command{SafetyCommandType::NONE};
+  double safety_slow_down_percentage{0.0};
+  std::string reason;
+};
+
 struct FaultInfo
 {
   std::string fault_key;
@@ -249,12 +260,17 @@ private:
     const ModuleConfig & module,
     const MonitorDataStore & store,
     const rclcpp::Time & now) const;
+  void append_combined_faults(
+    const std::vector<FaultInfo> & base_faults,
+    const rclcpp::Time & now,
+    std::vector<FaultInfo> & faults) const;
 
   rclcpp::Node * node_;
   std::vector<ModuleConfig> modules_;
   CollisionDetectionConfig collision_cfg_;
   ChassisStationaryConfig chassis_cfg_;
   MultiValueJudgeConfig multi_value_cfg_;
+  std::vector<CombinedFaultRuleConfig> combined_fault_rules_;
   std::vector<std::string> monitored_nodes_;
   std::vector<std::string> watched_topics_;
   std::vector<std::string> monitored_transforms_;
