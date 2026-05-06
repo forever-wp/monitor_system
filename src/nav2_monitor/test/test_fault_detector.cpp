@@ -92,6 +92,39 @@ TEST(CollisionPredictionRouterTest, SwitchesOnlyToKnownSources)
   EXPECT_EQ(router.active_source(), "remote");
 }
 
+TEST(CollisionPredictionRouterTest, IgnoresEmbeddedCommandFieldsForRemotePredictionMotion)
+{
+  geometry_msgs::msg::Twist msg;
+  msg.linear.x = 0.9;
+  msg.linear.y = 800.0;
+  msg.linear.z = 1500.0;
+  msg.angular.x = 2.0;
+  msg.angular.y = 1.0;
+  msg.angular.z = 0.3;
+
+  const auto motion =
+    nav2_monitor::CollisionPredictionRouter::extract_prediction_motion("remote", msg);
+
+  EXPECT_DOUBLE_EQ(motion.linear_x, 0.9);
+  EXPECT_DOUBLE_EQ(motion.linear_y, 0.0);
+  EXPECT_DOUBLE_EQ(motion.angular_z, 0.3);
+}
+
+TEST(CollisionPredictionRouterTest, PreservesNavigationPredictionMotion)
+{
+  geometry_msgs::msg::Twist msg;
+  msg.linear.x = 0.9;
+  msg.linear.y = 0.2;
+  msg.angular.z = 0.3;
+
+  const auto motion =
+    nav2_monitor::CollisionPredictionRouter::extract_prediction_motion("navigation", msg);
+
+  EXPECT_DOUBLE_EQ(motion.linear_x, 0.9);
+  EXPECT_DOUBLE_EQ(motion.linear_y, 0.2);
+  EXPECT_DOUBLE_EQ(motion.angular_z, 0.3);
+}
+
 TEST(TaskFaultConfigSelectorTest, ResolvesMappedAndDefaultConfigs)
 {
   nav2_monitor::TaskFaultConfigSelector selector;

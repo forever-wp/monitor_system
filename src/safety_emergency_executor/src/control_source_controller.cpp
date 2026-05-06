@@ -44,12 +44,13 @@ ControlSourceChange ControlSourceController::set_active_source(const std::string
     return result;
   }
 
+  const std::string previous_source = active_source_;
   result.success = true;
   result.changed = source != active_source_;
   active_source_ = source;
   result.active_source = active_source_;
   result.message = result.changed ?
-    "control source switched to " + active_source_ :
+    "control source switched: " + previous_source + " -> " + active_source_ :
     "control source already set to " + active_source_;
   return result;
 }

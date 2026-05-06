@@ -168,6 +168,7 @@ ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
 - `collision_detection.prediction_speed_remote_topic`
 - `collision_detection.prediction_speed_other_topic`
   - `TTC` 按控制源订阅四路预测速度；若未单独配置 `navigation`，则回退到旧字段 `prediction_speed_topic`
+  - 对 `miniapp / remote / other`，若 `Twist` 辅助轴携带了 `press/acc/place/ulock` 扩展字段，`TTC` 会忽略这些辅助轴，只使用真实运动分量 `linear.x` 与 `angular.z`
 - `collision_detection.ttc_visualization_enabled`
   - TTC 预测可视化总开关
   - 打开后发布 `/nav2_monitor/collision_ttc_markers`

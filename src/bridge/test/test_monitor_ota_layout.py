@@ -161,7 +161,7 @@ def test_light_lm_has_independent_drift_feedback_rules():
     assert rules_by_metric["drift_delta_norm"]["source_topic"] == "/drift_status"
 
 
-def test_launch_files_and_nav2_source_use_ota_only():
+def test_launch_files_use_ota_paths_and_nav2_runtime_configs_are_removed():
     nav2_launch = (
         REPO_ROOT / "src" / "nav2_monitor" / "launch" / "nav2_monitor.launch.py"
     ).read_text()

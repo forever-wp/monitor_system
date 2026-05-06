@@ -1,6 +1,8 @@
 #ifndef NAV2_MONITOR__COLLISION_PREDICTION_ROUTER_HPP_
 #define NAV2_MONITOR__COLLISION_PREDICTION_ROUTER_HPP_
 
+#include <geometry_msgs/msg/twist.hpp>
+
 #include <string>
 #include <vector>
 
@@ -20,6 +22,13 @@ struct CollisionPredictionRoutingConfig
 class CollisionPredictionRouter
 {
 public:
+  struct PredictionMotion
+  {
+    double linear_x{0.0};
+    double linear_y{0.0};
+    double angular_z{0.0};
+  };
+
   struct SourceTopic
   {
     std::string source;
@@ -40,8 +49,14 @@ public:
   bool is_known_source(const std::string & raw_source) const;
 
   static std::string normalize_source(const std::string & raw_source);
+  static PredictionMotion extract_prediction_motion(
+    const std::string & raw_source,
+    const geometry_msgs::msg::Twist & msg);
 
 private:
+  static bool source_uses_embedded_command_fields(const std::string & normalized_source);
+  static bool has_embedded_command_fields(const geometry_msgs::msg::Twist & msg);
+
   CollisionPredictionRoutingConfig config_;
   std::string active_source_{"navigation"};
 };

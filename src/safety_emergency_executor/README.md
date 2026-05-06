@@ -6,13 +6,23 @@
 
 - 订阅 `/safety_system/cmd` (`nav2_monitor/msg/SafetyCmd`)
 - 订阅 `/cmd_vel`、`/cmd_vel_miniapp`、`/cmd_vel_remote`、`/cmd_vel_other`
-- 使用 ROS 2 标准参数服务切换 `active_control_source`
-  - 可直接通过 `ros2 param set /safety_emergency_executor active_control_source remote`
-- 使用 ROS 2 标准参数服务主动查询当前 `active_control_source`
-  - 可直接通过 `ros2 param get /safety_emergency_executor active_control_source`
-- 发布 `/control_source_state` (`std_msgs/String`) 被动反馈当前控制源
+- 订阅 `/control_source_cmd` (`std_msgs/String`) 切换当前控制源
+  - 可直接通过 `ros2 topic pub --once /control_source_cmd std_msgs/msg/String '{data: remote}'`
+- 提供 `/safety_emergency_executor/query_control_source` (`std_srvs/Trigger`) 主动查询当前控制源
+  - 可直接通过 `ros2 service call /safety_emergency_executor/query_control_source std_srvs/srv/Trigger '{}'`
+- 持续发布 `/control_source_state` (`std_msgs/String`) 被动反馈当前控制源
+  - 可直接通过 `ros2 topic echo /control_source_state` 持续观察当前控制源
+  - 若只想取一帧，也可用 `ros2 topic echo --once /control_source_state`
+- `active_control_source` 仍保留为内部镜像参数，收到切换 topic 后同步更新；外部不再建议用 `ros2 param get` 做主动查询
 - 任一时刻只有一个控制源能进入 `/command`，非激活源直接丢弃
 - 控制源切换或激活源停发时不补零、不保留最后一帧
+- 四种控制源各自有独立安全开关，默认都启用
+  - `control_source_navigation_safety_enabled`
+  - `control_source_miniapp_safety_enabled`
+  - `control_source_remote_safety_enabled`
+  - `control_source_other_safety_enabled`
+  - 切换控制源时日志会打印 `safety_enabled=true/false`
+  - 当当前激活源安全关闭时，`/safety_system/cmd` 仍会更新内部安全状态，但不会减速、拦截转发，也不会下发急停制动序列
 - 订阅 `/pressure_` (`std_msgs/Int32`) 作为外部单值压力覆盖入口
   - 收到后立即更新基础 `press`
   - `external_pressure_hold_s` 时间窗内自动调压完全不介入
@@ -26,7 +36,7 @@
   - `SOFT_STOP`：限速到 0%
   - `EMERGENCY_STOP`：禁用转发并发布制动序列到 `/command`
   - `RESUME`：恢复转发并清除全部安全限制
-- 安全动作独立于控制源选择，始终作用在当前激活源的输出链路上
+- 安全动作始终会更新内部安全状态；是否真正作用到输出链路，取决于当前激活控制源的安全开关
 - 主执行链路：`{active cmd_vel source}` + 传感器 + `/safety_system/cmd` -> `/command`
 - 节点内部拆分为 `VelocityConverter`、`PressureAdjuster`、`SafetyPolicyExecutor`
 
@@ -44,9 +54,13 @@ ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
 - `cmd_vel_miniapp_topic`（默认 `/cmd_vel_miniapp`）
 - `cmd_vel_remote_topic`（默认 `/cmd_vel_remote`）
 - `cmd_vel_other_topic`（默认 `/cmd_vel_other`）
-- `active_control_source`（默认 `navigation`，可选 `navigation` / `miniapp` / `remote` / `other`）
+- `control_source_command_topic`（默认 `/control_source_cmd`，`std_msgs/String`）
+- 主动查询服务固定为 `/safety_emergency_executor/query_control_source`（`std_srvs/Trigger`，返回值在 `message`）
 - `control_source_state_topic`（默认 `/control_source_state`）
+- `control_source_state_publish_period_ms`（默认 `1000`，被动状态 topic 的持续发布周期，单位毫秒）
+- `active_control_source`（默认 `navigation`，内部镜像参数，可选 `navigation` / `miniapp` / `remote` / `other`）
 - `control_source_auto_preempt_enabled`（默认 `false`，仅预留自动抢占能力）
+- `control_source_navigation_safety_enabled` / `control_source_miniapp_safety_enabled` / `control_source_remote_safety_enabled` / `control_source_other_safety_enabled`（默认都为 `true`，分别控制四种控制源是否启用安全链路）
 - `cmd_vel_navigation_extended_fields_enabled`（默认 `false`）
 - `cmd_vel_miniapp_extended_fields_enabled`（默认 `true`）
 - `cmd_vel_remote_extended_fields_enabled`（默认 `true`）
