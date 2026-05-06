@@ -8,11 +8,11 @@ safety_emergency_executor:
     cmd_vel_other_topic: "/cmd_vel_other"  # 其他控制源速度命令输入 topic
     control_source_command_topic: "/control_source_cmd"  # 控制源切换输入 topic，std_msgs/String
     control_source_state_topic: "/control_source_state"  # 当前控制源被动发布 topic
-    control_source_state_publish_period_ms: 1000  # 当前控制源状态持续发布周期（毫秒）
+    control_source_state_publish_period_ms: 10  # 当前控制源状态持续发布周期（毫秒）
     active_control_source: "navigation"  # 当前激活控制源的内部镜像参数；收到切换 topic 后会同步更新
     control_source_auto_preempt_enabled: false  # 预留自动抢占开关，当前未启用
     control_source_navigation_safety_enabled: true  # navigation 作为当前控制源时是否启用安全链路
-    control_source_miniapp_safety_enabled: false  # miniapp 作为当前控制源时是否启用安全链路
+    control_source_miniapp_safety_enabled: true  # miniapp 作为当前控制源时是否启用安全链路
     control_source_remote_safety_enabled: true  # remote 作为当前控制源时是否启用安全链路
     control_source_other_safety_enabled: true  # other 作为当前控制源时是否启用安全链路
     cmd_vel_navigation_extended_fields_enabled: false  # 导航默认不解析 Twist 辅助轴里的扩展控制字段
