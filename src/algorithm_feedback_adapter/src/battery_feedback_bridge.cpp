@@ -1,12 +1,12 @@
-#include "bridge/sample_feedback_bridge.hpp"
+#include "algorithm_feedback_adapter/battery_feedback_bridge.hpp"
 
 #include <builtin_interfaces/msg/time.hpp>
 
-namespace bridge
+namespace algorithm_feedback_adapter
 {
 
-SampleFeedbackBridge::SampleFeedbackBridge(const rclcpp::NodeOptions & options)
-: Node("bridge_cpp_node", options)
+BatteryFeedbackBridge::BatteryFeedbackBridge(const rclcpp::NodeOptions & options)
+: Node("algorithm_feedback_adapter_cpp_node", options)
 {
   input_topic_ = this->declare_parameter<std::string>("input_topic", "/battery_state");
   output_topic_ = this->declare_parameter<std::string>(
@@ -17,10 +17,10 @@ SampleFeedbackBridge::SampleFeedbackBridge(const rclcpp::NodeOptions & options)
   pub_ = this->create_publisher<OutputMsg>(output_topic_, rclcpp::QoS(50));
   sub_ = this->create_subscription<InputMsg>(
     input_topic_, rclcpp::SensorDataQoS(),
-    std::bind(&SampleFeedbackBridge::on_msg, this, std::placeholders::_1));
+    std::bind(&BatteryFeedbackBridge::on_msg, this, std::placeholders::_1));
 }
 
-std::vector<MetricSample> SampleFeedbackBridge::extract_metrics(const InputMsg & msg)
+std::vector<MetricSample> BatteryFeedbackBridge::extract_metrics(const InputMsg & msg)
 {
   const bool valid = msg.present;
   return {
@@ -30,7 +30,7 @@ std::vector<MetricSample> SampleFeedbackBridge::extract_metrics(const InputMsg &
   };
 }
 
-void SampleFeedbackBridge::on_msg(const InputMsg::SharedPtr msg)
+void BatteryFeedbackBridge::on_msg(const InputMsg::SharedPtr msg)
 {
   const bool has_stamp = (msg->header.stamp.sec != 0) || (msg->header.stamp.nanosec != 0);
   builtin_interfaces::msg::Time stamp;
@@ -52,4 +52,4 @@ void SampleFeedbackBridge::on_msg(const InputMsg::SharedPtr msg)
   }
 }
 
-}  // namespace bridge
+}  // namespace algorithm_feedback_adapter

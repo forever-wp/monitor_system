@@ -19,7 +19,6 @@ find_package(geometry_msgs REQUIRED)
 find_package(visualization_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_sensor_msgs REQUIRED)
-find_package(message_filters REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/VoxelCell.msg"
@@ -50,7 +49,6 @@ ament_target_dependencies(
   ament_index_cpp
   builtin_interfaces
   geometry_msgs
-  message_filters
   rcl_interfaces
   rclcpp
   sensor_msgs
@@ -90,7 +88,13 @@ if(BUILD_TESTING)
     test/test_collision_voxel_layer_node.cpp
   )
   if(TARGET test_collision_voxel_layer_node)
-    ament_target_dependencies(test_collision_voxel_layer_node rclcpp ament_index_cpp rcl_interfaces)
+    ament_target_dependencies(
+      test_collision_voxel_layer_node
+      ament_index_cpp
+      rcl_interfaces
+      rclcpp
+      sensor_msgs
+      std_msgs)
     target_link_libraries(test_collision_voxel_layer_node collision_voxel_layer_node_core)
   endif()
 endif()

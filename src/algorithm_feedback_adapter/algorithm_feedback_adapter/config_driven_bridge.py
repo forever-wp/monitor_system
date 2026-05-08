@@ -98,6 +98,15 @@ def load_spec(spec_path: str | Path) -> dict:
     if not isinstance(data["bridges"], list) or not data["bridges"]:
         raise ValueError(f"Spec file '{path}' must define a non-empty bridges list")
     data["bridges"] = [validate_bridge_entry(entry) for entry in data["bridges"]]
+    seen_ids = set()
+    duplicate_ids = set()
+    for entry in data["bridges"]:
+        bridge_id = entry["id"]
+        if bridge_id in seen_ids:
+            duplicate_ids.add(bridge_id)
+        seen_ids.add(bridge_id)
+    if duplicate_ids:
+        raise ValueError(f"Spec file '{path}' has duplicate bridge ids: {sorted(duplicate_ids)}")
     return data
 
 
@@ -130,10 +139,16 @@ def build_feedback_messages(msg: Any, bridge_spec: dict, stamp) -> list[Algorith
 
 class ConfigDrivenBridge(Node):
     def __init__(self, parameter_overrides=None):
-        super().__init__("bridge_py_node", parameter_overrides=parameter_overrides or [])
+        super().__init__(
+            "algorithm_feedback_adapter_node",
+            parameter_overrides=parameter_overrides or [],
+        )
 
-        spec_file = self.declare_parameter(
-            "spec_file", "/opt/ry/config/Monitor/bridge/generic_multi_bridge_spec.yaml").value
+        default_spec = (
+            "/opt/ry/config/Monitor/algorithm_feedback_adapter/"
+            "algorithm_feedback_adapter_spec.yaml"
+        )
+        spec_file = self.declare_parameter("spec_file", default_spec).value
         self._spec_path = resolve_spec_path(spec_file)
         self._bridge_publishers = {}
         self._bridge_subscriptions = {}
@@ -193,8 +208,6 @@ class ConfigDrivenBridge(Node):
 
     def _create_or_replace_bridge(self, bridge_spec: dict):
         bridge_id = bridge_spec["id"]
-        self._destroy_bridge(bridge_id)
-
         msg_type = import_message_type(bridge_spec["message_type"])
         publisher = self.create_publisher(
             AlgorithmFeedback, bridge_spec["output_topic"], 50)
@@ -202,11 +215,12 @@ class ConfigDrivenBridge(Node):
         subscription = self.create_subscription(
             msg_type, bridge_spec["input_topic"], callback, 10)
 
+        self._destroy_bridge(bridge_id)
         self._bridge_publishers[bridge_id] = publisher
         self._bridge_subscriptions[bridge_id] = subscription
         self._bridge_specs[bridge_id] = bridge_spec
         self.get_logger().info(
-            "bridge[%s] active: input=%s type=%s output=%s"
+            "algorithm_feedback_adapter[%s] active: input=%s type=%s output=%s"
             % (
                 bridge_spec["id"],
                 bridge_spec["input_topic"],
@@ -230,15 +244,17 @@ class ConfigDrivenBridge(Node):
 
         for bridge_id in sorted(removed_ids):
             self._destroy_bridge(bridge_id)
-            self.get_logger().info("bridge[%s] removed by spec reload" % bridge_id)
+            self.get_logger().info(
+                "algorithm_feedback_adapter[%s] removed by spec reload" % bridge_id
+            )
 
         for bridge_id in sorted(changed_ids):
             self._create_or_replace_bridge(next_specs[bridge_id])
-            self.get_logger().info("bridge[%s] reloaded" % bridge_id)
+            self.get_logger().info("algorithm_feedback_adapter[%s] reloaded" % bridge_id)
 
         for bridge_id in sorted(added_ids):
             self._create_or_replace_bridge(next_specs[bridge_id])
-            self.get_logger().info("bridge[%s] added" % bridge_id)
+            self.get_logger().info("algorithm_feedback_adapter[%s] added" % bridge_id)
 
     def reload_spec_if_needed(self, force=False) -> bool:
         current_mtime_ns = self._get_spec_mtime_ns()
@@ -254,7 +270,8 @@ class ConfigDrivenBridge(Node):
         except Exception as exc:
             self._last_seen_mtime_ns = current_mtime_ns
             self.get_logger().error(
-                "Failed to reload bridge spec '%s': %s" % (self._spec_path, exc)
+                "Failed to reload algorithm_feedback_adapter spec '%s': %s" %
+                (self._spec_path, exc)
             )
             return False
 

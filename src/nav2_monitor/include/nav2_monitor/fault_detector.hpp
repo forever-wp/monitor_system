@@ -87,6 +87,13 @@ enum class CollisionMotionDirectionType
   REVERSE = 2
 };
 
+enum class AutoFootprintZoneType
+{
+  NONE = 0,
+  FRONT_SLOW = 1,
+  FRONT_STOP = 2
+};
+
 struct UltrasonicSensorConfig
 {
   size_t index{0};
@@ -103,7 +110,10 @@ struct CollisionZoneConfig
   std::string name;
   CollisionModelType model{CollisionModelType::ZONE};
   CollisionMotionDirectionType motion_direction{CollisionMotionDirectionType::BOTH};
+  AutoFootprintZoneType auto_footprint_zone{AutoFootprintZoneType::NONE};
   std::vector<CollisionPoint> points;
+  std::vector<CollisionPoint> fast_points;
+  std::vector<CollisionPoint> safe_points;
   double min_points{1.0};
   FaultLevel level{FaultLevel::ERROR};
   SafetyCommandType safety_command{SafetyCommandType::SOFT_STOP};
@@ -148,6 +158,18 @@ struct CollisionDetectionConfig
   double source_timeout_s{0.5};
   double direction_speed_threshold{0.05};
   size_t direction_confirm_count{3};
+  bool navigation_safe_mode_active{false};
+  bool navigation_mode_switch_enabled{false};
+  std::string navigation_mode_topic{"/navigation_mode"};
+  std::string navigation_fast_mode{"FAST"};
+  std::string navigation_safe_mode{"SAFE"};
+  double navigation_safe_enter_duration_s{0.15};
+  double navigation_safe_clear_duration_s{1.0};
+  double navigation_safe_min_hold_s{1.5};
+  double navigation_mode_publish_cooldown_s{0.5};
+  bool auto_footprint_zones_enabled{false};
+  FaultLevel source_level{FaultLevel::ERROR};
+  std::vector<ActionType> source_actions{ActionType::SUPERVISOR};
   std::vector<CollisionPoint> footprint_points;
   std::vector<UltrasonicSensorConfig> ultrasonic_sensors;
   std::vector<CollisionZoneConfig> zones;
@@ -177,6 +199,7 @@ struct ChassisStationaryConfig
   std::string imu_topic;
   double source_timeout_s;
   double idle_timeout_s;
+  double coast_grace_s;
   double command_speed_threshold;
   double moto_speed_threshold;
   double odom_speed_threshold;
@@ -185,10 +208,12 @@ struct ChassisStationaryConfig
   double imu_static_command_threshold;
   int imu_bias_calibration_samples;
   double imu_decay_rate;
+  FaultLevel source_level;
   FaultLevel anomaly_level;
   FaultLevel idle_level;
   SafetyCommandType safety_command;
   double safety_slow_down_percentage;
+  std::vector<ActionType> source_actions;
   std::vector<ActionType> anomaly_actions;
   std::vector<ActionType> idle_actions;
 };
@@ -240,6 +265,8 @@ public:
   void update_moto_speed(
     double left_speed_rad, double right_speed_rad, const rclcpp::Time & stamp, bool valid);
   void update_odom_speed(double linear_speed, const rclcpp::Time & stamp);
+  bool vehicle_state_judge_enabled() const;
+  const ChassisStationaryConfig & get_vehicle_state_judge_config() const;
   bool chassis_stationary_enabled() const;
   const ChassisStationaryConfig & get_chassis_stationary_config() const;
   bool has_module_configs() const;
@@ -251,6 +278,7 @@ public:
   bool collision_detection_enabled() const;
   const CollisionDetectionConfig & get_collision_detection_config() const;
   const CollisionTtcVisualizationState & get_collision_ttc_visualization() const;
+  void set_collision_navigation_safe_mode(bool safe_mode_active);
 
   std::vector<FaultInfo> detect_faults();
   std::vector<FaultInfo> detect_faults(const MonitorDataStore & store, const rclcpp::Time & now);

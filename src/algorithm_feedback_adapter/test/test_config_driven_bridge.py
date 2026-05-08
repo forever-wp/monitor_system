@@ -5,7 +5,7 @@ import rclpy
 from rclpy.parameter import Parameter
 from sensor_msgs.msg import BatteryState
 
-from bridge.config_driven_bridge import (
+from algorithm_feedback_adapter.config_driven_bridge import (
     ConfigDrivenBridge,
     build_feedback_messages,
     get_field_value,
@@ -38,7 +38,7 @@ def test_validate_bridge_entry_rejects_missing_fields():
         assert "missing keys" in str(exc)
     else:
         raise AssertionError(
-            "validate_bridge_entry should reject incomplete bridge entries")
+            "validate_bridge_entry should reject incomplete algorithm_feedback_adapter entries")
 
 
 def test_load_spec_reads_multi_bridge_yaml_file():
@@ -71,7 +71,7 @@ def test_resolve_spec_path_accepts_existing_absolute_path(tmp_path):
 
 
 def test_resolve_spec_path_does_not_expand_relative_package_path():
-    unresolved = Path("config/examples/generic_multi_bridge_spec.yaml")
+    unresolved = Path("config/examples/algorithm_feedback_adapter_spec.yaml")
 
     assert resolve_spec_path(str(unresolved)) == unresolved
 

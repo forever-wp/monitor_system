@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <functional>
 #include <memory>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <system_error>
@@ -62,13 +63,6 @@ std_msgs::msg::ColorRGBA make_color(float occupancy, float occupancy_max)
   color.b = 0.2F;
   color.a = std::max(0.2F, normalized);
   return color;
-}
-
-rclcpp::Time newest_stamp(const builtin_interfaces::msg::Time & lhs, const builtin_interfaces::msg::Time & rhs)
-{
-  const rclcpp::Time lhs_time(lhs);
-  const rclcpp::Time rhs_time(rhs);
-  return lhs_time >= rhs_time ? lhs_time : rhs_time;
 }
 
 std::string normalize_graph_name(const std::string & name)
@@ -143,11 +137,19 @@ CollisionVoxelLayerNode::CollisionVoxelLayerNode(const rclcpp::NodeOptions & opt
     "markers_topic", "/collision_voxel_layer/markers");
   initial_config.debug_cloud_topic = this->declare_parameter<std::string>(
     "debug_cloud_topic", "/collision_voxel_layer/debug_cloud");
+  initial_config.source_status_topic = this->declare_parameter<std::string>(
+    "source_status_topic", "/collision_voxel_layer/source_status");
   initial_config.publish_rate_hz = this->declare_parameter<double>("publish_rate", 10.0);
   initial_config.tf_timeout_s = this->declare_parameter<double>("tf_timeout_s", 0.05);
-  initial_config.sync_queue_size = static_cast<std::size_t>(
-    this->declare_parameter<int>("sync_queue_size", 20));
+  const int sync_queue_size = this->declare_parameter<int>("sync_queue_size", 20);
+  initial_config.sync_queue_size =
+    sync_queue_size < 0 ? 0U : static_cast<std::size_t>(sync_queue_size);
+  // Deprecated: kept so older deployed YAML files do not fail parameter loading.
   initial_config.sync_slop_s = this->declare_parameter<double>("sync_slop_s", 0.15);
+  initial_config.source_timeout_s = this->declare_parameter<double>(
+    "source_timeout_s", std::max(1.0, initial_config.sync_slop_s * 3.0));
+  initial_config.source_health_check_period_s = this->declare_parameter<double>(
+    "source_health_check_period_s", 1.0);
   initial_config.voxel_size_xy = this->declare_parameter<double>("voxel_size_xy", 0.10);
   initial_config.voxel_size_z = this->declare_parameter<double>("voxel_size_z", 0.10);
   initial_config.voxel_decay_time_s = this->declare_parameter<double>("voxel_decay_time_s", 1.0);
@@ -179,9 +181,13 @@ CollisionVoxelLayerNode::CollisionVoxelLayerNode(const rclcpp::NodeOptions & opt
 
   RCLCPP_INFO(
     get_logger(),
-    "collision_voxel_layer started: scan=%s depth=%s base_frame=%s grid=%s markers=%s debug_cloud=%s",
+    "collision_voxel_layer started: scan=%s depth=%s base_frame=%s grid=%s markers=%s debug_cloud=%s source_status=%s",
     scan_topic_.c_str(), depth_cloud_topic_.c_str(), base_frame_.c_str(),
-    grid_topic_.c_str(), markers_topic_.c_str(), debug_cloud_topic_.c_str());
+    grid_topic_.c_str(), markers_topic_.c_str(), debug_cloud_topic_.c_str(),
+    source_status_topic_.c_str());
+  RCLCPP_INFO(
+    get_logger(),
+    "collision_voxel_layer uses independent inputs; one missing source will warn but will not block voxel output from available sources");
 }
 
 bool CollisionVoxelLayerNode::reload_config_if_needed(bool force)
@@ -255,6 +261,14 @@ bool CollisionVoxelLayerNode::validate_runtime_config(
     error = "sync_slop_s must be >= 0.0";
     return false;
   }
+  if (!(config.source_timeout_s > 0.0)) {
+    error = "source_timeout_s must be > 0.0";
+    return false;
+  }
+  if (!(config.source_health_check_period_s > 0.0)) {
+    error = "source_health_check_period_s must be > 0.0";
+    return false;
+  }
   if (!(config.voxel_size_xy > 0.0)) {
     error = "voxel_size_xy must be > 0.0";
     return false;
@@ -307,6 +321,10 @@ bool CollisionVoxelLayerNode::validate_runtime_config(
     error = "config_reload_period_s must be >= 0.1";
     return false;
   }
+  if (config.source_status_topic.empty()) {
+    error = "source_status_topic must not be empty";
+    return false;
+  }
   return true;
 }
 
@@ -323,10 +341,12 @@ void CollisionVoxelLayerNode::apply_runtime_config(const RuntimeConfig & config)
   grid_topic_ = config.grid_topic;
   markers_topic_ = config.markers_topic;
   debug_cloud_topic_ = config.debug_cloud_topic;
+  source_status_topic_ = config.source_status_topic;
   publish_rate_hz_ = config.publish_rate_hz;
   tf_timeout_s_ = config.tf_timeout_s;
   sync_queue_size_ = config.sync_queue_size;
-  sync_slop_s_ = config.sync_slop_s;
+  source_timeout_s_ = config.source_timeout_s;
+  source_health_check_period_s_ = config.source_health_check_period_s;
   scan_weight_ = config.scan_weight;
   depth_weight_ = config.depth_weight;
   depth_voxel_prefilter_ = config.depth_voxel_prefilter;
@@ -360,6 +380,7 @@ void CollisionVoxelLayerNode::rebuild_publishers()
   grid_pub_.reset();
   markers_pub_.reset();
   debug_cloud_pub_.reset();
+  source_status_pub_.reset();
 
   grid_pub_ = this->create_publisher<msg::VoxelGrid>(
     grid_topic_, rclcpp::QoS(1).transient_local().reliable());
@@ -367,31 +388,47 @@ void CollisionVoxelLayerNode::rebuild_publishers()
     markers_topic_, rclcpp::QoS(1).transient_local().reliable());
   debug_cloud_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>(
     debug_cloud_topic_, rclcpp::QoS(1).transient_local().reliable());
+  source_status_pub_ = this->create_publisher<std_msgs::msg::String>(
+    source_status_topic_, rclcpp::QoS(1).transient_local().reliable());
 }
 
 void CollisionVoxelLayerNode::rebuild_input_pipeline()
 {
-  sync_.reset();
-  scan_sub_.unsubscribe();
-  depth_sub_.unsubscribe();
+  scan_sub_.reset();
+  depth_sub_.reset();
+  scan_seen_ = false;
+  depth_seen_ = false;
+  last_scan_stamp_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+  last_depth_stamp_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+  last_graph_health_check_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
 
-  if (scan_topic_.empty() || depth_cloud_topic_.empty()) {
+  if (scan_topic_.empty() && depth_cloud_topic_.empty()) {
     RCLCPP_WARN(
       get_logger(),
-      "collision_voxel_layer inputs are disabled because scan_topic or depth_cloud_topic is empty");
+      "collision_voxel_layer inputs are disabled because scan_topic and depth_cloud_topic are empty");
     return;
   }
 
-  scan_sub_.subscribe(this, scan_topic_, rmw_qos_profile_sensor_data);
-  depth_sub_.subscribe(this, depth_cloud_topic_, rmw_qos_profile_sensor_data);
-  sync_ = std::make_shared<message_filters::Synchronizer<SyncPolicy>>(
-    SyncPolicy(static_cast<uint32_t>(sync_queue_size_)), scan_sub_, depth_sub_);
-  sync_->setMaxIntervalDuration(rclcpp::Duration::from_seconds(sync_slop_s_));
-  sync_->registerCallback(std::bind(
-    &CollisionVoxelLayerNode::on_synced_inputs,
-    this,
-    std::placeholders::_1,
-    std::placeholders::_2));
+  if (!scan_topic_.empty()) {
+    scan_sub_ = this->create_subscription<sensor_msgs::msg::LaserScan>(
+      scan_topic_,
+      rclcpp::SensorDataQoS(),
+      std::bind(&CollisionVoxelLayerNode::on_scan, this, std::placeholders::_1));
+  } else {
+    RCLCPP_WARN(get_logger(), "collision_voxel_layer scan input disabled: scan_topic is empty");
+  }
+
+  if (!depth_cloud_topic_.empty()) {
+    depth_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
+      depth_cloud_topic_,
+      rclcpp::SensorDataQoS(),
+      std::bind(&CollisionVoxelLayerNode::on_depth_cloud, this, std::placeholders::_1));
+  } else {
+    RCLCPP_WARN(
+      get_logger(), "collision_voxel_layer depth input disabled: depth_cloud_topic is empty");
+  }
+
+  log_graph_health(true);
 }
 
 void CollisionVoxelLayerNode::rebuild_decay_timer()
@@ -570,6 +607,14 @@ rcl_interfaces::msg::SetParametersResult CollisionVoxelLayerNode::on_parameter_c
       has_runtime_change = true;
       continue;
     }
+    if (name == "source_status_topic") {
+      if (parameter.get_type() != rclcpp::ParameterType::PARAMETER_STRING) {
+        return reject("source_status_topic must be a string");
+      }
+      next_config.source_status_topic = parameter.as_string();
+      has_runtime_change = true;
+      continue;
+    }
     if (name == "publish_rate") {
       if (parameter.get_type() != rclcpp::ParameterType::PARAMETER_DOUBLE) {
         return reject("publish_rate must be a double");
@@ -590,7 +635,8 @@ rcl_interfaces::msg::SetParametersResult CollisionVoxelLayerNode::on_parameter_c
       if (parameter.get_type() != rclcpp::ParameterType::PARAMETER_INTEGER) {
         return reject("sync_queue_size must be an integer");
       }
-      next_config.sync_queue_size = static_cast<std::size_t>(parameter.as_int());
+      const auto value = parameter.as_int();
+      next_config.sync_queue_size = value < 0 ? 0U : static_cast<std::size_t>(value);
       has_runtime_change = true;
       continue;
     }
@@ -599,6 +645,23 @@ rcl_interfaces::msg::SetParametersResult CollisionVoxelLayerNode::on_parameter_c
         return reject("sync_slop_s must be a double");
       }
       next_config.sync_slop_s = parameter.as_double();
+      next_config.source_timeout_s = std::max(1.0, next_config.sync_slop_s * 3.0);
+      has_runtime_change = true;
+      continue;
+    }
+    if (name == "source_timeout_s") {
+      if (parameter.get_type() != rclcpp::ParameterType::PARAMETER_DOUBLE) {
+        return reject("source_timeout_s must be a double");
+      }
+      next_config.source_timeout_s = parameter.as_double();
+      has_runtime_change = true;
+      continue;
+    }
+    if (name == "source_health_check_period_s") {
+      if (parameter.get_type() != rclcpp::ParameterType::PARAMETER_DOUBLE) {
+        return reject("source_health_check_period_s must be a double");
+      }
+      next_config.source_health_check_period_s = parameter.as_double();
       has_runtime_change = true;
       continue;
     }
@@ -753,33 +816,19 @@ rcl_interfaces::msg::SetParametersResult CollisionVoxelLayerNode::on_parameter_c
   return result;
 }
 
-void CollisionVoxelLayerNode::on_synced_inputs(
-  const sensor_msgs::msg::LaserScan::ConstSharedPtr & scan_msg,
-  const sensor_msgs::msg::PointCloud2::ConstSharedPtr & depth_msg)
+void CollisionVoxelLayerNode::on_scan(const sensor_msgs::msg::LaserScan::SharedPtr msg)
 {
-  tf2::Transform scan_transform;
-  tf2::Transform depth_transform;
-  if (!lookup_transform(scan_msg->header.frame_id, scan_msg->header.stamp, scan_transform)) {
-    return;
-  }
-  if (!lookup_transform(depth_msg->header.frame_id, depth_msg->header.stamp, depth_transform)) {
+  tf2::Transform transform;
+  if (!lookup_transform(msg->header.frame_id, msg->header.stamp, transform)) {
     return;
   }
 
-  const auto stamp = newest_stamp(scan_msg->header.stamp, depth_msg->header.stamp);
+  const auto stamp = msg->header.stamp.sec != 0 || msg->header.stamp.nanosec != 0 ?
+    rclcpp::Time(msg->header.stamp) : this->get_clock()->now();
   sparse_grid_->decay_to(stamp);
 
-  const bool scan_apply_transform = !scan_msg->header.frame_id.empty() &&
-    scan_msg->header.frame_id != base_frame_;
-  const bool depth_apply_transform = !depth_msg->header.frame_id.empty() &&
-    depth_msg->header.frame_id != base_frame_;
-
-  const auto scan_points = convert_scan_to_points(
-    *scan_msg, scan_transform, scan_apply_transform, scan_params_);
-  auto depth_points = filter_depth_cloud(
-    *depth_msg, depth_transform, depth_apply_transform, depth_params_);
-  depth_points = prefilter_depth_points(depth_points);
-
+  const bool apply_transform = !msg->header.frame_id.empty() && msg->header.frame_id != base_frame_;
+  const auto scan_points = convert_scan_to_points(*msg, transform, apply_transform, scan_params_);
   for (const auto & point : scan_points) {
     sparse_grid_->insert_point(
       point.x(), point.y(), point.z(),
@@ -788,6 +837,26 @@ void CollisionVoxelLayerNode::on_synced_inputs(
       stamp);
   }
 
+  scan_seen_ = true;
+  last_scan_stamp_ = stamp;
+  log_missing_sources("scan", stamp);
+  publish_state(stamp);
+}
+
+void CollisionVoxelLayerNode::on_depth_cloud(const sensor_msgs::msg::PointCloud2::SharedPtr msg)
+{
+  tf2::Transform transform;
+  if (!lookup_transform(msg->header.frame_id, msg->header.stamp, transform)) {
+    return;
+  }
+
+  const auto stamp = msg->header.stamp.sec != 0 || msg->header.stamp.nanosec != 0 ?
+    rclcpp::Time(msg->header.stamp) : this->get_clock()->now();
+  sparse_grid_->decay_to(stamp);
+
+  const bool apply_transform = !msg->header.frame_id.empty() && msg->header.frame_id != base_frame_;
+  auto depth_points = filter_depth_cloud(*msg, transform, apply_transform, depth_params_);
+  depth_points = prefilter_depth_points(depth_points);
   for (const auto & point : depth_points) {
     sparse_grid_->insert_point(
       point.x(), point.y(), point.z(),
@@ -796,6 +865,9 @@ void CollisionVoxelLayerNode::on_synced_inputs(
       stamp);
   }
 
+  depth_seen_ = true;
+  last_depth_stamp_ = stamp;
+  log_missing_sources("depth", stamp);
   publish_state(stamp);
 }
 
@@ -803,6 +875,8 @@ void CollisionVoxelLayerNode::on_decay_timer()
 {
   const auto now = this->get_clock()->now();
   sparse_grid_->decay_to(now);
+  log_missing_sources("timer", now);
+  log_graph_health();
   publish_state(now);
 }
 
@@ -847,6 +921,130 @@ void CollisionVoxelLayerNode::publish_state(const rclcpp::Time & stamp)
   grid_pub_->publish(grid_msg);
   markers_pub_->publish(build_markers(grid_msg));
   debug_cloud_pub_->publish(build_debug_cloud(grid_msg));
+}
+
+void CollisionVoxelLayerNode::publish_source_status(
+  const std::string & active_source,
+  const rclcpp::Time & now)
+{
+  std_msgs::msg::String status;
+  const bool scan_stale =
+    scan_sub_ && (!scan_seen_ || (now - last_scan_stamp_).seconds() > source_timeout_s_);
+  const bool depth_stale =
+    depth_sub_ && (!depth_seen_ || (now - last_depth_stamp_).seconds() > source_timeout_s_);
+  const bool any_source_active =
+    (scan_sub_ && scan_seen_ && !scan_stale) || (depth_sub_ && depth_seen_ && !depth_stale);
+
+  std::ostringstream stream;
+  stream << "{"
+         << "\"active_source\":\"" << active_source << "\","
+         << "\"any_source_active\":" << (any_source_active ? "true" : "false") << ","
+         << "\"source_timeout_s\":" << source_timeout_s_ << ","
+         << "\"scan\":{"
+         << "\"enabled\":" << (scan_sub_ ? "true" : "false") << ","
+         << "\"topic\":\"" << scan_topic_ << "\","
+         << "\"seen\":" << (scan_seen_ ? "true" : "false") << ","
+         << "\"stale\":" << (scan_stale ? "true" : "false")
+         << "},"
+         << "\"depth\":{"
+         << "\"enabled\":" << (depth_sub_ ? "true" : "false") << ","
+         << "\"topic\":\"" << depth_cloud_topic_ << "\","
+         << "\"seen\":" << (depth_seen_ ? "true" : "false") << ","
+         << "\"stale\":" << (depth_stale ? "true" : "false")
+         << "}"
+         << "}";
+  status.data = stream.str();
+  if (source_status_pub_) {
+    source_status_pub_->publish(status);
+  }
+}
+
+void CollisionVoxelLayerNode::log_missing_sources(
+  const std::string & active_source,
+  const rclcpp::Time & now)
+{
+  if (scan_sub_) {
+    const bool scan_stale =
+      !scan_seen_ || (now - last_scan_stamp_).seconds() > source_timeout_s_;
+    if (scan_stale) {
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 3000,
+        "collision_voxel_layer missing or stale scan input: topic=%s active_source=%s seen=%s timeout_s=%.2f",
+        scan_topic_.c_str(), active_source.c_str(), scan_seen_ ? "true" : "false",
+        source_timeout_s_);
+    }
+  }
+
+  if (depth_sub_) {
+    const bool depth_stale =
+      !depth_seen_ || (now - last_depth_stamp_).seconds() > source_timeout_s_;
+    if (depth_stale) {
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 3000,
+        "collision_voxel_layer missing or stale depth input: topic=%s active_source=%s seen=%s timeout_s=%.2f",
+        depth_cloud_topic_.c_str(), active_source.c_str(), depth_seen_ ? "true" : "false",
+        source_timeout_s_);
+    }
+  }
+
+  publish_source_status(active_source, now);
+}
+
+void CollisionVoxelLayerNode::log_graph_health(bool force)
+{
+  const auto now = this->get_clock()->now();
+  if (
+    !force &&
+    last_graph_health_check_time_.nanoseconds() != 0 &&
+    (now - last_graph_health_check_time_).seconds() < source_health_check_period_s_)
+  {
+    return;
+  }
+  last_graph_health_check_time_ = now;
+
+  if (scan_sub_) {
+    const auto publishers = this->get_publishers_info_by_topic(scan_topic_);
+    bool type_ok = true;
+    for (const auto & publisher : publishers) {
+      if (publisher.topic_type() != "sensor_msgs/msg/LaserScan") {
+        type_ok = false;
+        break;
+      }
+    }
+    if (publishers.empty()) {
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 5000,
+        "collision_voxel_layer scan topic has no publishers: topic=%s",
+        scan_topic_.c_str());
+    } else if (!type_ok) {
+      RCLCPP_ERROR_THROTTLE(
+        get_logger(), *get_clock(), 5000,
+        "collision_voxel_layer scan topic type mismatch: topic=%s expected=sensor_msgs/msg/LaserScan",
+        scan_topic_.c_str());
+    }
+  }
+
+  if (depth_sub_) {
+    const auto publishers = this->get_publishers_info_by_topic(depth_cloud_topic_);
+    bool type_ok = true;
+    for (const auto & publisher : publishers) {
+      if (publisher.topic_type() != "sensor_msgs/msg/PointCloud2") {
+        type_ok = false;
+        break;
+      }
+    }
+    if (publishers.empty()) {
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 5000,
+        "collision_voxel_layer depth cloud topic has no publishers: topic=%s",
+        depth_cloud_topic_.c_str());
+    } else if (!type_ok) {
+      RCLCPP_ERROR_THROTTLE(
+        get_logger(), *get_clock(), 5000,
+        "collision_voxel_layer depth cloud topic type mismatch: topic=%s expected=sensor_msgs/msg/PointCloud2",
+        depth_cloud_topic_.c_str());
+    }
+  }
 }
 
 sensor_msgs::msg::PointCloud2 CollisionVoxelLayerNode::build_debug_cloud(

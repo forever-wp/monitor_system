@@ -60,6 +60,44 @@ uint8_t action_to_msg(ActionType action)
   }
 }
 
+std::string fault_level_to_string(FaultLevel level)
+{
+  switch (level) {
+    case FaultLevel::WARNING:
+      return "WARNING";
+    case FaultLevel::ERROR:
+      return "ERROR";
+    case FaultLevel::CRITICAL:
+      return "CRITICAL";
+    case FaultLevel::NORMAL:
+    default:
+      return "NORMAL";
+  }
+}
+
+std::string json_escape(const std::string & input)
+{
+  std::ostringstream oss;
+  for (const auto ch : input) {
+    switch (ch) {
+      case '"': oss << "\\\""; break;
+      case '\\': oss << "\\\\"; break;
+      case '\n': oss << "\\n"; break;
+      case '\r': oss << "\\r"; break;
+      case '\t': oss << "\\t"; break;
+      default: oss << ch; break;
+    }
+  }
+  return oss.str();
+}
+
+bool is_vehicle_state_judge_fault(const FaultInfo & fault)
+{
+  return fault.module_name == "vehicle_state_judge" ||
+         fault.fault_key.find("vehicle_state_judge|") == 0 ||
+         fault.fault_key.find("|vehicle_state_") != std::string::npos;
+}
+
 std::string normalize_graph_name(const std::string & name)
 {
   if (name.empty()) {
@@ -261,6 +299,8 @@ Nav2MonitorNode::Nav2MonitorNode()
     "supervisor_cmd_topic", "/supervisor/cmd");
   const auto safety_cmd_topic = this->declare_parameter<std::string>(
     "safety_cmd_topic", "/safety_system/cmd");
+  const auto human_intervention_topic = this->declare_parameter<std::string>(
+    "human_intervention_topic", "/nav2_monitor/human_intervention");
   battery_state_topic_ = this->declare_parameter<std::string>(
     "battery_state_topic", "/battery_state");
   battery_state_timeout_s_ = std::max(
@@ -295,6 +335,8 @@ Nav2MonitorNode::Nav2MonitorNode()
   pub_ = this->create_publisher<msg::MonitorStatus>("/nav2_monitor/status", 10);
   fault_event_pub_ = this->create_publisher<msg::FaultEvent>(fault_event_topic, 10);
   supervisor_pub_ = this->create_publisher<std_msgs::msg::String>(supervisor_cmd_topic, 10);
+  human_intervention_pub_ =
+    this->create_publisher<std_msgs::msg::String>(human_intervention_topic, 10);
   fault_state_coordinator_.configure(this, safety_cmd_topic);
   monitor_reporter_.configure(this);
 
@@ -680,10 +722,7 @@ void Nav2MonitorNode::on_collision_ultrasonic(const std_msgs::msg::String::Share
 
 void Nav2MonitorNode::try_subscribe_moto_topic()
 {
-  if (!fault_detector_.chassis_stationary_enabled() || moto_topic_.empty() || moto_sub_) {
-    return;
-  }
-  if (!fault_detector_.get_chassis_stationary_config().imu_topic.empty()) {
+  if (!fault_detector_.vehicle_state_judge_enabled() || moto_topic_.empty() || moto_sub_) {
     return;
   }
 
@@ -856,6 +895,28 @@ bool Nav2MonitorNode::should_publish_action(
 
   last_action_publish_time_[key] = now;
   return true;
+}
+
+void Nav2MonitorNode::publish_human_intervention_request(
+  const FaultInfo & fault, const rclcpp::Time & now)
+{
+  if (!human_intervention_pub_) {
+    return;
+  }
+
+  std_msgs::msg::String msg;
+  std::ostringstream oss;
+  oss << '{'
+      << "\"timestamp\":\"" << json_escape(std::to_string(now.seconds())) << "\","
+      << "\"request\":\"human_intervention\","
+      << "\"module_name\":\"" << json_escape(fault.module_name) << "\","
+      << "\"fault_key\":\"" << json_escape(fault.fault_key) << "\","
+      << "\"fault_level\":\"" << json_escape(fault_level_to_string(fault.level)) << "\","
+      << "\"reason\":\"" << json_escape(fault.reason) << "\","
+      << "\"suggested_action\":\"manual_check\""
+      << '}';
+  msg.data = oss.str();
+  human_intervention_pub_->publish(msg);
 }
 
 bool Nav2MonitorNode::update_current_nav_task_locked(
@@ -1125,11 +1186,11 @@ void Nav2MonitorNode::configure_chassis_monitoring()
   chassis_imu_bias_calibrated_ = false;
   chassis_imu_bias_samples_.clear();
 
-  if (fault_config_path_.empty() || !fault_detector_.chassis_stationary_enabled()) {
+  if (fault_config_path_.empty() || !fault_detector_.vehicle_state_judge_enabled()) {
     return;
   }
 
-  const auto & cfg = fault_detector_.get_chassis_stationary_config();
+  const auto & cfg = fault_detector_.get_vehicle_state_judge_config();
   command_topic_ = cfg.command_topic;
   moto_topic_ = cfg.moto_topic;
   odom_topic_ = cfg.odom_topic;
@@ -1140,14 +1201,12 @@ void Nav2MonitorNode::configure_chassis_monitoring()
   chassis_imu_decay_rate_ = cfg.imu_decay_rate;
   chassis_imu_bias_calibration_samples_ = cfg.imu_bias_calibration_samples;
 
-  const bool use_imu_as_truth = !chassis_imu_topic_.empty();
-
-  if (!use_imu_as_truth && !command_topic_.empty()) {
+  if (!command_topic_.empty()) {
     command_sub_ = this->create_subscription<std_msgs::msg::String>(
       command_topic_, rclcpp::QoS(20),
       std::bind(&Nav2MonitorNode::on_command, this, std::placeholders::_1));
   }
-  if (!use_imu_as_truth && !odom_topic_.empty()) {
+  if (!odom_topic_.empty()) {
     odom_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
       odom_topic_, rclcpp::SensorDataQoS(),
       std::bind(&Nav2MonitorNode::on_odom, this, std::placeholders::_1));
@@ -1158,7 +1217,7 @@ void Nav2MonitorNode::configure_chassis_monitoring()
       std::bind(&Nav2MonitorNode::on_chassis_imu, this, std::placeholders::_1));
   }
   RCLCPP_INFO(
-    get_logger(), "Chassis stationary judge enabled: command=%s moto=%s odom=%s imu=%s",
+    get_logger(), "Vehicle state judge enabled: command=%s moto=%s odom=%s imu=%s",
     command_topic_.c_str(), moto_topic_.c_str(),
     odom_topic_.empty() ? "<disabled>" : odom_topic_.c_str(),
     chassis_imu_topic_.empty() ? "<disabled>" : chassis_imu_topic_.c_str());
@@ -1174,12 +1233,26 @@ void Nav2MonitorNode::configure_collision_monitoring()
   collision_ultrasonic_sub_.reset();
   collision_zone_pubs_.clear();
   collision_ttc_markers_pub_.reset();
+  navigation_mode_pub_.reset();
+  navigation_safe_mode_active_ = false;
+  navigation_ttc_abnormal_ = false;
+  navigation_ttc_abnormal_since_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+  navigation_ttc_clear_since_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+  navigation_safe_mode_since_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+  last_navigation_mode_publish_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+  fault_detector_.set_collision_navigation_safe_mode(false);
 
   if (fault_config_path_.empty() || !fault_detector_.collision_detection_enabled()) {
     return;
   }
 
   const auto & cfg = fault_detector_.get_collision_detection_config();
+  if (cfg.navigation_mode_switch_enabled && !cfg.navigation_mode_topic.empty()) {
+    auto qos = rclcpp::QoS(1).transient_local().reliable();
+    navigation_mode_pub_ = this->create_publisher<std_msgs::msg::String>(
+      cfg.navigation_mode_topic, qos);
+    publish_navigation_mode(true);
+  }
   collision_prediction_router_ = CollisionPredictionRouter(CollisionPredictionRoutingConfig{
       cfg.prediction_speed_topic,
       cfg.control_source_state_topic,
@@ -1272,13 +1345,14 @@ void Nav2MonitorNode::configure_collision_monitoring()
   RCLCPP_INFO(
     get_logger(),
     "Collision detection enabled: voxel=%s scan=%s pointcloud=%s ultrasonic=%s ttc_routes={%s} "
-    "control_source_state=%s active_source=%s",
+    "control_source_state=%s active_source=%s navigation_mode_switch=%s",
     cfg.voxel_topic.empty() ? "<disabled>" : cfg.voxel_topic.c_str(),
     cfg.scan_topic.c_str(), cfg.pointcloud_topic.c_str(), cfg.ultrasonic_topic.c_str(),
     prediction_routes_oss.str().c_str(),
     collision_prediction_router_.control_source_state_topic().empty() ?
     "<disabled>" : collision_prediction_router_.control_source_state_topic().c_str(),
-    collision_prediction_router_.active_source().c_str());
+    collision_prediction_router_.active_source().c_str(),
+    navigation_mode_pub_ ? cfg.navigation_mode_topic.c_str() : "<disabled>");
 }
 
 void Nav2MonitorNode::subscribe_watch_topics()
@@ -1523,6 +1597,7 @@ void Nav2MonitorNode::check_health()
 
   pub_->publish(status_msg);
   monitor_reporter_.publish_heartbeat(status_msg, now);
+  update_navigation_mode_from_ttc(faults, now);
   publish_collision_zones();
   publish_collision_ttc_markers();
 
@@ -1572,6 +1647,9 @@ void Nav2MonitorNode::check_health()
       cmd.data = oss.str();
       supervisor_pub_->publish(cmd);
       monitor_reporter_.cache_supervisor_json(cmd.data, now);
+      if (is_vehicle_state_judge_fault(fault)) {
+        publish_human_intervention_request(fault, now);
+      }
       RCLCPP_WARN(
         get_logger(), "Supervisor restart: %s - %s",
         fault.module_name.c_str(), fault.reason.c_str());
@@ -1612,6 +1690,103 @@ void Nav2MonitorNode::publish_collision_zones()
     }
     pub_it->second->publish(polygon_msg);
   }
+}
+
+void Nav2MonitorNode::update_navigation_mode_from_ttc(
+  const std::vector<FaultInfo> & faults,
+  const rclcpp::Time & now)
+{
+  if (!fault_detector_.collision_detection_enabled() || !navigation_mode_pub_) {
+    return;
+  }
+
+  const auto & cfg = fault_detector_.get_collision_detection_config();
+  bool ttc_abnormal = false;
+  for (const auto & fault : faults) {
+    if (
+      fault.module_name == cfg.module_name &&
+      fault.fault_key.find("|collision:") != std::string::npos &&
+      fault.reason.find("ttc=") != std::string::npos)
+    {
+      ttc_abnormal = true;
+      break;
+    }
+  }
+
+  if (ttc_abnormal) {
+    if (!navigation_ttc_abnormal_) {
+      navigation_ttc_abnormal_since_ = now;
+    }
+    navigation_ttc_abnormal_ = true;
+    navigation_ttc_clear_since_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+  } else {
+    if (navigation_ttc_abnormal_ || navigation_ttc_clear_since_.nanoseconds() == 0) {
+      navigation_ttc_clear_since_ = now;
+    }
+    navigation_ttc_abnormal_ = false;
+    navigation_ttc_abnormal_since_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+  }
+
+  if (!navigation_safe_mode_active_ && ttc_abnormal) {
+    const double abnormal_duration =
+      (now - navigation_ttc_abnormal_since_).seconds();
+    if (abnormal_duration >= cfg.navigation_safe_enter_duration_s) {
+      navigation_safe_mode_active_ = true;
+      navigation_safe_mode_since_ = now;
+      fault_detector_.set_collision_navigation_safe_mode(true);
+      publish_navigation_mode(true);
+      publish_collision_zones();
+      RCLCPP_WARN(
+        get_logger(),
+        "Navigation mode switched to %s by TTC: duration=%.3fs",
+        cfg.navigation_safe_mode.c_str(), abnormal_duration);
+    }
+  }
+
+  if (navigation_safe_mode_active_ && !ttc_abnormal) {
+    const double clear_duration = navigation_ttc_clear_since_.nanoseconds() == 0 ?
+      0.0 : (now - navigation_ttc_clear_since_).seconds();
+    const double hold_duration = navigation_safe_mode_since_.nanoseconds() == 0 ?
+      0.0 : (now - navigation_safe_mode_since_).seconds();
+    if (
+      clear_duration >= cfg.navigation_safe_clear_duration_s &&
+      hold_duration >= cfg.navigation_safe_min_hold_s)
+    {
+      navigation_safe_mode_active_ = false;
+      fault_detector_.set_collision_navigation_safe_mode(false);
+      publish_navigation_mode(true);
+      publish_collision_zones();
+      RCLCPP_WARN(
+        get_logger(),
+        "Navigation mode recovered to %s: clear_duration=%.3fs hold_duration=%.3fs",
+        cfg.navigation_fast_mode.c_str(), clear_duration, hold_duration);
+    }
+  }
+
+  publish_navigation_mode(false);
+}
+
+void Nav2MonitorNode::publish_navigation_mode(bool force)
+{
+  if (!navigation_mode_pub_ || !fault_detector_.collision_detection_enabled()) {
+    return;
+  }
+
+  const auto & cfg = fault_detector_.get_collision_detection_config();
+  const auto now = this->now();
+  if (
+    !force &&
+    last_navigation_mode_publish_time_.nanoseconds() != 0 &&
+    (now - last_navigation_mode_publish_time_).seconds() <
+    cfg.navigation_mode_publish_cooldown_s)
+  {
+    return;
+  }
+
+  std_msgs::msg::String msg;
+  msg.data = navigation_safe_mode_active_ ? cfg.navigation_safe_mode : cfg.navigation_fast_mode;
+  navigation_mode_pub_->publish(msg);
+  last_navigation_mode_publish_time_ = now;
 }
 
 void Nav2MonitorNode::publish_collision_ttc_markers()

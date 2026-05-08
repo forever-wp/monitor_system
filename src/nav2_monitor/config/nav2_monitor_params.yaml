@@ -9,6 +9,7 @@ nav2_monitor:
     fault_event_topic: "/nav2_monitor/fault_event"  # 故障边沿事件输出 topic
     supervisor_cmd_topic: "/supervisor/cmd"  # supervisor 重启命令输出 topic
     safety_cmd_topic: "/safety_system/cmd"  # 安全执行命令输出 topic
+    human_intervention_topic: "/nav2_monitor/human_intervention"  # 小车状态异常人工介入提醒 topic
     reporter.heartbeat_json_topic: "/nav2_monitor/reporter/heartbeat_json"  # 心跳 JSON 上报 topic
     reporter.event_json_topic: "/nav2_monitor/reporter/event_json"  # 事件 JSON 上报 topic
     reporter.cmd_correlation_window_s: 2.0  # reporter 关联安全/重启动作与事件的时间窗（秒）

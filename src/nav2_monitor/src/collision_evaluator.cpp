@@ -219,6 +219,45 @@ std::vector<CollisionPoint> CollisionEvaluator::collect_evaluation_points(
   return points;
 }
 
+bool CollisionEvaluator::has_fresh_evaluation_source(
+  const CollisionDetectionConfig & cfg,
+  const MonitorDataStore & store,
+  const rclcpp::Time & now,
+  std::string & reason)
+{
+  if (!cfg.voxel_topic.empty()) {
+    const auto & voxel_state = store.get_collision_voxel_state();
+    if (!voxel_state.has_data) {
+      reason = "Collision voxel source missing; skip collision judgment";
+      return false;
+    }
+    const double age_s = (now - voxel_state.last_seen).seconds();
+    if (age_s > cfg.source_timeout_s) {
+      std::ostringstream oss;
+      oss << "Collision voxel source stale: age=" << age_s
+          << "s timeout=" << cfg.source_timeout_s << "s; skip collision judgment";
+      reason = oss.str();
+      return false;
+    }
+    return true;
+  }
+
+  const auto & point_state = store.get_collision_state();
+  if (!point_state.has_data) {
+    reason = "Collision point source missing; skip collision judgment";
+    return false;
+  }
+  const double age_s = (now - point_state.last_seen).seconds();
+  if (age_s > cfg.source_timeout_s) {
+    std::ostringstream oss;
+    oss << "Collision point source stale: age=" << age_s
+        << "s timeout=" << cfg.source_timeout_s << "s; skip collision judgment";
+    reason = oss.str();
+    return false;
+  }
+  return true;
+}
+
 std::vector<CollisionPoint> CollisionEvaluator::downsample_candidate_points(
   const std::vector<CollisionPoint> & points,
   double resolution)
@@ -521,6 +560,42 @@ void CollisionEvaluator::append_zone_faults(
   }
 }
 
+void CollisionEvaluator::append_source_faults(
+  const CollisionDetectionConfig & cfg,
+  const std::string & reason,
+  std::vector<FaultInfo> & faults,
+  const rclcpp::Time & now) const
+{
+  const auto & actions = cfg.source_actions;
+  if (actions.empty()) {
+    FaultInfo fault;
+    fault.fault_key = cfg.module_name + "|collision_source|action=0";
+    fault.module_name = cfg.module_name;
+    fault.level = cfg.source_level;
+    fault.reason = reason;
+    fault.action = ActionType::NONE;
+    fault.safety_command = SafetyCommandType::NONE;
+    fault.safety_slow_down_percentage = 0.0;
+    fault.timestamp = now;
+    faults.push_back(std::move(fault));
+    return;
+  }
+
+  for (const auto & action : actions) {
+    FaultInfo fault;
+    fault.fault_key = cfg.module_name + "|collision_source|action=" +
+      std::to_string(static_cast<int>(action));
+    fault.module_name = cfg.module_name;
+    fault.level = cfg.source_level;
+    fault.reason = reason;
+    fault.action = action;
+    fault.safety_command = SafetyCommandType::NONE;
+    fault.safety_slow_down_percentage = 0.0;
+    fault.timestamp = now;
+    faults.push_back(std::move(fault));
+  }
+}
+
 std::vector<FaultInfo> CollisionEvaluator::evaluate(
   const CollisionDetectionConfig & cfg,
   const MonitorDataStore & store,
@@ -549,6 +624,20 @@ std::vector<FaultInfo> CollisionEvaluator::evaluate(
   const auto runtime_direction = resolve_runtime_motion_direction(
     chassis_state, cfg.direction_speed_threshold, cfg.direction_confirm_count, now,
     cfg.source_timeout_s);
+
+  std::string source_reason;
+  const bool source_ready = has_fresh_evaluation_source(cfg, store, now, source_reason);
+  std::string active_source_reason;
+  const std::string source_key = cfg.module_name + "|collision_source";
+  if (update_multi_value_state(
+      source_key, !source_ready, source_reason, now, 0.0, active_source_reason))
+  {
+    append_source_faults(cfg, active_source_reason, faults, now);
+  }
+  if (!source_ready) {
+    return faults;
+  }
+
   const auto points = collect_evaluation_points(cfg, store, now);
 
   if (cfg.ttc_visualization_enabled && current_speed > 1e-3) {

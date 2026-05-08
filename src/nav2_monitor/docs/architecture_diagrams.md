@@ -99,7 +99,7 @@ flowchart TB
     M2 --> M21[节点存活判断<br/>快速路径]
     M2 --> M22[feedback_rules 阈值判断]
     M2 --> M23[legacy topics 频率判断]
-    M2 --> M24[chassis_stationary 判断]
+    M2 --> M24[小车状态判断检测<br/>vehicle_state_judge]
     M2 --> M25[连续计数防误报<br/>trigger_count / recover_count]
     M2 --> M26[监控目标导出<br/>聚合 nodes/topics]
 

@@ -1,4 +1,4 @@
-bridge_cpp_node:
+algorithm_feedback_adapter_cpp_node:
   ros__parameters:
     input_topic: "/battery_state"
     output_topic: "/nav2_monitor/algorithm_feedback"

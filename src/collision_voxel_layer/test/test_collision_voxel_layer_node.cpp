@@ -13,6 +13,7 @@
 #include <sensor_msgs/msg/laser_scan.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <sensor_msgs/point_cloud2_iterator.hpp>
+#include <std_msgs/msg/string.hpp>
 
 namespace
 {
@@ -102,6 +103,13 @@ public:
         latest_grid_ = *msg;
         ++grid_count_;
       });
+    status_sub_ = this->create_subscription<std_msgs::msg::String>(
+      "/test/collision_voxel_layer/source_status",
+      rclcpp::QoS(1).transient_local().reliable(),
+      [this](const std_msgs::msg::String::SharedPtr msg) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        latest_status_ = msg->data;
+      });
   }
 
   bool wait_for_graph_ready(std::chrono::milliseconds timeout)
@@ -111,7 +119,8 @@ public:
       if (
         scan_pub_->get_subscription_count() >= 1 &&
         depth_pub_->get_subscription_count() >= 1 &&
-        grid_sub_->get_publisher_count() >= 1)
+        grid_sub_->get_publisher_count() >= 1 &&
+        status_sub_->get_publisher_count() >= 1)
       {
         return true;
       }
@@ -123,6 +132,16 @@ public:
   void publish_inputs()
   {
     scan_pub_->publish(make_test_scan());
+    depth_pub_->publish(make_test_depth_cloud());
+  }
+
+  void publish_scan()
+  {
+    scan_pub_->publish(make_test_scan());
+  }
+
+  void publish_depth()
+  {
     depth_pub_->publish(make_test_depth_cloud());
   }
 
@@ -141,19 +160,53 @@ public:
     return false;
   }
 
+  bool wait_for_nonempty_grid(std::chrono::milliseconds timeout)
+  {
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (std::chrono::steady_clock::now() < deadline) {
+      {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (latest_grid_.has_value() && !latest_grid_->cells.empty()) {
+          return true;
+        }
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+    return false;
+  }
+
   collision_voxel_layer::msg::VoxelGrid latest_grid() const
   {
     std::lock_guard<std::mutex> lock(mutex_);
     return latest_grid_.value();
   }
 
+  bool wait_for_status_containing(
+    const std::string & expected,
+    std::chrono::milliseconds timeout)
+  {
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (std::chrono::steady_clock::now() < deadline) {
+      {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (latest_status_.find(expected) != std::string::npos) {
+          return true;
+        }
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+    return false;
+  }
+
 private:
   mutable std::mutex mutex_;
   size_t grid_count_{0};
   std::optional<collision_voxel_layer::msg::VoxelGrid> latest_grid_;
+  std::string latest_status_;
   rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr scan_pub_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr depth_pub_;
   rclcpp::Subscription<collision_voxel_layer::msg::VoxelGrid>::SharedPtr grid_sub_;
+  rclcpp::Subscription<std_msgs::msg::String>::SharedPtr status_sub_;
 };
 
 }  // namespace
@@ -176,6 +229,8 @@ collision_voxel_layer:
     scan_weight: 0.25
     depth_weight: 0.55
     sync_queue_size: 7
+    source_timeout_s: 1.5
+    source_health_check_period_s: 2.0
 )", "reload");
 
   auto node = std::make_shared<collision_voxel_layer::CollisionVoxelLayerNode>(
@@ -219,6 +274,21 @@ TEST(CollisionVoxelLayerNodeTest, RejectsInvalidRuntimeParameterUpdates)
   });
 
   EXPECT_FALSE(result.successful);
+
+  const auto timeout_result = node->set_parameters_atomically({
+    rclcpp::Parameter("source_timeout_s", 0.0)
+  });
+  EXPECT_FALSE(timeout_result.successful);
+
+  const auto health_check_result = node->set_parameters_atomically({
+    rclcpp::Parameter("source_health_check_period_s", 0.0)
+  });
+  EXPECT_FALSE(health_check_result.successful);
+
+  const auto queue_result = node->set_parameters_atomically({
+    rclcpp::Parameter("sync_queue_size", -1)
+  });
+  EXPECT_FALSE(queue_result.successful);
 }
 
 TEST(CollisionVoxelLayerNodeTest, PublishesVoxelGridForSimulatedScanAndDepthInputs)
@@ -234,7 +304,8 @@ TEST(CollisionVoxelLayerNodeTest, PublishesVoxelGridForSimulatedScanAndDepthInpu
       rclcpp::Parameter("depth_cloud_topic", "/test/collision_voxel_layer/depth"),
       rclcpp::Parameter("grid_topic", "/test/collision_voxel_layer/grid"),
       rclcpp::Parameter("markers_topic", "/test/collision_voxel_layer/markers"),
-      rclcpp::Parameter("debug_cloud_topic", "/test/collision_voxel_layer/debug_cloud")
+      rclcpp::Parameter("debug_cloud_topic", "/test/collision_voxel_layer/debug_cloud"),
+      rclcpp::Parameter("source_status_topic", "/test/collision_voxel_layer/source_status")
     }));
 
   rclcpp::executors::SingleThreadedExecutor executor;
@@ -256,7 +327,7 @@ TEST(CollisionVoxelLayerNodeTest, PublishesVoxelGridForSimulatedScanAndDepthInpu
 
   ASSERT_TRUE(harness->wait_for_graph_ready(std::chrono::milliseconds(2000)));
   harness->publish_inputs();
-  ASSERT_TRUE(harness->wait_for_grid_count_at_least(1, std::chrono::milliseconds(2000)));
+  ASSERT_TRUE(harness->wait_for_nonempty_grid(std::chrono::milliseconds(2000)));
 
   const auto grid = harness->latest_grid();
   EXPECT_EQ(grid.header.frame_id, "base_link");
@@ -283,4 +354,105 @@ TEST(CollisionVoxelLayerNodeTest, PublishesVoxelGridForSimulatedScanAndDepthInpu
   ASSERT_NE(scan_only_cell, grid.cells.end());
   EXPECT_TRUE(nearly_equal(scan_only_cell->occupancy, 0.6F));
   EXPECT_EQ(scan_only_cell->source_mask, 0x01U);
+}
+
+TEST(CollisionVoxelLayerNodeTest, PublishesVoxelGridWhenOnlyScanInputArrives)
+{
+  RosContextGuard guard;
+  auto harness = std::make_shared<VoxelOutputHarness>();
+
+  auto node = std::make_shared<collision_voxel_layer::CollisionVoxelLayerNode>(
+    rclcpp::NodeOptions().parameter_overrides({
+      rclcpp::Parameter("config_reload_enabled", false),
+      rclcpp::Parameter("base_frame", "base_link"),
+      rclcpp::Parameter("scan_topic", "/test/collision_voxel_layer/scan"),
+      rclcpp::Parameter("depth_cloud_topic", "/test/collision_voxel_layer/depth"),
+      rclcpp::Parameter("grid_topic", "/test/collision_voxel_layer/grid"),
+      rclcpp::Parameter("markers_topic", "/test/collision_voxel_layer/markers"),
+      rclcpp::Parameter("debug_cloud_topic", "/test/collision_voxel_layer/debug_cloud"),
+      rclcpp::Parameter("source_status_topic", "/test/collision_voxel_layer/source_status"),
+      rclcpp::Parameter("source_timeout_s", 0.25)
+    }));
+
+  rclcpp::executors::SingleThreadedExecutor executor;
+  executor.add_node(harness);
+  executor.add_node(node);
+  std::thread spin_thread([&executor]() {executor.spin();});
+  struct ExecutorCleanup
+  {
+    rclcpp::executors::SingleThreadedExecutor & executor;
+    std::thread & spin_thread;
+    ~ExecutorCleanup()
+    {
+      executor.cancel();
+      if (spin_thread.joinable()) {
+        spin_thread.join();
+      }
+    }
+  } cleanup{executor, spin_thread};
+
+  ASSERT_TRUE(harness->wait_for_graph_ready(std::chrono::milliseconds(2000)));
+  harness->publish_scan();
+  ASSERT_TRUE(harness->wait_for_nonempty_grid(std::chrono::milliseconds(2000)));
+  ASSERT_TRUE(harness->wait_for_status_containing(
+    "\"active_source\":\"scan\"", std::chrono::milliseconds(2000)));
+  ASSERT_TRUE(harness->wait_for_status_containing(
+    "\"topic\":\"/test/collision_voxel_layer/depth\"", std::chrono::milliseconds(2000)));
+
+  const auto grid = harness->latest_grid();
+  EXPECT_EQ(grid.header.frame_id, "base_link");
+  ASSERT_EQ(grid.cells.size(), 5u);
+
+  for (const auto & cell : grid.cells) {
+    EXPECT_TRUE(nearly_equal(cell.occupancy, 0.6F));
+    EXPECT_EQ(cell.source_mask, 0x01U);
+  }
+}
+
+TEST(CollisionVoxelLayerNodeTest, PublishesVoxelGridWhenOnlyDepthInputArrives)
+{
+  RosContextGuard guard;
+  auto harness = std::make_shared<VoxelOutputHarness>();
+
+  auto node = std::make_shared<collision_voxel_layer::CollisionVoxelLayerNode>(
+    rclcpp::NodeOptions().parameter_overrides({
+      rclcpp::Parameter("config_reload_enabled", false),
+      rclcpp::Parameter("base_frame", "base_link"),
+      rclcpp::Parameter("scan_topic", "/test/collision_voxel_layer/scan"),
+      rclcpp::Parameter("depth_cloud_topic", "/test/collision_voxel_layer/depth"),
+      rclcpp::Parameter("grid_topic", "/test/collision_voxel_layer/grid"),
+      rclcpp::Parameter("markers_topic", "/test/collision_voxel_layer/markers"),
+      rclcpp::Parameter("debug_cloud_topic", "/test/collision_voxel_layer/debug_cloud"),
+      rclcpp::Parameter("source_status_topic", "/test/collision_voxel_layer/source_status"),
+      rclcpp::Parameter("source_timeout_s", 0.25)
+    }));
+
+  rclcpp::executors::SingleThreadedExecutor executor;
+  executor.add_node(harness);
+  executor.add_node(node);
+  std::thread spin_thread([&executor]() {executor.spin();});
+  struct ExecutorCleanup
+  {
+    rclcpp::executors::SingleThreadedExecutor & executor;
+    std::thread & spin_thread;
+    ~ExecutorCleanup()
+    {
+      executor.cancel();
+      if (spin_thread.joinable()) {
+        spin_thread.join();
+      }
+    }
+  } cleanup{executor, spin_thread};
+
+  ASSERT_TRUE(harness->wait_for_graph_ready(std::chrono::milliseconds(2000)));
+  harness->publish_depth();
+  ASSERT_TRUE(harness->wait_for_nonempty_grid(std::chrono::milliseconds(2000)));
+  ASSERT_TRUE(harness->wait_for_status_containing(
+    "\"active_source\":\"depth\"", std::chrono::milliseconds(2000)));
+
+  const auto grid = harness->latest_grid();
+  EXPECT_EQ(grid.header.frame_id, "base_link");
+  ASSERT_EQ(grid.cells.size(), 1u);
+  EXPECT_TRUE(nearly_equal(grid.cells.front().occupancy, 0.8F));
+  EXPECT_EQ(grid.cells.front().source_mask, 0x02U);
 }

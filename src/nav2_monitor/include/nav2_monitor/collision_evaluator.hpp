@@ -75,6 +75,11 @@ private:
     const CollisionDetectionConfig & cfg,
     const MonitorDataStore & store,
     const rclcpp::Time & now);
+  static bool has_fresh_evaluation_source(
+    const CollisionDetectionConfig & cfg,
+    const MonitorDataStore & store,
+    const rclcpp::Time & now,
+    std::string & reason);
   static std::vector<CollisionPoint> downsample_candidate_points(
     const std::vector<CollisionPoint> & points,
     double resolution);
@@ -118,6 +123,11 @@ private:
   void append_zone_faults(
     const CollisionDetectionConfig & cfg,
     const CollisionZoneConfig & zone,
+    const std::string & reason,
+    std::vector<FaultInfo> & faults,
+    const rclcpp::Time & now) const;
+  void append_source_faults(
+    const CollisionDetectionConfig & cfg,
     const std::string & reason,
     std::vector<FaultInfo> & faults,
     const rclcpp::Time & now) const;

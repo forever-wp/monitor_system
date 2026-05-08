@@ -8,13 +8,11 @@
 #include <vector>
 
 #include <builtin_interfaces/msg/time.hpp>
-#include <message_filters/subscriber.h>
-#include <message_filters/sync_policies/approximate_time.h>
-#include <message_filters/synchronizer.h>
 #include <rcl_interfaces/msg/set_parameters_result.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/laser_scan.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
+#include <std_msgs/msg/string.hpp>
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
 #include <visualization_msgs/msg/marker_array.hpp>
@@ -40,10 +38,6 @@ public:
   std::size_t sync_queue_size() const {return sync_queue_size_;}
 
 private:
-  using SyncPolicy = message_filters::sync_policies::ApproximateTime<
-    sensor_msgs::msg::LaserScan,
-    sensor_msgs::msg::PointCloud2>;
-
   struct RuntimeConfig
   {
     std::string config_file{""};
@@ -55,10 +49,14 @@ private:
     std::string grid_topic{"/collision_voxel_layer/grid"};
     std::string markers_topic{"/collision_voxel_layer/markers"};
     std::string debug_cloud_topic{"/collision_voxel_layer/debug_cloud"};
+    std::string source_status_topic{"/collision_voxel_layer/source_status"};
     double publish_rate_hz{10.0};
     double tf_timeout_s{0.05};
     std::size_t sync_queue_size{20U};
+    // Deprecated compatibility for old synchronized-input configs.
     double sync_slop_s{0.15};
+    double source_timeout_s{1.0};
+    double source_health_check_period_s{1.0};
     double voxel_size_xy{0.10};
     double voxel_size_z{0.10};
     double voxel_decay_time_s{1.0};
@@ -83,9 +81,8 @@ private:
     std::filesystem::file_time_type mtime{};
   };
 
-  void on_synced_inputs(
-    const sensor_msgs::msg::LaserScan::ConstSharedPtr & scan_msg,
-    const sensor_msgs::msg::PointCloud2::ConstSharedPtr & depth_msg);
+  void on_scan(const sensor_msgs::msg::LaserScan::SharedPtr msg);
+  void on_depth_cloud(const sensor_msgs::msg::PointCloud2::SharedPtr msg);
   void on_decay_timer();
   void on_config_reload_timer();
 
@@ -108,6 +105,9 @@ private:
     const std::vector<rclcpp::Parameter> & parameters);
 
   void publish_state(const rclcpp::Time & stamp);
+  void publish_source_status(const std::string & active_source, const rclcpp::Time & now);
+  void log_missing_sources(const std::string & active_source, const rclcpp::Time & now);
+  void log_graph_health(bool force = false);
   sensor_msgs::msg::PointCloud2 build_debug_cloud(const msg::VoxelGrid & grid) const;
   visualization_msgs::msg::MarkerArray build_markers(const msg::VoxelGrid & grid) const;
   std::vector<tf2::Vector3> prefilter_depth_points(const std::vector<tf2::Vector3> & points) const;
@@ -123,22 +123,28 @@ private:
   std::string grid_topic_{"/collision_voxel_layer/grid"};
   std::string markers_topic_{"/collision_voxel_layer/markers"};
   std::string debug_cloud_topic_{"/collision_voxel_layer/debug_cloud"};
+  std::string source_status_topic_{"/collision_voxel_layer/source_status"};
   double publish_rate_hz_{10.0};
   double tf_timeout_s_{0.05};
   double scan_weight_{0.6};
   double depth_weight_{0.8};
   double depth_voxel_prefilter_{0.0};
   std::size_t sync_queue_size_{20U};
-  double sync_slop_s_{0.15};
+  double source_timeout_s_{1.0};
+  double source_health_check_period_s_{1.0};
+  rclcpp::Time last_graph_health_check_time_{0, 0, RCL_ROS_TIME};
 
   ScanColumnParams scan_params_;
   DepthFilterParams depth_params_;
 
   std::unique_ptr<SparseVoxelGrid> sparse_grid_;
 
-  message_filters::Subscriber<sensor_msgs::msg::LaserScan> scan_sub_;
-  message_filters::Subscriber<sensor_msgs::msg::PointCloud2> depth_sub_;
-  std::shared_ptr<message_filters::Synchronizer<SyncPolicy>> sync_;
+  rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
+  rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr depth_sub_;
+  bool scan_seen_{false};
+  bool depth_seen_{false};
+  rclcpp::Time last_scan_stamp_{0, 0, RCL_ROS_TIME};
+  rclcpp::Time last_depth_stamp_{0, 0, RCL_ROS_TIME};
 
   tf2_ros::Buffer tf_buffer_;
   std::unique_ptr<tf2_ros::TransformListener> tf_listener_;
@@ -146,6 +152,7 @@ private:
   rclcpp::Publisher<msg::VoxelGrid>::SharedPtr grid_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr markers_pub_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr debug_cloud_pub_;
+  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr source_status_pub_;
   rclcpp::TimerBase::SharedPtr decay_timer_;
   rclcpp::TimerBase::SharedPtr config_reload_timer_;
   rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr parameter_callback_handle_;

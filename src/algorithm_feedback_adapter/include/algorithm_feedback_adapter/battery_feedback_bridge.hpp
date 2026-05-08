@@ -1,22 +1,16 @@
-#ifndef BRIDGE__BATTERY_FEEDBACK_BRIDGE_HPP_
-#define BRIDGE__BATTERY_FEEDBACK_BRIDGE_HPP_
+#ifndef ALGORITHM_FEEDBACK_ADAPTER__BATTERY_FEEDBACK_BRIDGE_HPP_
+#define ALGORITHM_FEEDBACK_ADAPTER__BATTERY_FEEDBACK_BRIDGE_HPP_
 
-#include <string>
 #include <vector>
 
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/battery_state.hpp>
 #include <nav2_monitor/msg/algorithm_feedback.hpp>
 
-namespace bridge
-{
+#include "algorithm_feedback_adapter/metric_sample.hpp"
 
-struct MetricSample
+namespace algorithm_feedback_adapter
 {
-  std::string name;
-  double value;
-  bool valid;
-};
 
 class BatteryFeedbackBridge : public rclcpp::Node
 {
@@ -40,6 +34,6 @@ private:
   rclcpp::Subscription<InputMsg>::SharedPtr sub_;
 };
 
-}  // namespace bridge
+}  // namespace algorithm_feedback_adapter
 
-#endif  // BRIDGE__BATTERY_FEEDBACK_BRIDGE_HPP_
+#endif  // ALGORITHM_FEEDBACK_ADAPTER__BATTERY_FEEDBACK_BRIDGE_HPP_

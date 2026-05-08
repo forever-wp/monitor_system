@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <limits>
 #include <set>
 #include <sstream>
 #include <utility>
@@ -147,6 +148,114 @@ std::vector<ActionType> parse_actions(
   return actions;
 }
 
+bool parse_bool(const YAML::Node & node, bool fallback)
+{
+  if (!node) {
+    return fallback;
+  }
+
+  try {
+    if (node.IsScalar()) {
+      const std::string raw = to_lower(node.as<std::string>());
+      if (raw == "1" || raw == "true" || raw == "yes" || raw == "on") {
+        return true;
+      }
+      if (raw == "0" || raw == "false" || raw == "no" || raw == "off") {
+        return false;
+      }
+    }
+    return node.as<bool>();
+  } catch (...) {
+    return fallback;
+  }
+}
+
+std::vector<CollisionPoint> make_forward_footprint_zone(
+  const std::vector<CollisionPoint> & footprint,
+  double forward_body_scale)
+{
+  if (footprint.size() < 3 || forward_body_scale <= 0.0) {
+    return {};
+  }
+
+  double min_x = std::numeric_limits<double>::infinity();
+  double max_x = -std::numeric_limits<double>::infinity();
+  double min_y = std::numeric_limits<double>::infinity();
+  double max_y = -std::numeric_limits<double>::infinity();
+
+  for (const auto & point : footprint) {
+    min_x = std::min(min_x, point.x);
+    max_x = std::max(max_x, point.x);
+    min_y = std::min(min_y, point.y);
+    max_y = std::max(max_y, point.y);
+  }
+
+  if (!std::isfinite(min_x) || !std::isfinite(max_x) || max_x <= min_x || max_y <= min_y) {
+    return {};
+  }
+
+  const double body_length = max_x - min_x;
+  const double front_x = max_x;
+  const double forward_x = front_x + body_length * forward_body_scale;
+
+  return {
+    CollisionPoint{forward_x, max_y},
+    CollisionPoint{forward_x, min_y},
+    CollisionPoint{front_x, min_y},
+    CollisionPoint{front_x, max_y}
+  };
+}
+
+AutoFootprintZoneType parse_auto_footprint_zone_type(const YAML::Node & node)
+{
+  if (!node || !node.IsScalar()) {
+    return AutoFootprintZoneType::NONE;
+  }
+
+  const std::string raw = to_lower(node.as<std::string>());
+  if (raw == "front_slow" || raw == "slow") {
+    return AutoFootprintZoneType::FRONT_SLOW;
+  }
+  if (raw == "front_stop" || raw == "stop") {
+    return AutoFootprintZoneType::FRONT_STOP;
+  }
+  return AutoFootprintZoneType::NONE;
+}
+
+void apply_auto_footprint_zone_points(
+  CollisionZoneConfig & zone,
+  const CollisionDetectionConfig & cfg)
+{
+  if (!cfg.auto_footprint_zones_enabled ||
+    zone.model != CollisionModelType::ZONE ||
+    zone.auto_footprint_zone == AutoFootprintZoneType::NONE)
+  {
+    return;
+  }
+
+  double fast_scale = 0.0;
+  double safe_scale = 0.0;
+  if (zone.auto_footprint_zone == AutoFootprintZoneType::FRONT_SLOW) {
+    fast_scale = 1.0;
+    safe_scale = 0.5;
+  } else if (zone.auto_footprint_zone == AutoFootprintZoneType::FRONT_STOP) {
+    fast_scale = 0.5;
+    safe_scale = 0.35;
+  }
+
+  zone.fast_points = make_forward_footprint_zone(cfg.footprint_points, fast_scale);
+  zone.safe_points = make_forward_footprint_zone(cfg.footprint_points, safe_scale);
+  zone.points = cfg.navigation_safe_mode_active && !zone.safe_points.empty() ?
+    zone.safe_points : zone.fast_points;
+}
+
+void apply_auto_footprint_zones(CollisionDetectionConfig & cfg)
+{
+  for (auto & zone : cfg.zones) {
+    apply_auto_footprint_zone_points(zone, cfg);
+  }
+}
+
 
 std::vector<UltrasonicSensorConfig> make_default_ultrasonic_sensors()
 {
@@ -208,13 +317,14 @@ FaultDetector::FaultDetector(rclcpp::Node * node)
   collision_evaluator_(std::make_unique<CollisionEvaluator>())
 {
   chassis_cfg_.enabled = false;
-  chassis_cfg_.module_name = "chassis_stationary";
+  chassis_cfg_.module_name = "vehicle_state_judge";
   chassis_cfg_.command_topic = "/command";
   chassis_cfg_.moto_topic = "/moto_info";
   chassis_cfg_.odom_topic = "";
   chassis_cfg_.imu_topic = "";
   chassis_cfg_.source_timeout_s = 1.0;
   chassis_cfg_.idle_timeout_s = 30.0;
+  chassis_cfg_.coast_grace_s = 1.0;
   chassis_cfg_.command_speed_threshold = 0.05;
   chassis_cfg_.moto_speed_threshold = 0.05;
   chassis_cfg_.odom_speed_threshold = 0.03;
@@ -223,10 +333,12 @@ FaultDetector::FaultDetector(rclcpp::Node * node)
   chassis_cfg_.imu_static_command_threshold = 0.02;
   chassis_cfg_.imu_bias_calibration_samples = 50;
   chassis_cfg_.imu_decay_rate = 0.98;
+  chassis_cfg_.source_level = FaultLevel::ERROR;
   chassis_cfg_.anomaly_level = FaultLevel::ERROR;
   chassis_cfg_.idle_level = FaultLevel::WARNING;
   chassis_cfg_.safety_command = SafetyCommandType::SOFT_STOP;
   chassis_cfg_.safety_slow_down_percentage = 50.0;
+  chassis_cfg_.source_actions = {ActionType::SUPERVISOR};
   chassis_cfg_.anomaly_actions = {ActionType::SUPERVISOR};
   chassis_cfg_.idle_actions = {ActionType::NONE};
 
@@ -252,6 +364,16 @@ const CollisionDetectionConfig & FaultDetector::get_collision_detection_config()
   return collision_cfg_;
 }
 
+void FaultDetector::set_collision_navigation_safe_mode(bool safe_mode_active)
+{
+  if (collision_cfg_.navigation_safe_mode_active == safe_mode_active) {
+    return;
+  }
+
+  collision_cfg_.navigation_safe_mode_active = safe_mode_active;
+  apply_auto_footprint_zones(collision_cfg_);
+}
+
 const CollisionTtcVisualizationState & FaultDetector::get_collision_ttc_visualization() const
 {
   static const CollisionTtcVisualizationState empty_state{};
@@ -261,14 +383,24 @@ const CollisionTtcVisualizationState & FaultDetector::get_collision_ttc_visualiz
   return collision_evaluator_->get_ttc_visualization();
 }
 
-bool FaultDetector::chassis_stationary_enabled() const
+bool FaultDetector::vehicle_state_judge_enabled() const
 {
   return chassis_cfg_.enabled;
 }
 
-const ChassisStationaryConfig & FaultDetector::get_chassis_stationary_config() const
+const ChassisStationaryConfig & FaultDetector::get_vehicle_state_judge_config() const
 {
   return chassis_cfg_;
+}
+
+bool FaultDetector::chassis_stationary_enabled() const
+{
+  return vehicle_state_judge_enabled();
+}
+
+const ChassisStationaryConfig & FaultDetector::get_chassis_stationary_config() const
+{
+  return get_vehicle_state_judge_config();
 }
 
 bool FaultDetector::has_module_configs() const
@@ -531,6 +663,15 @@ void FaultDetector::load_config(const std::string & config_file)
       if (cd["source_timeout_s"]) {
         collision_cfg_.source_timeout_s = std::max(0.0, cd["source_timeout_s"].as<double>());
       }
+      FaultLevel collision_source_level;
+      if (parse_fault_level(cd["source_level"], collision_source_level)) {
+        collision_cfg_.source_level = collision_source_level;
+      }
+      auto collision_source_actions = parse_actions(
+        cd["source_actions"], "[collision_detection][source_actions]", node_->get_logger());
+      if (!collision_source_actions.empty()) {
+        collision_cfg_.source_actions = std::move(collision_source_actions);
+      }
       if (cd["direction_speed_threshold"]) {
         collision_cfg_.direction_speed_threshold = std::max(
           0.0, cd["direction_speed_threshold"].as<double>());
@@ -538,6 +679,39 @@ void FaultDetector::load_config(const std::string & config_file)
       if (cd["direction_confirm_count"]) {
         collision_cfg_.direction_confirm_count = std::max(
           size_t{1}, cd["direction_confirm_count"].as<size_t>());
+      }
+      if (cd["navigation_mode_switch_enabled"]) {
+        collision_cfg_.navigation_mode_switch_enabled = parse_bool(
+          cd["navigation_mode_switch_enabled"], false);
+      }
+      if (cd["navigation_mode_topic"]) {
+        collision_cfg_.navigation_mode_topic = cd["navigation_mode_topic"].as<std::string>();
+      }
+      if (cd["navigation_fast_mode"]) {
+        collision_cfg_.navigation_fast_mode = cd["navigation_fast_mode"].as<std::string>();
+      }
+      if (cd["navigation_safe_mode"]) {
+        collision_cfg_.navigation_safe_mode = cd["navigation_safe_mode"].as<std::string>();
+      }
+      if (cd["navigation_safe_enter_duration_s"]) {
+        collision_cfg_.navigation_safe_enter_duration_s =
+          std::max(0.0, cd["navigation_safe_enter_duration_s"].as<double>());
+      }
+      if (cd["navigation_safe_clear_duration_s"]) {
+        collision_cfg_.navigation_safe_clear_duration_s =
+          std::max(0.0, cd["navigation_safe_clear_duration_s"].as<double>());
+      }
+      if (cd["navigation_safe_min_hold_s"]) {
+        collision_cfg_.navigation_safe_min_hold_s =
+          std::max(0.0, cd["navigation_safe_min_hold_s"].as<double>());
+      }
+      if (cd["navigation_mode_publish_cooldown_s"]) {
+        collision_cfg_.navigation_mode_publish_cooldown_s =
+          std::max(0.0, cd["navigation_mode_publish_cooldown_s"].as<double>());
+      }
+      if (cd["auto_footprint_zones_enabled"]) {
+        collision_cfg_.auto_footprint_zones_enabled = parse_bool(
+          cd["auto_footprint_zones_enabled"], false);
       }
       collision_cfg_.footprint_points.clear();
       if (cd["footprint_points"] && cd["footprint_points"].IsSequence()) {
@@ -625,6 +799,8 @@ void FaultDetector::load_config(const std::string & config_file)
                 zone.motion_direction = CollisionMotionDirectionType::BOTH;
               }
             }
+            zone.auto_footprint_zone = parse_auto_footprint_zone_type(
+              zone_node["auto_footprint_zone"]);
             if (zone_node["enabled"]) {
               try {
                 if (zone_node["enabled"].IsScalar()) {
@@ -711,6 +887,7 @@ void FaultDetector::load_config(const std::string & config_file)
                 }
               }
             }
+            apply_auto_footprint_zone_points(zone, collision_cfg_);
             if (zone.model == CollisionModelType::TTC || zone.points.size() >= 3) {
               collision_cfg_.zones.push_back(std::move(zone));
             }
@@ -721,8 +898,13 @@ void FaultDetector::load_config(const std::string & config_file)
       }
     }
 
-    if (config["chassis_stationary"]) {
-      const auto cs = config["chassis_stationary"];
+    const bool has_vehicle_state_judge = static_cast<bool>(config["vehicle_state_judge"]);
+    const bool has_legacy_chassis_stationary = static_cast<bool>(config["chassis_stationary"]);
+    if (has_vehicle_state_judge || has_legacy_chassis_stationary) {
+      const auto cs = has_vehicle_state_judge ?
+        config["vehicle_state_judge"] : config["chassis_stationary"];
+      const std::string config_label = has_vehicle_state_judge ?
+        "vehicle_state_judge" : "chassis_stationary";
       try {
         if (cs["enabled"]) {
           if (cs["enabled"].IsScalar()) {
@@ -757,6 +939,9 @@ void FaultDetector::load_config(const std::string & config_file)
       if (cs["idle_timeout_s"]) {
         chassis_cfg_.idle_timeout_s = std::max(0.0, cs["idle_timeout_s"].as<double>());
       }
+      if (cs["coast_grace_s"]) {
+        chassis_cfg_.coast_grace_s = std::max(0.0, cs["coast_grace_s"].as<double>());
+      }
       if (cs["command_speed_threshold"]) {
         chassis_cfg_.command_speed_threshold = std::max(0.0, cs["command_speed_threshold"].as<double>());
       }
@@ -786,6 +971,10 @@ void FaultDetector::load_config(const std::string & config_file)
           std::clamp(cs["imu_decay_rate"].as<double>(), 0.0, 1.0);
       }
 
+      FaultLevel source_level;
+      if (parse_fault_level(cs["source_level"], source_level)) {
+        chassis_cfg_.source_level = source_level;
+      }
       FaultLevel anomaly_level;
       if (parse_fault_level(cs["anomaly_level"], anomaly_level)) {
         chassis_cfg_.anomaly_level = anomaly_level;
@@ -804,14 +993,20 @@ void FaultDetector::load_config(const std::string & config_file)
           std::clamp(cs["safety_slow_down_percentage"].as<double>(), 0.0, 100.0);
       }
 
+      auto source_actions = parse_actions(
+        cs["source_actions"], "[" + config_label + "][source_actions]", node_->get_logger());
+      if (!source_actions.empty()) {
+        chassis_cfg_.source_actions = std::move(source_actions);
+      }
+
       auto anomaly_actions = parse_actions(
-        cs["anomaly_actions"], "[chassis_stationary][anomaly_actions]", node_->get_logger());
+        cs["anomaly_actions"], "[" + config_label + "][anomaly_actions]", node_->get_logger());
       if (!anomaly_actions.empty()) {
         chassis_cfg_.anomaly_actions = std::move(anomaly_actions);
       }
 
       auto idle_actions = parse_actions(
-        cs["idle_actions"], "[chassis_stationary][idle_actions]", node_->get_logger());
+        cs["idle_actions"], "[" + config_label + "][idle_actions]", node_->get_logger());
       if (!idle_actions.empty()) {
         chassis_cfg_.idle_actions = std::move(idle_actions);
       }
@@ -995,7 +1190,7 @@ void FaultDetector::load_config(const std::string & config_file)
 
     RCLCPP_INFO(
       node_->get_logger(),
-      "Loaded %zu modules, monitored_nodes=%zu, monitored_topics=%zu, multi_value=%zu/%zu, chassis_stationary=%s",
+      "Loaded %zu modules, monitored_nodes=%zu, monitored_topics=%zu, multi_value=%zu/%zu, vehicle_state_judge=%s",
       modules_.size(), monitored_nodes_.size(), watched_topics_.size(),
       multi_value_cfg_.trigger_count, multi_value_cfg_.recover_count,
       chassis_cfg_.enabled ? "enabled" : "disabled");

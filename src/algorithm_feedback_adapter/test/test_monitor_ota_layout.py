@@ -13,7 +13,9 @@ def test_runtime_configs_package_removed():
 
 def test_monitor_bundle_moves_to_repo_root_config_directory():
     assert (MONITOR_ROOT / "nav2_monitor" / "nav2_monitor_params.yaml").exists()
-    assert (MONITOR_ROOT / "bridge" / "bridge_py_params.yaml").exists()
+    assert (
+        MONITOR_ROOT / "algorithm_feedback_adapter" / "algorithm_feedback_adapter_params.yaml"
+    ).exists()
     assert (
         MONITOR_ROOT
         / "safety_emergency_executor"
@@ -23,13 +25,22 @@ def test_monitor_bundle_moves_to_repo_root_config_directory():
 
 def test_bridge_workspace_latest_battery_feedback_files_present():
     assert (
-        REPO_ROOT / "src" / "bridge" / "include" / "bridge" / "battery_feedback_bridge.hpp"
+        REPO_ROOT
+        / "src"
+        / "algorithm_feedback_adapter"
+        / "include"
+        / "algorithm_feedback_adapter"
+        / "battery_feedback_bridge.hpp"
     ).exists()
     assert (
-        REPO_ROOT / "src" / "bridge" / "src" / "battery_feedback_bridge.cpp"
+        REPO_ROOT / "src" / "algorithm_feedback_adapter" / "src" / "battery_feedback_bridge.cpp"
     ).exists()
     assert (
-        REPO_ROOT / "src" / "bridge" / "test" / "test_battery_feedback_bridge.cpp"
+        REPO_ROOT
+        / "src"
+        / "algorithm_feedback_adapter"
+        / "test"
+        / "test_battery_feedback_bridge.cpp"
     ).exists()
 
 
@@ -58,14 +69,20 @@ def test_safety_executor_control_source_defaults_are_consistent():
 
 
 def test_monitor_bundle_uses_ota_absolute_paths():
-    bridge_params = yaml.safe_load((MONITOR_ROOT / "bridge" / "bridge_py_params.yaml").read_text())
+    adapter_params = yaml.safe_load(
+        (
+            MONITOR_ROOT
+            / "algorithm_feedback_adapter"
+            / "algorithm_feedback_adapter_params.yaml"
+        ).read_text()
+    )
     nav2_params = yaml.safe_load(
         (MONITOR_ROOT / "nav2_monitor" / "nav2_monitor_params.yaml").read_text()
     )
 
     assert (
-        bridge_params["bridge_py_node"]["ros__parameters"]["spec_file"]
-        == "/opt/ry/config/Monitor/bridge/generic_multi_bridge_spec.yaml"
+        adapter_params["algorithm_feedback_adapter_node"]["ros__parameters"]["spec_file"]
+        == "/opt/ry/config/Monitor/algorithm_feedback_adapter/algorithm_feedback_adapter_spec.yaml"
     )
 
     ros_params = nav2_params["nav2_monitor"]["ros__parameters"]
@@ -114,7 +131,13 @@ def test_dynamic_ttc_defaults_exist_in_monitor_bundle():
 
 
 def test_drift_status_bridge_is_registered_for_light_lm():
-    spec = yaml.safe_load((MONITOR_ROOT / "bridge" / "generic_multi_bridge_spec.yaml").read_text())
+    spec = yaml.safe_load(
+        (
+            MONITOR_ROOT
+            / "algorithm_feedback_adapter"
+            / "algorithm_feedback_adapter_spec.yaml"
+        ).read_text()
+    )
     bridges = {entry["id"]: entry for entry in spec["bridges"]}
 
     assert "drift_status" in bridges

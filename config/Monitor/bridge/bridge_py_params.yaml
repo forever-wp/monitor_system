@@ -1,5 +1,0 @@
-bridge_py_node:
-  ros__parameters:
-    spec_file: "/opt/ry/config/Monitor/bridge/generic_multi_bridge_spec.yaml"
-    spec_reload_enabled: true
-    spec_reload_period_s: 1.0

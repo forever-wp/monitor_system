@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.8)
-project(bridge)
+project(algorithm_feedback_adapter)
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
@@ -15,25 +15,25 @@ find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(nav2_monitor REQUIRED)
 
-ament_python_install_package(bridge)
+ament_python_install_package(algorithm_feedback_adapter)
 
 include_directories(include)
 
-add_executable(bridge_cpp_node
-  src/bridge_cpp_main.cpp
-  src/sample_feedback_bridge.cpp
+add_executable(algorithm_feedback_adapter_cpp_node
+  src/algorithm_feedback_adapter_cpp_main.cpp
+  src/battery_feedback_bridge.cpp
 )
-ament_target_dependencies(bridge_cpp_node
+ament_target_dependencies(algorithm_feedback_adapter_cpp_node
   rclcpp
   sensor_msgs
   std_msgs
   nav2_monitor
 )
 
-install(TARGETS bridge_cpp_node
+install(TARGETS algorithm_feedback_adapter_cpp_node
   DESTINATION lib/${PROJECT_NAME}
 )
-install(PROGRAMS scripts/bridge_py_node
+install(PROGRAMS scripts/algorithm_feedback_adapter_node
   DESTINATION lib/${PROJECT_NAME}
 )
 install(DIRECTORY include/
@@ -51,13 +51,27 @@ if(BUILD_TESTING)
   find_package(ament_cmake_pytest REQUIRED)
   set(ENV{PYTEST_DISABLE_PLUGIN_AUTOLOAD} 1)
 
-  ament_add_gtest(test_sample_feedback_bridge
-    test/test_sample_feedback_bridge.cpp
-    src/sample_feedback_bridge.cpp
+  ament_add_gtest(test_example_battery_feedback_adapter
+    test/test_example_battery_feedback_adapter.cpp
+    src/example_battery_feedback_adapter.cpp
   )
-  if(TARGET test_sample_feedback_bridge)
-    target_include_directories(test_sample_feedback_bridge PRIVATE include)
-    ament_target_dependencies(test_sample_feedback_bridge
+  if(TARGET test_example_battery_feedback_adapter)
+    target_include_directories(test_example_battery_feedback_adapter PRIVATE include)
+    ament_target_dependencies(test_example_battery_feedback_adapter
+      rclcpp
+      sensor_msgs
+      std_msgs
+      nav2_monitor
+    )
+  endif()
+
+  ament_add_gtest(test_battery_feedback_bridge
+    test/test_battery_feedback_bridge.cpp
+    src/battery_feedback_bridge.cpp
+  )
+  if(TARGET test_battery_feedback_bridge)
+    target_include_directories(test_battery_feedback_bridge PRIVATE include)
+    ament_target_dependencies(test_battery_feedback_bridge
       rclcpp
       sensor_msgs
       std_msgs

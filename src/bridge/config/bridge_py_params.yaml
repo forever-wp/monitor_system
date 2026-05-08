@@ -1,3 +1,0 @@
-bridge_py_node:
-  ros__parameters:
-    spec_file: "/opt/ry/config/Monitor/bridge/generic_multi_bridge_spec.yaml"

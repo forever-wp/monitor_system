@@ -1020,6 +1020,87 @@ modules:
   std::remove(config_path.c_str());
 }
 
+TEST_F(FaultDetectorTest, CollisionDetectionMissingSourceReportsSourceFaultBeforeZones)
+{
+  const std::string config_text = R"(
+multi_value_judge:
+  trigger_count: 1
+  recover_count: 1
+collision_detection:
+  enabled: 1
+  module_name: "collision_detection"
+  scan_topic: "/scan"
+  source_timeout_s: 1.0
+  source_level: "ERROR"
+  source_actions: ["supervisor"]
+  zones:
+    - name: "front_stop"
+      enabled: 1
+      points: [1.0, 0.4, 1.0, -0.4, 0.0, -0.4, 0.0, 0.4]
+      level: "CRITICAL"
+      safety_system: 2
+      actions: ["safety_system"]
+modules:
+  - name: "dummy"
+    supervisor: 0
+    safety_system: 0
+)";
+  const std::string config_path = write_temp_config(config_text, "collision_missing_source");
+
+  auto node = std::make_shared<rclcpp::Node>("fault_detector_test_collision_missing_source");
+  nav2_monitor::FaultDetector detector(node.get());
+  nav2_monitor::MonitorDataStore store;
+  detector.load_config(config_path);
+
+  auto faults = detector.detect_faults(store, node->now());
+  ASSERT_EQ(faults.size(), 1u);
+  EXPECT_EQ(faults[0].module_name, "collision_detection");
+  EXPECT_EQ(faults[0].action, nav2_monitor::ActionType::SUPERVISOR);
+  EXPECT_NE(faults[0].fault_key.find("collision_source"), std::string::npos);
+  EXPECT_NE(faults[0].reason.find("source missing"), std::string::npos);
+
+  std::remove(config_path.c_str());
+}
+
+TEST_F(FaultDetectorTest, CollisionDetectionFreshEmptySourceDoesNotReportSourceFault)
+{
+  const std::string config_text = R"(
+multi_value_judge:
+  trigger_count: 1
+  recover_count: 1
+collision_detection:
+  enabled: 1
+  module_name: "collision_detection"
+  scan_topic: "/scan"
+  source_timeout_s: 1.0
+  source_level: "ERROR"
+  source_actions: ["supervisor"]
+  zones:
+    - name: "front_stop"
+      enabled: 1
+      points: [1.0, 0.4, 1.0, -0.4, 0.0, -0.4, 0.0, 0.4]
+      level: "CRITICAL"
+      safety_system: 2
+      actions: ["safety_system"]
+modules:
+  - name: "dummy"
+    supervisor: 0
+    safety_system: 0
+)";
+  const std::string config_path = write_temp_config(config_text, "collision_empty_source");
+
+  auto node = std::make_shared<rclcpp::Node>("fault_detector_test_collision_empty_source");
+  nav2_monitor::FaultDetector detector(node.get());
+  nav2_monitor::MonitorDataStore store;
+  detector.load_config(config_path);
+
+  store.set_collision_points("scan", {}, node->now());
+  auto faults = detector.detect_faults(store, node->now());
+  EXPECT_TRUE(faults.empty());
+
+  std::remove(config_path.c_str());
+}
+
 TEST_F(FaultDetectorTest, CollisionDetectionApproachUsesPredictedSpeedNotFinalCommandSpeed)
 {
   const std::string config_text = R"(
@@ -1501,6 +1582,75 @@ modules:
   std::remove(config_path.c_str());
 }
 
+TEST_F(FaultDetectorTest, CollisionDetectionAutoFootprintZonesShrinkInSafeMode)
+{
+  const std::string config_text = R"(
+collision_detection:
+  enabled: 1
+  module_name: "collision_detection"
+  auto_footprint_zones_enabled: 1
+  navigation_mode_switch_enabled: 1
+  navigation_mode_topic: "/navigation_mode"
+  navigation_fast_mode: "FAST"
+  navigation_safe_mode: "SAFE"
+  navigation_safe_enter_duration_s: 0.15
+  navigation_safe_clear_duration_s: 1.0
+  navigation_safe_min_hold_s: 1.5
+  navigation_mode_publish_cooldown_s: 0.5
+  footprint_points: [-0.4, -0.2, -0.4, 0.2, 0.4, 0.2, 0.4, -0.2]
+  zones:
+    - name: "front_slow"
+      enabled: 1
+      auto_footprint_zone: "front_slow"
+      motion_direction: "forward"
+      min_points: 1
+      level: "ERROR"
+      safety_system: 1
+      actions: ["safety_system"]
+    - name: "front_stop"
+      enabled: 1
+      auto_footprint_zone: "front_stop"
+      motion_direction: "forward"
+      min_points: 1
+      level: "CRITICAL"
+      safety_system: 2
+      actions: ["safety_system"]
+modules:
+  - name: "dummy"
+    supervisor: 0
+    safety_system: 0
+)";
+  const std::string config_path = write_temp_config(config_text, "collision_auto_footprint_zones");
+
+  auto node = std::make_shared<rclcpp::Node>("fault_detector_test_collision_auto_footprint_zones");
+  nav2_monitor::FaultDetector detector(node.get());
+  detector.load_config(config_path);
+
+  const auto & fast_cfg = detector.get_collision_detection_config();
+  EXPECT_TRUE(fast_cfg.navigation_mode_switch_enabled);
+  EXPECT_EQ(fast_cfg.navigation_mode_topic, "/navigation_mode");
+  ASSERT_EQ(fast_cfg.zones.size(), 2u);
+  ASSERT_EQ(fast_cfg.zones[0].points.size(), 4u);
+  ASSERT_EQ(fast_cfg.zones[1].points.size(), 4u);
+  EXPECT_DOUBLE_EQ(fast_cfg.zones[0].points[0].x, 1.2);
+  EXPECT_DOUBLE_EQ(fast_cfg.zones[1].points[0].x, 0.8);
+  EXPECT_DOUBLE_EQ(fast_cfg.zones[0].points[0].y, 0.2);
+  EXPECT_DOUBLE_EQ(fast_cfg.zones[0].points[1].y, -0.2);
+
+  detector.set_collision_navigation_safe_mode(true);
+  const auto & safe_cfg = detector.get_collision_detection_config();
+  ASSERT_EQ(safe_cfg.zones.size(), 2u);
+  EXPECT_DOUBLE_EQ(safe_cfg.zones[0].points[0].x, 0.8);
+  EXPECT_DOUBLE_EQ(safe_cfg.zones[1].points[0].x, 0.68);
+
+  detector.set_collision_navigation_safe_mode(false);
+  const auto & recovered_cfg = detector.get_collision_detection_config();
+  EXPECT_DOUBLE_EQ(recovered_cfg.zones[0].points[0].x, 1.2);
+  EXPECT_DOUBLE_EQ(recovered_cfg.zones[1].points[0].x, 0.8);
+
+  std::remove(config_path.c_str());
+}
+
 TEST_F(FaultDetectorTest, CollisionDetectionUltrasonicWidgetUsesBuiltInLayout)
 {
   const std::string config_text = R"(
@@ -1829,6 +1979,7 @@ modules:
 
   const auto now = node->now();
   store.set_prediction_motion(1.0, 0.0, 0.0, now);
+  store.set_collision_points("scan", {}, now);
 
   auto faults = detector.detect_faults(store, now);
   EXPECT_TRUE(faults.empty());
@@ -2599,20 +2750,23 @@ modules:
   std::remove(config_path.c_str());
 }
 
-TEST_F(FaultDetectorTest, ChassisWithoutOdomStillTriggersAnomaly)
+TEST_F(FaultDetectorTest, ChassisMissingMotionSourceReportsSourceFaultBeforeJudgment)
 {
   const std::string config_text = R"(
-chassis_stationary:
+vehicle_state_judge:
   enabled: 1
+  module_name: "vehicle_state_judge"
   odom_topic: ""
   imu_topic: ""
   source_timeout_s: 10.0
   idle_timeout_s: 30.0
+  source_level: "ERROR"
   command_speed_threshold: 0.05
   moto_speed_threshold: 0.05
   odom_speed_threshold: 0.03
   anomaly_level: "ERROR"
   idle_level: "WARNING"
+  source_actions: ["supervisor"]
   anomaly_actions: ["supervisor"]
   idle_actions: ["none"]
 modules:
@@ -2633,7 +2787,9 @@ modules:
   auto faults = detector.detect_faults();
   ASSERT_EQ(faults.size(), 1u);
   EXPECT_EQ(faults[0].action, nav2_monitor::ActionType::SUPERVISOR);
-  EXPECT_NE(faults[0].reason.find("raw odom disabled"), std::string::npos);
+  EXPECT_EQ(faults[0].module_name, "vehicle_state_judge");
+  EXPECT_NE(faults[0].fault_key.find("vehicle_state_source"), std::string::npos);
+  EXPECT_NE(faults[0].reason.find("motion feedback"), std::string::npos);
 
   std::remove(config_path.c_str());
 }
@@ -2641,9 +2797,11 @@ modules:
 TEST_F(FaultDetectorTest, ChassisCommandHasMotoMissingTriggersAnomaly)
 {
   const std::string config_text = R"(
-chassis_stationary:
+vehicle_state_judge:
   enabled: 1
+  module_name: "vehicle_state_judge"
   imu_topic: ""
+  odom_topic: "/odom"
   source_timeout_s: 10.0
   idle_timeout_s: 30.0
   command_speed_threshold: 0.05
@@ -2671,9 +2829,10 @@ modules:
 
   auto faults = detector.detect_faults();
   ASSERT_EQ(faults.size(), 1u);
-  EXPECT_EQ(faults[0].module_name, "chassis_stationary");
+  EXPECT_EQ(faults[0].module_name, "vehicle_state_judge");
   EXPECT_EQ(faults[0].action, nav2_monitor::ActionType::SUPERVISOR);
   EXPECT_EQ(faults[0].level, nav2_monitor::FaultLevel::ERROR);
+  EXPECT_NE(faults[0].reason.find("not moving"), std::string::npos);
 
   detector.update_moto_speed(0.3, 0.3, node->now(), true);
   auto faults_recover_pending = detector.detect_faults();
@@ -2685,11 +2844,14 @@ modules:
 TEST_F(FaultDetectorTest, ChassisCommandMissingMotoHasTriggersAnomaly)
 {
   const std::string config_text = R"(
-chassis_stationary:
+vehicle_state_judge:
   enabled: 1
+  module_name: "vehicle_state_judge"
   imu_topic: ""
+  odom_topic: "/odom"
   source_timeout_s: 10.0
   idle_timeout_s: 30.0
+  coast_grace_s: 0.0
   command_speed_threshold: 0.05
   moto_speed_threshold: 0.05
   odom_speed_threshold: 0.03
@@ -2715,26 +2877,31 @@ modules:
 
   auto faults = detector.detect_faults();
   ASSERT_EQ(faults.size(), 1u);
-  EXPECT_EQ(faults[0].module_name, "chassis_stationary");
+  EXPECT_EQ(faults[0].module_name, "vehicle_state_judge");
   EXPECT_EQ(faults[0].action, nav2_monitor::ActionType::SUPERVISOR);
   EXPECT_EQ(faults[0].level, nav2_monitor::FaultLevel::ERROR);
+  EXPECT_NE(faults[0].reason.find("without command"), std::string::npos);
 
   std::remove(config_path.c_str());
 }
 
-TEST_F(FaultDetectorTest, ChassisAllMissingTimeoutTriggersIdleWarning)
+TEST_F(FaultDetectorTest, ChassisMissingCommandSourceReportsSourceFaultBeforeIdle)
 {
   const std::string config_text = R"(
-chassis_stationary:
+vehicle_state_judge:
   enabled: 1
+  module_name: "vehicle_state_judge"
   imu_topic: ""
+  odom_topic: "/odom"
   source_timeout_s: 10.0
   idle_timeout_s: 0.0
+  source_level: "ERROR"
   command_speed_threshold: 0.05
   moto_speed_threshold: 0.05
   odom_speed_threshold: 0.03
   anomaly_level: "ERROR"
   idle_level: "WARNING"
+  source_actions: ["supervisor"]
   anomaly_actions: ["supervisor"]
   idle_actions: ["none"]
 modules:
@@ -2751,14 +2918,13 @@ modules:
   auto faults_first = detector.detect_faults();
   EXPECT_TRUE(faults_first.empty());
 
-  auto faults_second = detector.detect_faults();
-  EXPECT_TRUE(faults_second.empty());
-
-  auto faults_third = detector.detect_faults();
-  ASSERT_EQ(faults_third.size(), 1u);
-  EXPECT_EQ(faults_third[0].module_name, "chassis_stationary");
-  EXPECT_EQ(faults_third[0].action, nav2_monitor::ActionType::NONE);
-  EXPECT_EQ(faults_third[0].level, nav2_monitor::FaultLevel::WARNING);
+  auto faults = detector.detect_faults();
+  ASSERT_EQ(faults.size(), 1u);
+  EXPECT_EQ(faults[0].module_name, "vehicle_state_judge");
+  EXPECT_EQ(faults[0].action, nav2_monitor::ActionType::SUPERVISOR);
+  EXPECT_EQ(faults[0].level, nav2_monitor::FaultLevel::ERROR);
+  EXPECT_NE(faults[0].fault_key.find("vehicle_state_source"), std::string::npos);
+  EXPECT_NE(faults[0].reason.find("Command source missing"), std::string::npos);
 
   std::remove(config_path.c_str());
 }
@@ -2766,9 +2932,11 @@ modules:
 TEST_F(FaultDetectorTest, ChassisCommandAndMotoBothHasNoFault)
 {
   const std::string config_text = R"(
-chassis_stationary:
+vehicle_state_judge:
   enabled: 1
+  module_name: "vehicle_state_judge"
   imu_topic: ""
+  odom_topic: "/odom"
   source_timeout_s: 10.0
   idle_timeout_s: 30.0
   command_speed_threshold: 0.05
@@ -2797,11 +2965,53 @@ modules:
   std::remove(config_path.c_str());
 }
 
-TEST_F(FaultDetectorTest, ChassisImuTruthSuppressesFalseStuckWhenDriveRequestExists)
+TEST_F(FaultDetectorTest, LegacyChassisStationaryConfigStillLoads)
 {
   const std::string config_text = R"(
 chassis_stationary:
   enabled: 1
+  module_name: "legacy_chassis_stationary"
+  imu_topic: ""
+  odom_topic: "/odom"
+  source_timeout_s: 10.0
+  idle_timeout_s: 30.0
+  command_speed_threshold: 0.05
+  moto_speed_threshold: 0.05
+  odom_speed_threshold: 0.03
+  anomaly_level: "ERROR"
+  idle_level: "WARNING"
+  anomaly_actions: ["supervisor"]
+  idle_actions: ["none"]
+modules:
+  - name: "dummy"
+    supervisor: 1
+    safety_system: 0
+)";
+  const std::string config_path = write_temp_config(config_text, "legacy_chassis_stationary");
+
+  auto node = std::make_shared<rclcpp::Node>("fault_detector_test_legacy_chassis_stationary");
+  nav2_monitor::FaultDetector detector(node.get());
+  detector.load_config(config_path);
+  detector.update_command_speed(0.5, node->now());
+  detector.update_odom_speed(0.0, node->now());
+
+  auto faults_first = detector.detect_faults();
+  EXPECT_TRUE(faults_first.empty());
+
+  auto faults = detector.detect_faults();
+  ASSERT_EQ(faults.size(), 1u);
+  EXPECT_EQ(faults[0].module_name, "legacy_chassis_stationary");
+  EXPECT_NE(faults[0].fault_key.find("vehicle_state_anomaly"), std::string::npos);
+
+  std::remove(config_path.c_str());
+}
+
+TEST_F(FaultDetectorTest, ChassisImuTruthSuppressesFalseStuckWhenDriveRequestExists)
+{
+  const std::string config_text = R"(
+vehicle_state_judge:
+  enabled: 1
+  module_name: "vehicle_state_judge"
   odom_topic: ""
   imu_topic: "/livox/imu"
   source_timeout_s: 10.0
@@ -2837,15 +3047,17 @@ modules:
   std::remove(config_path.c_str());
 }
 
-TEST_F(FaultDetectorTest, ChassisImuTruthDoesNotUseControlChainUnexpectedMotionRule)
+TEST_F(FaultDetectorTest, ChassisMovingWithoutCommandAllowedDuringCoastGrace)
 {
   const std::string config_text = R"(
-chassis_stationary:
+vehicle_state_judge:
   enabled: 1
+  module_name: "vehicle_state_judge"
   odom_topic: ""
   imu_topic: "/livox/imu"
   source_timeout_s: 10.0
   idle_timeout_s: 30.0
+  coast_grace_s: 1.0
   command_speed_threshold: 0.05
   moto_speed_threshold: 0.05
   odom_speed_threshold: 0.03
@@ -2868,13 +3080,83 @@ modules:
   detector.load_config(config_path);
 
   const auto now = node->now();
+  store.set_command_speed(0.5, now);
   store.set_imu_motion(0.2, 0.0, now);
-
-  auto faults_first = detector.detect_faults(store, now);
-  EXPECT_TRUE(faults_first.empty());
-
   auto faults = detector.detect_faults(store, now);
   EXPECT_TRUE(faults.empty());
+
+  const auto coast_time = now + rclcpp::Duration::from_seconds(0.5);
+  store.set_command_speed(0.0, coast_time);
+  store.set_imu_motion(0.2, 0.0, coast_time);
+  faults = detector.detect_faults(store, coast_time);
+  EXPECT_TRUE(faults.empty());
+
+  const auto coast_time_second_sample = coast_time + rclcpp::Duration::from_seconds(0.1);
+  store.set_imu_motion(0.2, 0.0, coast_time_second_sample);
+  faults = detector.detect_faults(store, coast_time_second_sample);
+  EXPECT_TRUE(faults.empty());
+
+  std::remove(config_path.c_str());
+}
+
+TEST_F(FaultDetectorTest, ChassisMovingWithoutCommandAfterCoastGraceTriggersAnomaly)
+{
+  const std::string config_text = R"(
+vehicle_state_judge:
+  enabled: 1
+  module_name: "vehicle_state_judge"
+  odom_topic: ""
+  imu_topic: "/livox/imu"
+  source_timeout_s: 10.0
+  idle_timeout_s: 30.0
+  coast_grace_s: 0.5
+  command_speed_threshold: 0.05
+  moto_speed_threshold: 0.05
+  odom_speed_threshold: 0.03
+  imu_speed_threshold: 0.03
+  imu_yaw_rate_threshold: 0.08
+  anomaly_level: "ERROR"
+  idle_level: "WARNING"
+  anomaly_actions: ["supervisor"]
+  idle_actions: ["none"]
+modules:
+  - name: "dummy"
+    supervisor: 1
+    safety_system: 0
+)";
+  const std::string config_path = write_temp_config(
+    config_text, "chassis_imu_unexpected_motion_after_grace");
+
+  auto node = std::make_shared<rclcpp::Node>(
+    "fault_detector_test_chassis_imu_unexpected_motion_after_grace");
+  nav2_monitor::FaultDetector detector(node.get());
+  nav2_monitor::MonitorDataStore store;
+  detector.load_config(config_path);
+
+  const auto now = node->now();
+  store.set_command_speed(0.5, now);
+  store.set_imu_motion(0.2, 0.0, now);
+  auto faults = detector.detect_faults(store, now);
+  EXPECT_TRUE(faults.empty());
+
+  const auto stopped_time = now + rclcpp::Duration::from_seconds(0.1);
+  store.set_command_speed(0.0, stopped_time);
+  store.set_imu_motion(0.2, 0.0, stopped_time);
+  faults = detector.detect_faults(store, stopped_time);
+  EXPECT_TRUE(faults.empty());
+
+  const auto after_grace = now + rclcpp::Duration::from_seconds(0.8);
+  store.set_imu_motion(0.2, 0.0, after_grace);
+  faults = detector.detect_faults(store, after_grace);
+  EXPECT_TRUE(faults.empty());
+
+  const auto after_grace_second_sample = after_grace + rclcpp::Duration::from_seconds(0.1);
+  store.set_imu_motion(0.2, 0.0, after_grace_second_sample);
+  faults = detector.detect_faults(store, after_grace_second_sample);
+  ASSERT_EQ(faults.size(), 1u);
+  EXPECT_EQ(faults[0].module_name, "vehicle_state_judge");
+  EXPECT_EQ(faults[0].action, nav2_monitor::ActionType::SUPERVISOR);
+  EXPECT_NE(faults[0].reason.find("without command"), std::string::npos);
 
   std::remove(config_path.c_str());
 }
@@ -2998,9 +3280,11 @@ modules:
 TEST_F(FaultDetectorTest, ChassisSafetySystemUsesConfiguredEmergencyStop)
 {
   const std::string config_text = R"(
-chassis_stationary:
+vehicle_state_judge:
   enabled: 1
+  module_name: "vehicle_state_judge"
   imu_topic: ""
+  odom_topic: "/odom"
   source_timeout_s: 10.0
   idle_timeout_s: 30.0
   command_speed_threshold: 0.05
@@ -3029,7 +3313,7 @@ modules:
 
   auto faults = detector.detect_faults();
   ASSERT_EQ(faults.size(), 1u);
-  EXPECT_EQ(faults[0].module_name, "chassis_stationary");
+  EXPECT_EQ(faults[0].module_name, "vehicle_state_judge");
   EXPECT_EQ(faults[0].action, nav2_monitor::ActionType::SAFETY_SYSTEM);
   EXPECT_EQ(faults[0].safety_command, nav2_monitor::SafetyCommandType::EMERGENCY_STOP);
   EXPECT_DOUBLE_EQ(faults[0].safety_slow_down_percentage, 50.0);

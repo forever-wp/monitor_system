@@ -1,9 +1,9 @@
 #include <gtest/gtest.h>
 #include <sensor_msgs/msg/battery_state.hpp>
 
-#include "bridge/sample_feedback_bridge.hpp"
+#include "algorithm_feedback_adapter/example_battery_feedback_adapter.hpp"
 
-TEST(SampleFeedbackBridgeTest, ExtractMetricsUsesExampleBatteryFields)
+TEST(ExampleBatteryFeedbackAdapterTest, ExtractMetricsUsesExampleBatteryFields)
 {
   sensor_msgs::msg::BatteryState msg;
   msg.percentage = 0.42F;
@@ -11,7 +11,8 @@ TEST(SampleFeedbackBridgeTest, ExtractMetricsUsesExampleBatteryFields)
   msg.voltage = 25.2F;
   msg.present = true;
 
-  const auto metrics = bridge::SampleFeedbackBridge::extract_metrics(msg);
+  const auto metrics = algorithm_feedback_adapter::ExampleBatteryFeedbackAdapter::extract_metrics(
+    msg);
   ASSERT_EQ(metrics.size(), 3u);
   EXPECT_EQ(metrics[0].name, "battery_percentage");
   EXPECT_NEAR(metrics[0].value, 0.42, 1e-6);

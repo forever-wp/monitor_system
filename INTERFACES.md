@@ -2,7 +2,7 @@
 
 本文件汇总当前 worktree 中 3 个对外接口面：
 
-- `bridge`
+- `algorithm_feedback_adapter`
 - `nav2_monitor`
 - `safety_emergency_executor`
 
@@ -12,53 +12,52 @@
 
 当前对外主链路如下：
 
-`业务 topic -> bridge -> /nav2_monitor/algorithm_feedback -> nav2_monitor -> /safety_system/cmd -> safety_emergency_executor -> /command`
+`业务 topic -> algorithm_feedback_adapter -> /nav2_monitor/algorithm_feedback -> nav2_monitor -> /safety_system/cmd -> safety_emergency_executor -> /command`
 
 补充链路：
 
 - `nav2_monitor` 同时对外发布状态、故障事件、JSON 上报、碰撞区可视化
 - `safety_emergency_executor` 同时接收多路速度源，并通过标准 ROS 2 参数服务切换当前控制源
 
-## 2. Bridge
+## 2. Algorithm Feedback Adapter
 
 ### 2.1 角色
 
-`bridge` 负责把业务侧原始 ROS 消息统一转换成 `nav2_monitor/msg/AlgorithmFeedback`。
+`algorithm_feedback_adapter` 负责把业务侧原始 ROS 消息统一转换成 `nav2_monitor/msg/AlgorithmFeedback`。
 
 当前有两个对外节点：
 
-- `bridge_py_node`
+- `algorithm_feedback_adapter_node`
   - 主实现
   - 多 topic
   - 配置驱动
-- `bridge_cpp_node`
-  - 示例实现
-  - 强类型单桥接模板
+- `algorithm_feedback_adapter_cpp_node`
+  - 强类型电池反馈适配实现
 
 ### 2.2 启动与配置入口
 
 - 包文档：
-  - `src/bridge/README.md`
+  - `src/algorithm_feedback_adapter/README.md`
 - Python 节点参数：
-  - `src/bridge/config/bridge_py_params.yaml`
+  - `src/algorithm_feedback_adapter/config/algorithm_feedback_adapter_params.yaml`
 - C++ 节点参数：
-  - `src/bridge/config/bridge_cpp_params.yaml`
+  - `src/algorithm_feedback_adapter/config/algorithm_feedback_adapter_cpp_params.yaml`
 - Python 规格示例：
-  - `src/bridge/config/examples/generic_multi_bridge_spec.yaml`
+  - `src/algorithm_feedback_adapter/config/examples/algorithm_feedback_adapter_spec.yaml`
 
 ### 2.3 对外接口
 
-#### `bridge_py_node`
+#### `algorithm_feedback_adapter_node`
 
 节点名：
 
-- `bridge_py_node`
+- `algorithm_feedback_adapter_node`
 
 参数：
 
 - `spec_file`
-  - 默认值：`config/examples/generic_multi_bridge_spec.yaml`
-  - 作用：指定桥接规则 YAML
+  - 默认值：`config/examples/algorithm_feedback_adapter_spec.yaml`
+  - 作用：指定适配规则 YAML
 
 接口特征：
 
@@ -66,7 +65,7 @@
 - 无 action
 - 输入 topic 和输出 topic 完全由 `spec_file` 决定
 
-单条桥接规则必须包含：
+单条适配规则必须包含：
 
 - `id`
 - `message_type`
@@ -86,11 +85,11 @@
 - `valid_field`
 - `valid_default`
 
-#### `bridge_cpp_node`
+#### `algorithm_feedback_adapter_cpp_node`
 
 节点名：
 
-- `bridge_cpp_node`
+- `algorithm_feedback_adapter_cpp_node`
 
 参数：
 
@@ -127,9 +126,9 @@
 - `value`：数值
 - `valid`：该指标本次是否有效
 
-### 2.5 示例桥接
+### 2.5 示例适配
 
-当前示例桥接：
+当前示例适配：
 
 - 输入 topic：`/battery_state`
 - 输出 topic：`/nav2_monitor/algorithm_feedback`
@@ -140,7 +139,7 @@
 
 ### 2.6 示例
 
-#### bridge 规则 YAML 示例
+#### algorithm_feedback_adapter 规则 YAML 示例
 
 ```yaml
 bridges:
@@ -159,7 +158,7 @@ bridges:
         valid_field: "present"
 ```
 
-#### bridge 输出示例
+#### algorithm_feedback_adapter 输出示例
 
 当 `/battery_state` 来了一帧：
 
@@ -169,7 +168,7 @@ temperature: 28.5
 present: true
 ```
 
-桥接后会发布两条 `AlgorithmFeedback`，效果类似：
+适配后会发布两条 `AlgorithmFeedback`，效果类似：
 
 ```yaml
 stamp:
@@ -232,7 +231,7 @@ valid: true
 
 | Topic | Type | 说明 |
 |---|---|---|
-| `/nav2_monitor/algorithm_feedback` | `nav2_monitor/msg/AlgorithmFeedback` | 来自 bridge 的统一指标反馈 |
+| `/nav2_monitor/algorithm_feedback` | `nav2_monitor/msg/AlgorithmFeedback` | 来自 algorithm_feedback_adapter 的统一指标反馈 |
 | `/battery_state` | `sensor_msgs/msg/BatteryState` | 电池状态 |
 | `/task_status_code` | `master_interfaces/msg/TaskStatus` | 外层任务状态码输入，用于任务配置切换 |
 
@@ -265,6 +264,7 @@ valid: true
 | `/nav2_monitor/fault_event` | `nav2_monitor/msg/FaultEvent` | 故障触发/恢复边沿事件 |
 | `/supervisor/cmd` | `std_msgs/msg/String` | supervisor 命令 JSON |
 | `/safety_system/cmd` | `nav2_monitor/msg/SafetyCmd` | 安全执行命令 |
+| `/nav2_monitor/human_intervention` | `std_msgs/msg/String` | 小车状态异常人工介入提醒 JSON |
 | `/nav2_monitor/reporter/heartbeat_json` | `std_msgs/msg/String` | 心跳 JSON |
 | `/nav2_monitor/reporter/event_json` | `std_msgs/msg/String` | 事件 JSON |
 | `collision_detection.zones[*].polygon_pub_topic` | `geometry_msgs/msg/PolygonStamped` | 碰撞区可视化 |
@@ -476,6 +476,7 @@ JSON 顶层字段：
 - `fault_event_topic`
 - `supervisor_cmd_topic`
 - `safety_cmd_topic`
+- `human_intervention_topic`
 - `reporter.heartbeat_json_topic`
 - `reporter.event_json_topic`
 - `reporter.cmd_correlation_window_s`
@@ -995,9 +996,9 @@ ros2 topic pub /pressure_ std_msgs/msg/String \
 
 ## 5. 包间调用关系
 
-### 5.1 bridge -> nav2_monitor
+### 5.1 algorithm_feedback_adapter -> nav2_monitor
 
-桥接输出：
+适配输出：
 
 - `nav2_monitor/msg/AlgorithmFeedback`
 
@@ -1034,5 +1035,5 @@ ros2 topic pub /pressure_ std_msgs/msg/String \
 
 - `nav2_monitor` 中定义了 `SupervisorCmd.msg`，但当前真实对外输出仍是 `/supervisor/cmd` 的 JSON 字符串
 - `safety_emergency_executor` 当前控制源切换完全依赖标准参数服务，不提供自定义 service
-- `bridge_py_node` 的对外 topic 集合不是固定的，最终以 `spec_file` 为准
+- `algorithm_feedback_adapter_node` 的对外 topic 集合不是固定的，最终以 `spec_file` 为准
 - `nav2_monitor` 的动态监控 topic、碰撞输入和碰撞区发布 topic 最终以当前 `fault_config` 为准

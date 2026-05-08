@@ -1,0 +1,3 @@
+algorithm_feedback_adapter_node:
+  ros__parameters:
+    spec_file: "/opt/ry/config/Monitor/algorithm_feedback_adapter/algorithm_feedback_adapter_spec.yaml"

@@ -54,6 +54,8 @@ private:
   mutable bool idle_tracking_{false};
   mutable rclcpp::Time idle_start_time_{0, 0, RCL_ROS_TIME};
   mutable int last_idle_progress_bucket_{-1};
+  mutable bool has_last_drive_request_time_{false};
+  mutable rclcpp::Time last_drive_request_time_{0, 0, RCL_ROS_TIME};
 };
 
 }  // namespace nav2_monitor

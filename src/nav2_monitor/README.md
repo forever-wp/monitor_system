@@ -7,6 +7,8 @@
 
 轻量级 Nav2 监控、故障检测与安全联动系统。
 
+项目级数据链路见 [项目架构与数据链路](../../docs/project_architecture.md)。
+
 ## 设计原则
 
 - 低占用
@@ -85,6 +87,7 @@ ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
 - `fault_event_topic`
 - `supervisor_cmd_topic`
 - `safety_cmd_topic`
+- `human_intervention_topic`
 - `reporter.heartbeat_json_topic`
 - `reporter.event_json_topic`
 - `battery_state_topic`
@@ -105,7 +108,7 @@ ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
 当前主要配置块：
 
 - `collision_detection`
-- `chassis_stationary`
+- `vehicle_state_judge`
 - `modules`
 
 ### 配置语义
@@ -126,9 +129,11 @@ ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
   - 当前 `light-lm` 已支持 `/drift_status` 的两条独立规则：
     `drift_state` 与 `drift_delta_norm`
 
-- `chassis_stationary.odom_topic`
-  - 可选输入
-  - 为空时表示不依赖 odom，只根据 `command + moto` 做底盘判断
+- `vehicle_state_judge`
+  - 小车状态判断检测，用于对比“速度指令意图”和“实际运动状态”
+  - 有速度指令但实际不动：通过 `/nav2_monitor/human_intervention` 上报人工介入，可能是急停或底盘异常
+  - 无速度指令但实际仍动：超过 `coast_grace_s` 刹车惯性宽限后通过 `/nav2_monitor/human_intervention` 上报，避免制动过程误报
+  - 实际运动来源优先级为 IMU、odom、moto feedback，任一可用来源都可参与判断
 
 - `collision_detection.ultrasonic_topic`
   - 单 topic 八路超声波 JSON 输入
@@ -448,8 +453,9 @@ colcon test --packages-select nav2_monitor --event-handlers console_direct+
 
 检查：
 
-- `chassis_stationary.enabled=1`
+- `vehicle_state_judge.enabled=1`
 - `/command` 是否包含 `speed` 字段
+- `imu_topic` / `odom_topic` / `/moto_info` 至少有一个实际运动来源可用
 - `/moto_info` 的实际数据结构是否与当前解码假设一致
 
 ### 碰撞检测不生效
@@ -473,7 +479,7 @@ colcon test --packages-select nav2_monitor --event-handlers console_direct+
 
 ## 漂移状态接入
 
-- `/drift_status` 通过 `bridge_py_node` 转换为 `AlgorithmFeedback`
+- `/drift_status` 通过 `algorithm_feedback_adapter_node` 转换为 `AlgorithmFeedback`
 - `module_name` 固定为 `light-lm`
 - 当前输出三个指标：
   - `drift_state`：`pose.position.x`，`1.0=漂移`，`2.0=正常`

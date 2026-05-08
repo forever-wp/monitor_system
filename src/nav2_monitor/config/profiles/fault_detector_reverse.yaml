@@ -33,6 +33,8 @@ collision_detection:
   voxel_min_height: 0.2  # 参与 zone/TTC 的体素最小高度（米）
   voxel_max_height: 1.4  # 参与 zone/TTC 的体素最大高度（米）
   source_timeout_s: 0.5  # 各碰撞数据源的有效超时时间（秒）
+  source_level: "ERROR"  # 碰撞输入源缺失或超时时的故障等级；源异常时跳过 zone/ttc 判断
+  source_actions: ["supervisor"]  # 碰撞输入源异常触发后的动作列表
   direction_speed_threshold: 0.05  # 前后向判断阈值；绝对值低于该值时保持当前稳定方向，未建立稳定方向时仅匹配 both 区域
   direction_confirm_count: 3  # 方向切换确认帧数；连续收到相反方向速度达到该次数后才切换
   footprint_points: [-0.37, -0.28, -0.37, 0.28, 0.37, 0.28, 0.37, -0.28]  # 车体 footprint，用于 TTC 计算时扣除车体范围
@@ -76,17 +78,19 @@ collision_detection:
       polygon_pub_topic: "/nav2_monitor/collision_zone/rear_stop"
 
 # ============================================================
-# 底盘停留原地 / 反馈异常检测 (全局)
+# 小车状态判断检测（全局）
 # ============================================================
-chassis_stationary:
-  enabled: 1  # 是否启用底盘异常/久停检测
-  module_name: "chassis_stationary"  # 底盘故障输出时使用的模块名
-  command_topic: "/command"  # 被监控的最终控制命令 topic
-  moto_topic: "/moto_info"  # 电机反馈 topic，仅作为辅助旁证
-  odom_topic: ""   # 已不作为主真值；保留可选回退
-  imu_topic: "/livox/imu"  # IMU topic，作为底盘是否真的在动的主判断依据
-  source_timeout_s: 1.0  # 输入源数据超时时间（秒）
-  idle_timeout_s: 30.0  # command 和 moto 都静默多久后认为“久停”
+vehicle_state_judge:
+  enabled: 1  # 是否启用小车状态判断检测
+  module_name: "vehicle_state_judge"  # 小车状态异常输出时使用的模块名
+  command_topic: "/command"  # 被监控的最终控制命令 topic，非零表示期望小车移动
+  moto_topic: "/moto_info"  # 电机反馈 topic，IMU/odom 不可用时作为实际运动回退
+  odom_topic: ""   # 可选实际运动来源，低于 IMU 优先级，高于 moto 回退
+  imu_topic: "/livox/imu"  # IMU topic，作为小车是否真的在动的主判断依据
+  source_timeout_s: 1.0  # 输入源数据超时时间（秒），超时后不再参与本轮判断
+  idle_timeout_s: 30.0  # 无速度指令且实际不动持续多久后输出低优先级久停提示
+  source_level: "ERROR"  # 数据源缺失或超时时的故障等级；源异常时跳过小车状态业务判断
+  coast_grace_s: 1.0  # 指令归零后允许刹车惯性继续运动的宽限时间，超过才判定“无指令仍运动”
   command_speed_threshold: 0.05  # command 认为“有速度”的阈值
   moto_speed_threshold: 0.05  # moto 认为“有速度”的阈值
   odom_speed_threshold: 0.03  # odom 认为“有速度”的阈值
@@ -95,8 +99,9 @@ chassis_stationary:
   imu_static_command_threshold: 0.02  # 低于该命令速度时认为处于静止/可校准状态
   imu_bias_calibration_samples: 50  # IMU 偏置校准所需样本数
   imu_decay_rate: 0.98  # IMU 积分速度衰减系数
-  anomaly_level: "ERROR"  # command/moto 异常时的故障等级
-  idle_level: "WARNING"  # 久停时的故障等级
+  anomaly_level: "ERROR"  # 指令与实际运动不一致时的故障等级
+  source_actions: ["supervisor"]  # 数据源异常触发后的动作列表
+  idle_level: "WARNING"  # 运营阶段长时间静止提示的故障等级
   safety_system: 2  # 触发安全动作时默认执行 SOFT_STOP
   safety_slow_down_percentage: 50.0  # 若安全动作为减速时使用的百分比
   anomaly_actions: ["safety_system", "supervisor"]  # 异常触发后的动作列表

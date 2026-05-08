@@ -81,6 +81,11 @@ private:
   void subscribe_watch_topics();
   void publish_collision_zones();
   void publish_collision_ttc_markers();
+  void update_navigation_mode_from_ttc(
+    const std::vector<FaultInfo> & faults,
+    const rclcpp::Time & now);
+  void publish_navigation_mode(bool force = false);
+  void publish_human_intervention_request(const FaultInfo & fault, const rclcpp::Time & now);
   bool reload_fault_config_if_needed(bool force = false);
   void apply_loaded_fault_config();
   void configure_chassis_monitoring();
@@ -114,6 +119,7 @@ private:
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr collision_ultrasonic_sub_;
   std::map<std::string, rclcpp::Publisher<geometry_msgs::msg::PolygonStamped>::SharedPtr> collision_zone_pubs_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr collision_ttc_markers_pub_;
+  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr navigation_mode_pub_;
   rclcpp::GenericSubscription::SharedPtr moto_sub_;
 
   std::mutex mtx_;
@@ -139,6 +145,12 @@ private:
   std::string battery_state_topic_;
   std::string base_frame_id_{"base_link"};
   CollisionPredictionRouter collision_prediction_router_;
+  bool navigation_safe_mode_active_{false};
+  bool navigation_ttc_abnormal_{false};
+  rclcpp::Time navigation_ttc_abnormal_since_{0, 0, RCL_ROS_TIME};
+  rclcpp::Time navigation_ttc_clear_since_{0, 0, RCL_ROS_TIME};
+  rclcpp::Time navigation_safe_mode_since_{0, 0, RCL_ROS_TIME};
+  rclcpp::Time last_navigation_mode_publish_time_{0, 0, RCL_ROS_TIME};
   std::string command_topic_;
   std::string moto_topic_;
   std::string odom_topic_;
@@ -177,6 +189,7 @@ private:
   std::map<std::string, rclcpp::Time> last_action_publish_time_;
 
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr supervisor_pub_;
+  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr human_intervention_pub_;
 };
 
 }  // namespace nav2_monitor
