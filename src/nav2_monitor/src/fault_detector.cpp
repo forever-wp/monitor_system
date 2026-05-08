@@ -425,13 +425,19 @@ const std::vector<std::string> & FaultDetector::get_monitored_transforms() const
 
 bool FaultDetector::is_watch_topic_frequency_required(const std::string & topic) const
 {
+  return get_watch_topic_min_hz(topic) > 0.0;
+}
+
+double FaultDetector::get_watch_topic_min_hz(const std::string & topic) const
+{
+  double min_hz = 0.0;
   for (const auto & module : modules_) {
     const auto it = module.watch_topic_min_hz.find(topic);
     if (it != module.watch_topic_min_hz.end()) {
-      return it->second > 0.0;
+      min_hz = std::max(min_hz, it->second);
     }
   }
-  return false;
+  return min_hz;
 }
 
 const MultiValueJudgeConfig & FaultDetector::get_multi_value_judge_config() const
@@ -1219,7 +1225,8 @@ void FaultDetector::update_feedback_sample(
   const std::string & module_name, const std::string & topic_name, const std::string & metric_name,
   double value, bool valid, const rclcpp::Time & stamp)
 {
-  compatibility_store_.add_feedback_sample(module_name, topic_name, metric_name, value, valid, stamp);
+  compatibility_store_.add_feedback_sample(
+    module_name, topic_name, metric_name, value, valid, stamp, node_->now());
 }
 
 void FaultDetector::update_command_speed(double speed, const rclcpp::Time & stamp)
@@ -1264,8 +1271,11 @@ std::vector<FaultInfo> FaultDetector::detect_faults(
     const std::string node_fault_key_prefix = module.name + "|node_inactive";
     base_fault.module_name = module.name;
     base_fault.timestamp = now;
-    base_fault.level = FaultLevel::NORMAL;
-    base_fault.action = ActionType::NONE;
+      base_fault.level = FaultLevel::NORMAL;
+      base_fault.fault_type = "node_inactive";
+      base_fault.fault_model = "node";
+      base_fault.fault_name = module.name;
+      base_fault.action = ActionType::NONE;
     base_fault.safety_command = SafetyCommandType::NONE;
     base_fault.safety_slow_down_percentage = 0.0;
 
@@ -1365,6 +1375,9 @@ void FaultDetector::append_combined_faults(
       fault.module_name = "combined_fault";
       fault.level = rule.level;
       fault.reason = reason;
+      fault.fault_type = "combined_fault";
+      fault.fault_model = "combined";
+      fault.fault_name = rule.name;
       fault.action = ActionType::NONE;
       fault.safety_command = SafetyCommandType::NONE;
       fault.safety_slow_down_percentage = 0.0;
@@ -1384,6 +1397,9 @@ void FaultDetector::append_combined_faults(
       fault.module_name = "combined_fault";
       fault.level = rule.level;
       fault.reason = reason;
+      fault.fault_type = "combined_fault";
+      fault.fault_model = "combined";
+      fault.fault_name = rule.name;
       fault.action = action;
       fault.safety_command =
         action == ActionType::SAFETY_SYSTEM ? rule.safety_command : SafetyCommandType::NONE;

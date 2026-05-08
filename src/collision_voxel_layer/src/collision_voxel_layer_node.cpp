@@ -825,7 +825,7 @@ void CollisionVoxelLayerNode::on_scan(const sensor_msgs::msg::LaserScan::SharedP
 
   const auto stamp = msg->header.stamp.sec != 0 || msg->header.stamp.nanosec != 0 ?
     rclcpp::Time(msg->header.stamp) : this->get_clock()->now();
-  sparse_grid_->decay_to(stamp);
+  sparse_grid_->clear_source(kScanSourceMask, stamp);
 
   const bool apply_transform = !msg->header.frame_id.empty() && msg->header.frame_id != base_frame_;
   const auto scan_points = convert_scan_to_points(*msg, transform, apply_transform, scan_params_);
@@ -852,7 +852,7 @@ void CollisionVoxelLayerNode::on_depth_cloud(const sensor_msgs::msg::PointCloud2
 
   const auto stamp = msg->header.stamp.sec != 0 || msg->header.stamp.nanosec != 0 ?
     rclcpp::Time(msg->header.stamp) : this->get_clock()->now();
-  sparse_grid_->decay_to(stamp);
+  sparse_grid_->clear_source(kDepthSourceMask, stamp);
 
   const bool apply_transform = !msg->header.frame_id.empty() && msg->header.frame_id != base_frame_;
   auto depth_points = filter_depth_cloud(*msg, transform, apply_transform, depth_params_);
@@ -875,6 +875,12 @@ void CollisionVoxelLayerNode::on_decay_timer()
 {
   const auto now = this->get_clock()->now();
   sparse_grid_->decay_to(now);
+  if (scan_sub_ && scan_seen_ && (now - last_scan_stamp_).seconds() > source_timeout_s_) {
+    sparse_grid_->clear_source(kScanSourceMask, now);
+  }
+  if (depth_sub_ && depth_seen_ && (now - last_depth_stamp_).seconds() > source_timeout_s_) {
+    sparse_grid_->clear_source(kDepthSourceMask, now);
+  }
   log_missing_sources("timer", now);
   log_graph_health();
   publish_state(now);

@@ -1,6 +1,7 @@
 #ifndef COLLISION_VOXEL_LAYER__VOXEL_TYPES_HPP_
 #define COLLISION_VOXEL_LAYER__VOXEL_TYPES_HPP_
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -37,6 +38,7 @@ struct VoxelState
 {
   float occupancy{0.0F};
   uint8_t source_mask{0U};
+  std::array<float, 8> source_occupancy{};
   rclcpp::Time last_update{0, 0, RCL_ROS_TIME};
 };
 

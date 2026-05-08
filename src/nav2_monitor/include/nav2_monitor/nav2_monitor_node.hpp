@@ -18,6 +18,7 @@
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
 #include <map>
+#include <optional>
 #include <string>
 #include <vector>
 #include <mutex>
@@ -55,6 +56,16 @@ public:
   Nav2MonitorNode();
 
 private:
+  struct TopicQosOverride
+  {
+    bool has_reliability{false};
+    rclcpp::ReliabilityPolicy reliability{rclcpp::ReliabilityPolicy::BestEffort};
+    bool has_durability{false};
+    rclcpp::DurabilityPolicy durability{rclcpp::DurabilityPolicy::Volatile};
+    bool has_depth{false};
+    size_t depth{10};
+  };
+
   void scan_topology();
   void check_health();
   void on_algorithm_feedback(const msg::AlgorithmFeedback::SharedPtr msg);
@@ -93,9 +104,13 @@ private:
   void clear_watch_topic_subscriptions();
   void load_task_fault_config_mappings();
   void load_task_status_code_mappings();
+  void load_topic_qos_overrides();
   void configure_task_status_subscription();
   void update_task_selected_fault_config(bool force_reload);
   bool update_current_nav_task_locked(const std::string & task_name, const std::string & change_source);
+  std::optional<TopicQosOverride> find_topic_qos_override(const std::string & topic) const;
+  rclcpp::QoS apply_topic_qos_override(
+    const std::string & topic, const rclcpp::QoS & qos, size_t max_depth) const;
   rclcpp::QoS build_watch_topic_qos(const std::string & topic, const std::string & type) const;
   rclcpp::QoS build_topic_subscription_qos(const std::string & topic, const rclcpp::QoS & fallback, size_t max_depth) const;
   rclcpp::Time stamp_or_now(const builtin_interfaces::msg::Time & stamp) const;
@@ -176,6 +191,7 @@ private:
   std::string current_nav_task_{"default"};
   std::map<std::string, std::string> task_fault_config_mappings_;
   std::map<std::string, std::string> task_status_code_mappings_;
+  std::map<std::string, TopicQosOverride> topic_qos_overrides_;
   FaultConfigWatcher fault_config_watcher_;
   std::string pending_task_switch_source_;
   TaskFaultConfigSelector task_fault_config_selector_;

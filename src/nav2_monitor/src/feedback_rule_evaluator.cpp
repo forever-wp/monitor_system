@@ -77,6 +77,9 @@ void FeedbackRuleEvaluator::append_feedback_faults(
     fault.module_name = module.name;
     fault.level = rule.level;
     fault.reason = reason;
+    fault.fault_type = "feedback_rule";
+    fault.fault_model = "feedback";
+    fault.fault_name = rule.source_topic + ":" + rule.metric_name;
     fault.action = action;
     fault.safety_command =
       action == ActionType::SAFETY_SYSTEM ? effective_safety_command : SafetyCommandType::NONE;
@@ -87,16 +90,58 @@ void FeedbackRuleEvaluator::append_feedback_faults(
   }
 }
 
-double FeedbackRuleEvaluator::calc_frequency(const std::deque<rclcpp::Time> & msg_times)
+double FeedbackRuleEvaluator::receive_window_s(double min_hz)
 {
-  if (msg_times.size() < 2) {
+  const double base_window_s = 2.0;
+  if (min_hz <= 0.0) {
+    return 30.0;
+  }
+
+  const double low_rate_window_s = min_hz < 1.0 ? 2.0 / min_hz : base_window_s;
+  return std::clamp(low_rate_window_s, base_window_s, 30.0);
+}
+
+double FeedbackRuleEvaluator::receive_gap_timeout_s(double min_hz)
+{
+  if (min_hz <= 0.0) {
     return 0.0;
   }
-  const double span = (msg_times.back() - msg_times.front()).seconds();
+
+  return std::clamp(3.0 / min_hz, 0.3, 2.0);
+}
+
+double FeedbackRuleEvaluator::calc_receive_frequency(
+  const std::deque<rclcpp::Time> & receive_times,
+  const rclcpp::Time & now,
+  double min_hz)
+{
+  if (receive_times.size() < 2) {
+    return 0.0;
+  }
+
+  const double max_gap_s = receive_gap_timeout_s(min_hz);
+  if (max_gap_s > 0.0 && (now - receive_times.back()).seconds() > max_gap_s) {
+    return 0.0;
+  }
+
+  const double window_s = receive_window_s(min_hz);
+  size_t first_idx = 0;
+  while (
+    first_idx + 1 < receive_times.size() &&
+    (now - receive_times[first_idx]).seconds() > window_s)
+  {
+    ++first_idx;
+  }
+
+  if (receive_times.size() - first_idx < 2) {
+    return 0.0;
+  }
+
+  const double span = (receive_times.back() - receive_times[first_idx]).seconds();
   if (span <= 0.0) {
     return 0.0;
   }
-  return static_cast<double>(msg_times.size() - 1) / span;
+  return static_cast<double>(receive_times.size() - first_idx - 1) / span;
 }
 
 std::string FeedbackRuleEvaluator::feedback_key(
@@ -118,11 +163,11 @@ std::vector<FaultInfo> FeedbackRuleEvaluator::evaluate(
   for (const auto & rule : module.feedback_rules) {
     const double max_stale_s = std::max(0.0, rule.max_stale_s);
     const std::string key = feedback_key(module.name, rule.source_topic, rule.metric_name);
-    const auto * state = store.get_feedback_state(key);
+    const auto state = store.get_feedback_state(key);
 
     bool abnormal = false;
     std::string reason;
-    if (state == nullptr || !state->received) {
+    if (!state.has_value() || !state->received) {
       const double no_data_age = (now - config_loaded_time).seconds();
       if (no_data_age > max_stale_s) {
         std::ostringstream oss;
@@ -156,8 +201,11 @@ std::vector<FaultInfo> FeedbackRuleEvaluator::evaluate(
         abnormal = true;
         reason = oss.str();
       } else if (rule.min_hz > 0.0) {
-        const double freq = calc_frequency(state->msg_times);
-        const double max_interval = 1.0 / rule.min_hz;
+        const double max_interval = receive_gap_timeout_s(rule.min_hz);
+        const double receive_age = state->last_received.nanoseconds() == 0 ?
+          stale_age : (now - state->last_received).seconds();
+        const double freq = receive_age > max_interval ?
+          0.0 : calc_receive_frequency(state->receive_times, now, rule.min_hz);
         if (freq > 0.0) {
           if (freq < rule.min_hz) {
             std::ostringstream oss;

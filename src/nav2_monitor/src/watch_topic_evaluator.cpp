@@ -70,7 +70,7 @@ std::vector<FaultInfo> WatchTopicEvaluator::evaluate(
     if (min_hz <= 0.0) {
       continue;
     }
-    const double hz = store.get_watch_topic_frequency(topic);
+    const double hz = store.get_watch_topic_frequency(topic, now, min_hz);
     const bool abnormal = hz < min_hz;
     std::string reason;
     if (abnormal) {
@@ -87,6 +87,9 @@ std::vector<FaultInfo> WatchTopicEvaluator::evaluate(
         std::to_string(static_cast<int>(module.enable_supervisor ? ActionType::SUPERVISOR : ActionType::NONE));
       fault.level = FaultLevel::ERROR;
       fault.reason = active_reason;
+      fault.fault_type = "watch_topic_frequency";
+      fault.fault_model = "watch_topic";
+      fault.fault_name = topic;
       if (module.enable_supervisor) {
         fault.action = ActionType::SUPERVISOR;
       }

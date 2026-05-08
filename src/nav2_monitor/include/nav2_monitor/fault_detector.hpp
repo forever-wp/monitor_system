@@ -241,6 +241,9 @@ struct FaultInfo
   std::string module_name;
   FaultLevel level;
   std::string reason;
+  std::string fault_type;
+  std::string fault_model;
+  std::string fault_name;
   ActionType action;
   SafetyCommandType safety_command;
   double safety_slow_down_percentage;
@@ -274,6 +277,7 @@ public:
   const std::vector<std::string> & get_watched_topics() const;
   const std::vector<std::string> & get_monitored_transforms() const;
   bool is_watch_topic_frequency_required(const std::string & topic) const;
+  double get_watch_topic_min_hz(const std::string & topic) const;
   const MultiValueJudgeConfig & get_multi_value_judge_config() const;
   bool collision_detection_enabled() const;
   const CollisionDetectionConfig & get_collision_detection_config() const;

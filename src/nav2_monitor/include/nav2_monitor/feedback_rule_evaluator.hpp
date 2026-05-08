@@ -44,7 +44,12 @@ private:
     const std::string & reason,
     std::vector<FaultInfo> & faults,
     const rclcpp::Time & now) const;
-  static double calc_frequency(const std::deque<rclcpp::Time> & msg_times);
+  static double calc_receive_frequency(
+    const std::deque<rclcpp::Time> & receive_times,
+    const rclcpp::Time & now,
+    double min_hz);
+  static double receive_window_s(double min_hz);
+  static double receive_gap_timeout_s(double min_hz);
   static std::string feedback_key(
     const std::string & module_name,
     const std::string & source_topic,

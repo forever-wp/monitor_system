@@ -19,6 +19,11 @@ float clamp_occupancy(float value, float occupancy_max)
   return std::clamp(value, 0.0F, occupancy_max);
 }
 
+bool source_bit_set(uint8_t mask, std::size_t bit)
+{
+  return (mask & static_cast<uint8_t>(1U << bit)) != 0U;
+}
+
 }  // namespace
 
 SparseVoxelGrid::SparseVoxelGrid(
@@ -44,6 +49,23 @@ VoxelKey SparseVoxelGrid::make_key(double x, double y, double z) const
   };
 }
 
+void SparseVoxelGrid::recompute_state(VoxelState & state) const
+{
+  float occupancy_sum = 0.0F;
+  uint8_t source_mask = 0U;
+  for (std::size_t bit = 0; bit < state.source_occupancy.size(); ++bit) {
+    if (state.source_occupancy[bit] <= 0.0F) {
+      state.source_occupancy[bit] = 0.0F;
+      continue;
+    }
+    occupancy_sum += state.source_occupancy[bit];
+    source_mask |= static_cast<uint8_t>(1U << bit);
+  }
+
+  state.occupancy = clamp_occupancy(occupancy_sum, occupancy_max_);
+  state.source_mask = source_mask;
+}
+
 void SparseVoxelGrid::decay_state_to(VoxelState & state, const rclcpp::Time & now) const
 {
   if (state.last_update.nanoseconds() == 0) {
@@ -56,7 +78,11 @@ void SparseVoxelGrid::decay_state_to(VoxelState & state, const rclcpp::Time & no
     return;
   }
 
-  state.occupancy *= static_cast<float>(std::exp(-dt / decay_time_s_));
+  const auto decay_factor = static_cast<float>(std::exp(-dt / decay_time_s_));
+  for (auto & source_occupancy : state.source_occupancy) {
+    source_occupancy *= decay_factor;
+  }
+  recompute_state(state);
   state.last_update = now;
 }
 
@@ -70,9 +96,33 @@ void SparseVoxelGrid::insert_point(
 {
   auto & state = voxels_[make_key(x, y, z)];
   decay_state_to(state, stamp);
-  state.occupancy = clamp_occupancy(state.occupancy + occupancy_delta, occupancy_max_);
-  state.source_mask |= source_mask;
+  for (std::size_t bit = 0; bit < state.source_occupancy.size(); ++bit) {
+    if (source_bit_set(source_mask, bit)) {
+      state.source_occupancy[bit] = clamp_occupancy(
+        state.source_occupancy[bit] + occupancy_delta, occupancy_max_);
+    }
+  }
+  recompute_state(state);
   state.last_update = stamp;
+}
+
+void SparseVoxelGrid::clear_source(uint8_t source_mask, const rclcpp::Time & now)
+{
+  for (auto it = voxels_.begin(); it != voxels_.end();) {
+    decay_state_to(it->second, now);
+    for (std::size_t bit = 0; bit < it->second.source_occupancy.size(); ++bit) {
+      if (source_bit_set(source_mask, bit)) {
+        it->second.source_occupancy[bit] = 0.0F;
+      }
+    }
+    recompute_state(it->second);
+    it->second.last_update = now;
+    if (it->second.occupancy < static_cast<float>(prune_threshold_)) {
+      it = voxels_.erase(it);
+      continue;
+    }
+    ++it;
+  }
 }
 
 void SparseVoxelGrid::decay_to(const rclcpp::Time & now)

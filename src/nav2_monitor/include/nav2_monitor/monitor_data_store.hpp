@@ -5,7 +5,9 @@
 #include <deque>
 #include <map>
 #include <mutex>
+#include <optional>
 #include <string>
+#include <vector>
 
 #include <rclcpp/rclcpp.hpp>
 
@@ -24,7 +26,10 @@ struct TopicRuntimeState
   bool has_publisher{false};
   bool has_valid_data{false};
   rclcpp::Time last_seen{0, 0, RCL_ROS_TIME};
+  rclcpp::Time last_received{0, 0, RCL_ROS_TIME};
   std::deque<rclcpp::Time> msg_times;
+  std::deque<rclcpp::Time> receive_times;
+  bool has_frequency_override{false};
   double frequency{0.0};
   size_t empty_msg_count{0};
 };
@@ -36,7 +41,9 @@ struct FeedbackRuntimeState
   bool received{false};
   rclcpp::Time first_seen{0, 0, RCL_ROS_TIME};
   rclcpp::Time last_seen{0, 0, RCL_ROS_TIME};
+  rclcpp::Time last_received{0, 0, RCL_ROS_TIME};
   std::deque<rclcpp::Time> msg_times;
+  std::deque<rclcpp::Time> receive_times;
 };
 
 struct ChassisRuntimeState
@@ -103,10 +110,16 @@ public:
   void set_node_active(const std::string & node_name, bool active, const rclcpp::Time & now);
   void set_watch_topic_publisher(const std::string & topic, bool has_publisher);
   void set_watch_topic_frequency(const std::string & topic, double frequency);
-  void add_watch_topic_sample(const std::string & topic, const rclcpp::Time & now, bool valid_data);
+  void add_watch_topic_sample(
+    const std::string & topic,
+    const rclcpp::Time & sample_stamp,
+    const rclcpp::Time & receive_time,
+    bool valid_data);
   void add_feedback_sample(
     const std::string & module_name, const std::string & source_topic,
-    const std::string & metric_name, double value, bool valid, const rclcpp::Time & stamp);
+    const std::string & metric_name, double value, bool valid,
+    const rclcpp::Time & stamp,
+    const rclcpp::Time & receive_time);
   void set_command_speed(double speed, const rclcpp::Time & stamp);
   void set_prediction_speed(double speed, const rclcpp::Time & stamp);
   void set_prediction_motion(
@@ -120,13 +133,13 @@ public:
   void set_collision_voxels(const std::vector<CollisionVoxel> & cells, const rclcpp::Time & stamp);
 
   bool is_node_active(const std::string & node_name, const rclcpp::Time & now, double timeout_s) const;
-  double get_watch_topic_frequency(const std::string & topic) const;
-  const TopicRuntimeState * get_watch_topic_state(const std::string & topic) const;
-  const FeedbackRuntimeState * get_feedback_state(const std::string & feedback_key) const;
-  const ChassisRuntimeState & get_chassis_state() const;
-  const BatteryRuntimeState & get_battery_state() const;
-  const CollisionRuntimeState & get_collision_state() const;
-  const CollisionVoxelRuntimeState & get_collision_voxel_state() const;
+  double get_watch_topic_frequency(const std::string & topic, const rclcpp::Time & now, double min_hz) const;
+  std::optional<TopicRuntimeState> get_watch_topic_state(const std::string & topic) const;
+  std::optional<FeedbackRuntimeState> get_feedback_state(const std::string & feedback_key) const;
+  ChassisRuntimeState get_chassis_state() const;
+  BatteryRuntimeState get_battery_state() const;
+  CollisionRuntimeState get_collision_state() const;
+  CollisionVoxelRuntimeState get_collision_voxel_state() const;
   std::vector<CollisionPoint> get_collision_points(const rclcpp::Time & now, double timeout_s) const;
   std::vector<CollisionVoxel> get_collision_voxels(const rclcpp::Time & now, double timeout_s) const;
 
@@ -137,6 +150,16 @@ private:
     const std::string & metric_name);
   static void trim_time_window(std::deque<rclcpp::Time> & msg_times, size_t max_size);
   static double calc_frequency(const std::deque<rclcpp::Time> & msg_times);
+  static void trim_receive_window(
+    std::deque<rclcpp::Time> & receive_times,
+    const rclcpp::Time & now,
+    double min_hz);
+  static double receive_window_s(double min_hz);
+  static double receive_gap_timeout_s(double min_hz);
+  static double calc_receive_frequency(
+    const std::deque<rclcpp::Time> & receive_times,
+    const rclcpp::Time & now,
+    double min_hz);
   std::vector<CollisionPoint> collect_collision_points_locked(const rclcpp::Time & now, double timeout_s) const;
 
   std::map<std::string, rclcpp::Time> node_last_seen_;

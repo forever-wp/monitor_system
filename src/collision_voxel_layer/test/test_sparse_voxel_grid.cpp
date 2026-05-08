@@ -57,3 +57,41 @@ TEST(SparseVoxelGridTest, PrunesCellsBelowThreshold)
   EXPECT_TRUE(msg.cells.empty());
   EXPECT_EQ(grid.size(), 0u);
 }
+
+TEST(SparseVoxelGridTest, ClearingSourceRemovesOnlyThatSourceContribution)
+{
+  collision_voxel_layer::SparseVoxelGrid grid(0.05, 0.10, 1.0, 0.01, 1.0F);
+  const rclcpp::Time stamp(10, 0, RCL_ROS_TIME);
+  grid.insert_point(0.20, 0.10, 0.15, 0.6F, 0x01U, stamp);
+  grid.insert_point(0.20, 0.10, 0.15, 0.8F, 0x02U, stamp);
+
+  grid.clear_source(0x01U, stamp + rclcpp::Duration::from_seconds(0.1));
+
+  std_msgs::msg::Header header;
+  header.frame_id = "base_link";
+  const auto msg = grid.export_grid(header);
+
+  ASSERT_EQ(msg.cells.size(), 1u);
+  EXPECT_NEAR(msg.cells.front().occupancy, 0.8F * std::exp(-0.1), 1e-4);
+  EXPECT_EQ(msg.cells.front().source_mask, 0x02U);
+}
+
+TEST(SparseVoxelGridTest, ReplacingSourceFrameRemovesOldSourceTrail)
+{
+  collision_voxel_layer::SparseVoxelGrid grid(0.05, 0.10, 1.0, 0.01, 1.0F);
+  const rclcpp::Time first_stamp(10, 0, RCL_ROS_TIME);
+  const auto second_stamp = first_stamp + rclcpp::Duration::from_seconds(0.1);
+  grid.insert_point(0.20, 0.10, 0.15, 0.6F, 0x01U, first_stamp);
+
+  grid.clear_source(0x01U, second_stamp);
+  grid.insert_point(0.40, 0.10, 0.15, 0.6F, 0x01U, second_stamp);
+
+  std_msgs::msg::Header header;
+  header.frame_id = "base_link";
+  const auto msg = grid.export_grid(header);
+
+  ASSERT_EQ(msg.cells.size(), 1u);
+  EXPECT_NEAR(msg.cells.front().x, 0.425F, 1e-5);
+  EXPECT_FLOAT_EQ(msg.cells.front().occupancy, 0.6F);
+  EXPECT_EQ(msg.cells.front().source_mask, 0x01U);
+}

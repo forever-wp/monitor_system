@@ -14,6 +14,11 @@ static double point_norm(const CollisionPoint & point)
   return std::sqrt(point.x * point.x + point.y * point.y);
 }
 
+static const char * collision_model_name(CollisionModelType model)
+{
+  return model == CollisionModelType::TTC ? "ttc" : "zone";
+}
+
 
 void CollisionEvaluator::set_multi_value_config(const MultiValueJudgeConfig & config)
 {
@@ -216,7 +221,13 @@ std::vector<CollisionPoint> CollisionEvaluator::collect_evaluation_points(
     points.push_back(CollisionPoint{voxel.x, voxel.y, voxel.occupancy});
   }
 
-  return points;
+  if (!points.empty()) {
+    return points;
+  }
+
+  // Voxel is preferred when configured, but direct point sources keep the
+  // monitor useful if the voxel pipeline drops out.
+  return store.get_collision_points(now, cfg.source_timeout_s);
 }
 
 bool CollisionEvaluator::has_fresh_evaluation_source(
@@ -226,23 +237,32 @@ bool CollisionEvaluator::has_fresh_evaluation_source(
   std::string & reason)
 {
   if (!cfg.voxel_topic.empty()) {
-    const auto & voxel_state = store.get_collision_voxel_state();
+    const auto voxel_state = store.get_collision_voxel_state();
     if (!voxel_state.has_data) {
-      reason = "Collision voxel source missing; skip collision judgment";
-      return false;
+      const auto point_state = store.get_collision_state();
+      const bool point_ready = point_state.has_data &&
+        (now - point_state.last_seen).seconds() <= cfg.source_timeout_s;
+      reason = point_ready ?
+        "Collision voxel source missing; fallback to direct point sources" :
+        "Collision voxel source missing; no fallback point source available";
+      return point_ready;
     }
     const double age_s = (now - voxel_state.last_seen).seconds();
     if (age_s > cfg.source_timeout_s) {
+      const auto point_state = store.get_collision_state();
+      const bool point_ready = point_state.has_data &&
+        (now - point_state.last_seen).seconds() <= cfg.source_timeout_s;
       std::ostringstream oss;
       oss << "Collision voxel source stale: age=" << age_s
-          << "s timeout=" << cfg.source_timeout_s << "s; skip collision judgment";
+          << "s timeout=" << cfg.source_timeout_s << "s; "
+          << (point_ready ? "fallback to direct point sources" : "no fallback point source available");
       reason = oss.str();
-      return false;
+      return point_ready;
     }
     return true;
   }
 
-  const auto & point_state = store.get_collision_state();
+  const auto point_state = store.get_collision_state();
   if (!point_state.has_data) {
     reason = "Collision point source missing; skip collision judgment";
     return false;
@@ -550,6 +570,9 @@ void CollisionEvaluator::append_zone_faults(
     fault.module_name = cfg.module_name;
     fault.level = zone.level;
     fault.reason = reason;
+    fault.fault_type = "collision_detection";
+    fault.fault_model = collision_model_name(zone.model);
+    fault.fault_name = zone.name;
     fault.action = action;
     fault.safety_command =
       action == ActionType::SAFETY_SYSTEM ? zone.safety_command : SafetyCommandType::NONE;
@@ -573,6 +596,9 @@ void CollisionEvaluator::append_source_faults(
     fault.module_name = cfg.module_name;
     fault.level = cfg.source_level;
     fault.reason = reason;
+    fault.fault_type = "collision_source";
+    fault.fault_model = "source";
+    fault.fault_name = "collision_source";
     fault.action = ActionType::NONE;
     fault.safety_command = SafetyCommandType::NONE;
     fault.safety_slow_down_percentage = 0.0;
@@ -588,6 +614,9 @@ void CollisionEvaluator::append_source_faults(
     fault.module_name = cfg.module_name;
     fault.level = cfg.source_level;
     fault.reason = reason;
+    fault.fault_type = "collision_source";
+    fault.fault_model = "source";
+    fault.fault_name = "collision_source";
     fault.action = action;
     fault.safety_command = SafetyCommandType::NONE;
     fault.safety_slow_down_percentage = 0.0;
@@ -616,7 +645,7 @@ std::vector<FaultInfo> CollisionEvaluator::evaluate(
     return faults;
   }
 
-  const auto & chassis_state = store.get_chassis_state();
+  const auto chassis_state = store.get_chassis_state();
   const bool prediction_speed_fresh = chassis_state.prediction_speed_received &&
     (now - chassis_state.prediction_speed_stamp).seconds() <= cfg.source_timeout_s;
   const double current_speed = prediction_speed_fresh ?
@@ -629,6 +658,16 @@ std::vector<FaultInfo> CollisionEvaluator::evaluate(
   const bool source_ready = has_fresh_evaluation_source(cfg, store, now, source_reason);
   std::string active_source_reason;
   const std::string source_key = cfg.module_name + "|collision_source";
+  if (source_ready && !source_reason.empty()) {
+    const bool should_log = last_source_fallback_log_time_.nanoseconds() == 0 ||
+      (now - last_source_fallback_log_time_).seconds() >= 2.0;
+    if (should_log) {
+      last_source_fallback_log_time_ = now;
+      RCLCPP_WARN(
+        rclcpp::get_logger("nav2_monitor.collision_evaluator"),
+        "%s", source_reason.c_str());
+    }
+  }
   if (update_multi_value_state(
       source_key, !source_ready, source_reason, now, 0.0, active_source_reason))
   {

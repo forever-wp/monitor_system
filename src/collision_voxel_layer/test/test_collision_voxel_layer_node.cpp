@@ -350,9 +350,10 @@ TEST(CollisionVoxelLayerNodeTest, PublishesVoxelGridForSimulatedScanAndDepthInpu
       return nearly_equal(cell.x, 1.05F) &&
              nearly_equal(cell.y, 0.05F) &&
              nearly_equal(cell.z, 0.45F);
-    });
+  });
   ASSERT_NE(scan_only_cell, grid.cells.end());
-  EXPECT_TRUE(nearly_equal(scan_only_cell->occupancy, 0.6F));
+  EXPECT_LE(scan_only_cell->occupancy, 0.6F);
+  EXPECT_GT(scan_only_cell->occupancy, 0.5F);
   EXPECT_EQ(scan_only_cell->source_mask, 0x01U);
 }
 

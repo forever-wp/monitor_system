@@ -11,6 +11,7 @@
 #include <iomanip>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -32,6 +33,14 @@ namespace nav2_monitor
 
 namespace
 {
+std::string to_lower_copy(std::string value)
+{
+  std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
+    return static_cast<char>(std::tolower(c));
+  });
+  return value;
+}
+
 uint8_t fault_level_to_msg(FaultLevel level)
 {
   switch (level) {
@@ -280,6 +289,72 @@ bool parse_ultrasonic_json_payload(
     return false;
   }
 }
+
+rclcpp::ReliabilityPolicy parse_reliability_policy(
+  const std::string & raw,
+  bool & ok)
+{
+  const std::string value = to_lower_copy(raw);
+  ok = true;
+  if (value == "reliable") {
+    return rclcpp::ReliabilityPolicy::Reliable;
+  }
+  if (value == "best_effort" || value == "besteffort") {
+    return rclcpp::ReliabilityPolicy::BestEffort;
+  }
+  if (value == "system_default" || value == "default") {
+    return rclcpp::ReliabilityPolicy::SystemDefault;
+  }
+  ok = false;
+  return rclcpp::ReliabilityPolicy::BestEffort;
+}
+
+rclcpp::DurabilityPolicy parse_durability_policy(
+  const std::string & raw,
+  bool & ok)
+{
+  const std::string value = to_lower_copy(raw);
+  ok = true;
+  if (value == "transient_local" || value == "transientlocal") {
+    return rclcpp::DurabilityPolicy::TransientLocal;
+  }
+  if (value == "volatile") {
+    return rclcpp::DurabilityPolicy::Volatile;
+  }
+  if (value == "system_default" || value == "default") {
+    return rclcpp::DurabilityPolicy::SystemDefault;
+  }
+  ok = false;
+  return rclcpp::DurabilityPolicy::Volatile;
+}
+
+std::string reliability_to_string(rclcpp::ReliabilityPolicy reliability)
+{
+  switch (reliability) {
+    case rclcpp::ReliabilityPolicy::Reliable:
+      return "reliable";
+    case rclcpp::ReliabilityPolicy::BestEffort:
+      return "best_effort";
+    case rclcpp::ReliabilityPolicy::SystemDefault:
+      return "system_default";
+    default:
+      return "unknown";
+  }
+}
+
+std::string durability_to_string(rclcpp::DurabilityPolicy durability)
+{
+  switch (durability) {
+    case rclcpp::DurabilityPolicy::TransientLocal:
+      return "transient_local";
+    case rclcpp::DurabilityPolicy::Volatile:
+      return "volatile";
+    case rclcpp::DurabilityPolicy::SystemDefault:
+      return "system_default";
+    default:
+      return "unknown";
+  }
+}
 }  // namespace
 
 Nav2MonitorNode::Nav2MonitorNode()
@@ -306,6 +381,7 @@ Nav2MonitorNode::Nav2MonitorNode()
   battery_state_timeout_s_ = std::max(
     1.0, this->declare_parameter<double>("battery_state_timeout_s", 90.0));
   base_frame_id_ = this->declare_parameter<std::string>("base_frame_id", "base_link");
+  load_topic_qos_overrides();
 
   fallback_target_nodes_ = this->declare_parameter<std::vector<std::string>>(
     "target_nodes", std::vector<std::string>{});
@@ -352,10 +428,10 @@ Nav2MonitorNode::Nav2MonitorNode()
   update_task_selected_fault_config(true);
 
   algorithm_feedback_sub_ = this->create_subscription<msg::AlgorithmFeedback>(
-    algorithm_feedback_topic_, rclcpp::QoS(50),
+    algorithm_feedback_topic_, build_topic_subscription_qos(algorithm_feedback_topic_, rclcpp::QoS(50), 50),
     std::bind(&Nav2MonitorNode::on_algorithm_feedback, this, std::placeholders::_1));
   battery_sub_ = this->create_subscription<sensor_msgs::msg::BatteryState>(
-    battery_state_topic_, rclcpp::SensorDataQoS(),
+    battery_state_topic_, build_topic_subscription_qos(battery_state_topic_, rclcpp::SensorDataQoS(), 10),
     std::bind(&Nav2MonitorNode::on_battery_state, this, std::placeholders::_1));
   configure_task_status_subscription();
 
@@ -764,8 +840,9 @@ void Nav2MonitorNode::on_algorithm_feedback(const msg::AlgorithmFeedback::Shared
 {
   const bool has_stamp = (msg->stamp.sec != 0) || (msg->stamp.nanosec != 0);
   rclcpp::Time stamp = has_stamp ? rclcpp::Time(msg->stamp) : this->now();
+  const auto receive_time = this->now();
   data_store_.add_feedback_sample(
-    msg->module_name, msg->topic_name, msg->metric_name, msg->value, msg->valid, stamp);
+    msg->module_name, msg->topic_name, msg->metric_name, msg->value, msg->valid, stamp, receive_time);
 }
 
 void Nav2MonitorNode::on_task_status(const master_interfaces::msg::TaskStatus::SharedPtr msg)
@@ -806,7 +883,8 @@ void Nav2MonitorNode::on_task_status(const master_interfaces::msg::TaskStatus::S
 rclcpp::QoS Nav2MonitorNode::build_topic_subscription_qos(
   const std::string & topic, const rclcpp::QoS & fallback, size_t max_depth) const
 {
-  auto qos = rclcpp::QoS(std::max<size_t>(1, std::min<size_t>(fallback.get_rmw_qos_profile().depth, max_depth)));
+  auto qos = rclcpp::QoS(
+    std::max<size_t>(1, std::min<size_t>(fallback.get_rmw_qos_profile().depth, max_depth)));
   qos.history(rclcpp::HistoryPolicy::KeepLast);
   qos.reliability(fallback.reliability());
   qos.durability(fallback.durability());
@@ -814,41 +892,54 @@ rclcpp::QoS Nav2MonitorNode::build_topic_subscription_qos(
   try {
     auto infos = this->get_publishers_info_by_topic(topic);
     if (infos.empty()) {
-      return qos;
+      return apply_topic_qos_override(topic, qos, max_depth);
     }
 
     size_t depth = std::max<size_t>(1, qos.get_rmw_qos_profile().depth);
-    bool use_reliable = qos.reliability() == rclcpp::ReliabilityPolicy::Reliable;
-    bool use_transient_local = qos.durability() == rclcpp::DurabilityPolicy::TransientLocal;
+    bool saw_reliable = false;
+    bool saw_best_effort = false;
+    bool saw_transient_local = false;
+    bool saw_volatile = false;
 
     for (const auto & info : infos) {
       const auto & profile = info.qos_profile();
       depth = std::max<size_t>(depth, std::max<size_t>(1, profile.depth()));
       if (profile.reliability() == rclcpp::ReliabilityPolicy::Reliable) {
-        use_reliable = true;
-      } else {
-        use_reliable = false;
+        saw_reliable = true;
+      } else if (profile.reliability() == rclcpp::ReliabilityPolicy::BestEffort) {
+        saw_best_effort = true;
       }
       if (profile.durability() == rclcpp::DurabilityPolicy::TransientLocal) {
-        use_transient_local = true;
-      } else {
-        use_transient_local = false;
+        saw_transient_local = true;
+      } else if (profile.durability() == rclcpp::DurabilityPolicy::Volatile) {
+        saw_volatile = true;
       }
     }
 
     depth = std::max<size_t>(1, std::min<size_t>(depth, max_depth));
     qos = rclcpp::QoS(depth);
     qos.history(rclcpp::HistoryPolicy::KeepLast);
-    qos.reliability(use_reliable ? rclcpp::ReliabilityPolicy::Reliable : rclcpp::ReliabilityPolicy::BestEffort);
-    qos.durability(use_transient_local ? rclcpp::DurabilityPolicy::TransientLocal : rclcpp::DurabilityPolicy::Volatile);
+    qos.reliability(
+      saw_best_effort ? rclcpp::ReliabilityPolicy::BestEffort :
+      (saw_reliable ? rclcpp::ReliabilityPolicy::Reliable : fallback.reliability()));
+    qos.durability(
+      saw_volatile ? rclcpp::DurabilityPolicy::Volatile :
+      (saw_transient_local ? rclcpp::DurabilityPolicy::TransientLocal : fallback.durability()));
   } catch (const std::exception &) {
   }
 
-  return qos;
+  return apply_topic_qos_override(topic, qos, max_depth);
 }
 
 rclcpp::QoS Nav2MonitorNode::build_watch_topic_qos(const std::string & topic, const std::string & type) const
 {
+  if (topic == "/tf_static" || (type == "tf2_msgs/msg/TFMessage" &&
+    topic.find("tf_static") != std::string::npos))
+  {
+    auto qos = rclcpp::QoS(1).transient_local().reliable();
+    return build_topic_subscription_qos(topic, qos, 1);
+  }
+
   const bool is_imu = type == "sensor_msgs/msg/Imu" || topic.find("/imu") != std::string::npos;
   const bool is_scan = type == "sensor_msgs/msg/LaserScan" || topic == "/scan";
   const bool is_pointcloud = type == "sensor_msgs/msg/PointCloud2";
@@ -869,6 +960,54 @@ rclcpp::QoS Nav2MonitorNode::build_watch_topic_qos(const std::string & topic, co
   }
 
   return build_topic_subscription_qos(topic, rclcpp::QoS(10), 10);
+}
+
+std::optional<Nav2MonitorNode::TopicQosOverride> Nav2MonitorNode::find_topic_qos_override(
+  const std::string & topic) const
+{
+  const auto exact_it = topic_qos_overrides_.find(topic);
+  if (exact_it != topic_qos_overrides_.end()) {
+    return exact_it->second;
+  }
+
+  if (!topic.empty() && topic.front() == '/') {
+    const auto no_slash_it = topic_qos_overrides_.find(topic.substr(1));
+    if (no_slash_it != topic_qos_overrides_.end()) {
+      return no_slash_it->second;
+    }
+  } else {
+    const auto slash_it = topic_qos_overrides_.find("/" + topic);
+    if (slash_it != topic_qos_overrides_.end()) {
+      return slash_it->second;
+    }
+  }
+  return std::nullopt;
+}
+
+rclcpp::QoS Nav2MonitorNode::apply_topic_qos_override(
+  const std::string & topic,
+  const rclcpp::QoS & qos,
+  size_t max_depth) const
+{
+  const auto override = find_topic_qos_override(topic);
+  if (!override.has_value()) {
+    return qos;
+  }
+
+  const auto raw_depth = override->has_depth ?
+    override->depth : std::max<size_t>(1, qos.get_rmw_qos_profile().depth);
+  auto out = rclcpp::QoS(std::max<size_t>(1, std::min<size_t>(raw_depth, max_depth)));
+  out.history(rclcpp::HistoryPolicy::KeepLast);
+  out.reliability(override->has_reliability ? override->reliability : qos.reliability());
+  out.durability(override->has_durability ? override->durability : qos.durability());
+  RCLCPP_INFO(
+    get_logger(),
+    "Apply QoS override: topic=%s reliability=%s durability=%s depth=%zu",
+    topic.c_str(),
+    reliability_to_string(out.reliability()).c_str(),
+    durability_to_string(out.durability()).c_str(),
+    static_cast<size_t>(out.get_rmw_qos_profile().depth));
+  return out;
 }
 
 rclcpp::Time Nav2MonitorNode::stamp_or_now(const builtin_interfaces::msg::Time & stamp) const
@@ -997,9 +1136,89 @@ void Nav2MonitorNode::configure_task_status_subscription()
   }
 
   task_status_sub_ = this->create_subscription<master_interfaces::msg::TaskStatus>(
-    task_status_topic_, rclcpp::QoS(10),
+    task_status_topic_, build_topic_subscription_qos(task_status_topic_, rclcpp::QoS(10), 10),
     std::bind(&Nav2MonitorNode::on_task_status, this, std::placeholders::_1));
   RCLCPP_INFO(get_logger(), "Subscribed task_status topic: %s", task_status_topic_.c_str());
+}
+
+void Nav2MonitorNode::load_topic_qos_overrides()
+{
+  const auto entries = this->declare_parameter<std::vector<std::string>>(
+    "topic_qos_overrides", std::vector<std::string>{});
+  topic_qos_overrides_.clear();
+
+  for (const auto & entry : entries) {
+    std::stringstream ss(entry);
+    std::string topic;
+    std::string reliability_raw;
+    std::string durability_raw;
+    std::string depth_raw;
+    if (
+      !std::getline(ss, topic, ':') ||
+      !std::getline(ss, reliability_raw, ':') ||
+      !std::getline(ss, durability_raw, ':'))
+    {
+      RCLCPP_WARN(
+        get_logger(),
+        "Ignore topic_qos_overrides entry '%s': expected /topic:reliability:durability[:depth]",
+        entry.c_str());
+      continue;
+    }
+    (void)std::getline(ss, depth_raw, ':');
+
+    const auto trim = [](std::string value) {
+      const auto begin = value.find_first_not_of(" \t\r\n");
+      const auto end = value.find_last_not_of(" \t\r\n");
+      return begin == std::string::npos ? std::string() : value.substr(begin, end - begin + 1);
+    };
+    topic = trim(topic);
+    reliability_raw = trim(reliability_raw);
+    durability_raw = trim(durability_raw);
+    depth_raw = trim(depth_raw);
+    if (topic.empty()) {
+      RCLCPP_WARN(get_logger(), "Ignore topic_qos_overrides entry '%s': empty topic", entry.c_str());
+      continue;
+    }
+
+    TopicQosOverride override;
+    bool ok = false;
+    override.reliability = parse_reliability_policy(reliability_raw, ok);
+    if (!ok) {
+      RCLCPP_WARN(
+        get_logger(), "Ignore topic_qos_overrides entry '%s': invalid reliability '%s'",
+        entry.c_str(), reliability_raw.c_str());
+      continue;
+    }
+    override.has_reliability = true;
+    override.durability = parse_durability_policy(durability_raw, ok);
+    if (!ok) {
+      RCLCPP_WARN(
+        get_logger(), "Ignore topic_qos_overrides entry '%s': invalid durability '%s'",
+        entry.c_str(), durability_raw.c_str());
+      continue;
+    }
+    override.has_durability = true;
+    if (!depth_raw.empty()) {
+      try {
+        override.depth = std::max<size_t>(1, static_cast<size_t>(std::stoul(depth_raw)));
+        override.has_depth = true;
+      } catch (const std::exception &) {
+        RCLCPP_WARN(
+          get_logger(), "Ignore topic_qos_overrides entry '%s': invalid depth '%s'",
+          entry.c_str(), depth_raw.c_str());
+        continue;
+      }
+    }
+
+    topic_qos_overrides_[topic] = override;
+    RCLCPP_INFO(
+      get_logger(),
+      "Loaded QoS override: topic=%s reliability=%s durability=%s depth=%s",
+      topic.c_str(),
+      reliability_to_string(override.reliability).c_str(),
+      durability_to_string(override.durability).c_str(),
+      override.has_depth ? std::to_string(override.depth).c_str() : "<auto>");
+  }
 }
 
 void Nav2MonitorNode::load_task_fault_config_mappings()
@@ -1202,18 +1421,21 @@ void Nav2MonitorNode::configure_chassis_monitoring()
   chassis_imu_bias_calibration_samples_ = cfg.imu_bias_calibration_samples;
 
   if (!command_topic_.empty()) {
+    const auto command_qos = build_topic_subscription_qos(command_topic_, rclcpp::QoS(20), 20);
     command_sub_ = this->create_subscription<std_msgs::msg::String>(
-      command_topic_, rclcpp::QoS(20),
+      command_topic_, command_qos,
       std::bind(&Nav2MonitorNode::on_command, this, std::placeholders::_1));
   }
   if (!odom_topic_.empty()) {
+    const auto odom_qos = build_topic_subscription_qos(odom_topic_, rclcpp::SensorDataQoS(), 10);
     odom_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
-      odom_topic_, rclcpp::SensorDataQoS(),
+      odom_topic_, odom_qos,
       std::bind(&Nav2MonitorNode::on_odom, this, std::placeholders::_1));
   }
   if (!chassis_imu_topic_.empty()) {
+    const auto imu_qos = build_topic_subscription_qos(chassis_imu_topic_, rclcpp::SensorDataQoS(), 5);
     chassis_imu_sub_ = this->create_subscription<sensor_msgs::msg::Imu>(
-      chassis_imu_topic_, rclcpp::SensorDataQoS(),
+      chassis_imu_topic_, imu_qos,
       std::bind(&Nav2MonitorNode::on_chassis_imu, this, std::placeholders::_1));
   }
   RCLCPP_INFO(
@@ -1281,7 +1503,7 @@ void Nav2MonitorNode::configure_collision_monitoring()
 
     collision_prediction_cmd_vel_subs_[route.source] =
       this->create_subscription<geometry_msgs::msg::Twist>(
-      route.topic, rclcpp::QoS(20),
+      route.topic, build_topic_subscription_qos(route.topic, rclcpp::QoS(20), 20),
       [this, source = route.source, topic = route.topic](
         const geometry_msgs::msg::Twist::SharedPtr msg)
       {
@@ -1375,7 +1597,7 @@ void Nav2MonitorNode::subscribe_watch_topics()
       auto sub = this->create_subscription<sensor_msgs::msg::Imu>(
         topic, qos,
         [this, topic](const sensor_msgs::msg::Imu::SharedPtr msg) {
-          data_store_.add_watch_topic_sample(topic, stamp_or_now(msg->header.stamp), true);
+          data_store_.add_watch_topic_sample(topic, stamp_or_now(msg->header.stamp), this->now(), true);
         });
       topic_subs_[topic] = sub;
       continue;
@@ -1385,7 +1607,7 @@ void Nav2MonitorNode::subscribe_watch_topics()
       auto sub = this->create_subscription<sensor_msgs::msg::LaserScan>(
         topic, qos,
         [this, topic](const sensor_msgs::msg::LaserScan::SharedPtr msg) {
-          data_store_.add_watch_topic_sample(topic, stamp_or_now(msg->header.stamp), true);
+          data_store_.add_watch_topic_sample(topic, stamp_or_now(msg->header.stamp), this->now(), true);
         });
       topic_subs_[topic] = sub;
       continue;
@@ -1395,7 +1617,7 @@ void Nav2MonitorNode::subscribe_watch_topics()
       auto sub = this->create_subscription<sensor_msgs::msg::PointCloud2>(
         topic, qos,
         [this, topic](const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
-          data_store_.add_watch_topic_sample(topic, stamp_or_now(msg->header.stamp), true);
+          data_store_.add_watch_topic_sample(topic, stamp_or_now(msg->header.stamp), this->now(), true);
         });
       topic_subs_[topic] = sub;
       continue;
@@ -1405,7 +1627,7 @@ void Nav2MonitorNode::subscribe_watch_topics()
       auto sub = this->create_subscription<nav_msgs::msg::Odometry>(
         topic, qos,
         [this, topic](const nav_msgs::msg::Odometry::SharedPtr msg) {
-          data_store_.add_watch_topic_sample(topic, stamp_or_now(msg->header.stamp), true);
+          data_store_.add_watch_topic_sample(topic, stamp_or_now(msg->header.stamp), this->now(), true);
         });
       topic_subs_[topic] = sub;
       continue;
@@ -1415,9 +1637,10 @@ void Nav2MonitorNode::subscribe_watch_topics()
       topic, type, qos,
       [this, topic](std::shared_ptr<rclcpp::SerializedMessage> msg) {
         if (msg->size() == 0) {
-          data_store_.add_watch_topic_sample(topic, this->now(), false);
-          const auto * state = data_store_.get_watch_topic_state(topic);
-          const size_t empty_count = state == nullptr ? 0U : state->empty_msg_count;
+          const auto now = this->now();
+          data_store_.add_watch_topic_sample(topic, now, now, false);
+          const auto state = data_store_.get_watch_topic_state(topic);
+          const size_t empty_count = state.has_value() ? state->empty_msg_count : 0U;
           RCLCPP_WARN_THROTTLE(
             get_logger(), *get_clock(), 5000,
             "Topic '%s' empty msg (count: %zu)", topic.c_str(), empty_count);
@@ -1425,7 +1648,7 @@ void Nav2MonitorNode::subscribe_watch_topics()
         }
 
         auto now = this->now();
-        data_store_.add_watch_topic_sample(topic, now, true);
+        data_store_.add_watch_topic_sample(topic, now, now, true);
       });
     topic_subs_[topic] = sub;
   }
@@ -1514,80 +1737,108 @@ void Nav2MonitorNode::check_health()
   std::vector<FaultInfo> faults;
   std::vector<FaultEdgeEvent> fault_edge_events;
   std::optional<SafetyCommandUpdate> safety_update;
+  std::vector<std::string> target_nodes_snapshot;
+  std::vector<std::string> watch_topics_snapshot;
+  std::vector<std::pair<std::string, std::string>> target_transforms_snapshot;
+  std::map<std::pair<std::string, std::string>, TransformInfo> tf_info_snapshot;
 
   {
     std::lock_guard<std::mutex> lock(mtx_);
-    status_msg.all_ok = true;
-    status_msg.monitored_nodes = target_nodes_;
-    status_msg.monitored_topics = watch_topics_;
+    target_nodes_snapshot = target_nodes_;
+    watch_topics_snapshot = watch_topics_;
+    target_transforms_snapshot = target_transforms_;
+    tf_info_snapshot = tf_info_;
+  }
 
-    for (const auto & node : target_nodes_) {
-      if (data_store_.is_node_active(node, now, timeout_)) {
-        status_msg.active_nodes.push_back(node);
-      } else {
-        status_msg.timeout_nodes.push_back(node);
-        status_msg.all_ok = false;
-      }
+  status_msg.all_ok = true;
+  status_msg.monitored_nodes = target_nodes_snapshot;
+  status_msg.monitored_topics = watch_topics_snapshot;
+
+  for (const auto & node : target_nodes_snapshot) {
+    if (data_store_.is_node_active(node, now, timeout_)) {
+      status_msg.active_nodes.push_back(node);
+    } else {
+      status_msg.timeout_nodes.push_back(node);
+      status_msg.all_ok = false;
     }
+  }
 
-    for (const auto & topic : watch_topics_) {
-      const auto * info = data_store_.get_watch_topic_state(topic);
-      const bool require_frequency = fault_detector_.is_watch_topic_frequency_required(topic);
-      const bool topic_present = info != nullptr && info->has_publisher;
-      const bool topic_valid = topic_present && (!require_frequency || info->has_valid_data);
-      if (topic_valid) {
-        status_msg.active_topics.push_back(topic);
-        status_msg.topic_frequencies.push_back(
-          info != nullptr ? static_cast<float>(info->frequency) : 0.0F);
-      } else {
-        status_msg.inactive_topics.push_back(topic);
-        status_msg.topic_frequencies.push_back(0.0);
-        status_msg.all_ok = false;
-      }
+  for (const auto & topic : watch_topics_snapshot) {
+    const auto info = data_store_.get_watch_topic_state(topic);
+    const double min_hz = fault_detector_.get_watch_topic_min_hz(topic);
+    const bool require_frequency = min_hz > 0.0;
+    const double receive_frequency = data_store_.get_watch_topic_frequency(topic, now, min_hz);
+    const bool topic_present = info.has_value() && info->has_publisher;
+    const bool topic_valid = topic_present && (!require_frequency || receive_frequency > 0.0);
+    if (topic_valid) {
+      status_msg.active_topics.push_back(topic);
+      status_msg.topic_frequencies.push_back(static_cast<float>(receive_frequency));
+    } else {
+      status_msg.inactive_topics.push_back(topic);
+      status_msg.topic_frequencies.push_back(0.0);
+      status_msg.all_ok = false;
     }
+  }
 
-    for (const auto & [src, tgt] : target_transforms_) {
-      std::string tf_str = src + "->" + tgt;
-      status_msg.monitored_transforms.push_back(tf_str);
-      if (tf_info_.count({src, tgt}) && (now - tf_info_[{src, tgt}].last_update).seconds() <= timeout_) {
-        status_msg.available_transforms.push_back(tf_str);
-        status_msg.transform_latencies_ms.push_back(tf_info_[{src, tgt}].latency_ms);
-      } else {
-        status_msg.stale_transforms.push_back(tf_str);
-        status_msg.transform_latencies_ms.push_back(-1.0);
-        status_msg.all_ok = false;
-      }
+  for (const auto & [src, tgt] : target_transforms_snapshot) {
+    std::string tf_str = src + "->" + tgt;
+    status_msg.monitored_transforms.push_back(tf_str);
+    const auto tf_it = tf_info_snapshot.find({src, tgt});
+    if (tf_it != tf_info_snapshot.end() && (now - tf_it->second.last_update).seconds() <= timeout_) {
+      status_msg.available_transforms.push_back(tf_str);
+      status_msg.transform_latencies_ms.push_back(tf_it->second.latency_ms);
+    } else {
+      status_msg.stale_transforms.push_back(tf_str);
+      status_msg.transform_latencies_ms.push_back(-1.0);
+      status_msg.all_ok = false;
     }
+  }
 
-    status_msg.cpu_usage = sys_monitor_.get_cpu_usage();
-    status_msg.mem_usage = sys_monitor_.get_mem_usage();
-    status_msg.disk_usage = sys_monitor_.get_disk_usage();
-    status_msg.cpu_temp = sys_monitor_.get_cpu_temp();
-    status_msg.gpu_usage = sys_monitor_.get_gpu_usage();
-    status_msg.gpu_temp = sys_monitor_.get_gpu_temp();
-    status_msg.gpu_mem_usage = sys_monitor_.get_gpu_mem();
+  status_msg.cpu_usage = sys_monitor_.get_cpu_usage();
+  status_msg.mem_usage = sys_monitor_.get_mem_usage();
+  status_msg.disk_usage = sys_monitor_.get_disk_usage();
+  status_msg.cpu_temp = sys_monitor_.get_cpu_temp();
+  status_msg.gpu_usage = sys_monitor_.get_gpu_usage();
+  status_msg.gpu_temp = sys_monitor_.get_gpu_temp();
+  status_msg.gpu_mem_usage = sys_monitor_.get_gpu_mem();
 
-    status_msg.vehicle_status_valid = vehicle_status.valid;
-    status_msg.vehicle_navigation_active = vehicle_status.navigation_active;
-    status_msg.vehicle_navigation_succeeded = vehicle_status.navigation_succeeded;
-    status_msg.vehicle_progress_percentage = vehicle_status.progress_percentage;
-    status_msg.vehicle_simple_status = vehicle_status.simple_status;
-    status_msg.vehicle_error_message = vehicle_status.error_message;
+  status_msg.vehicle_status_valid = vehicle_status.valid;
+  status_msg.vehicle_navigation_active = vehicle_status.navigation_active;
+  status_msg.vehicle_navigation_succeeded = vehicle_status.navigation_succeeded;
+  status_msg.vehicle_progress_percentage = vehicle_status.progress_percentage;
+  status_msg.vehicle_simple_status = vehicle_status.simple_status;
+  status_msg.vehicle_error_message = vehicle_status.error_message;
 
-    const auto & battery_state = data_store_.get_battery_state();
-    if (
-      battery_state.has_data &&
-      (now - battery_state.last_seen).seconds() <= battery_state_timeout_s_)
-    {
-      status_msg.battery_temperature = battery_state.temperature;
-      status_msg.battery_percentage = battery_state.percentage;
+  const auto battery_state = data_store_.get_battery_state();
+  if (
+    battery_state.has_data &&
+    (now - battery_state.last_seen).seconds() <= battery_state_timeout_s_)
+  {
+    status_msg.battery_temperature = battery_state.temperature;
+    status_msg.battery_percentage = battery_state.percentage;
+  }
+
+  faults = fault_detector_.detect_faults(data_store_, now);
+  std::unordered_map<std::string, size_t> supervisor_fault_by_module;
+  for (const auto & fault : faults) {
+    if (fault.action != ActionType::SUPERVISOR) {
+      continue;
     }
-
-    faults = fault_detector_.detect_faults(data_store_, now);
-    for (const auto & fault : faults) {
-      if (fault.action == ActionType::SUPERVISOR && should_publish_action(fault.module_name, fault.action, now)) {
+    const auto it = supervisor_fault_by_module.find(fault.module_name);
+    if (it == supervisor_fault_by_module.end()) {
+      if (should_publish_action(fault.module_name, fault.action, now)) {
+        supervisor_fault_by_module[fault.module_name] = pending_faults.size();
         pending_faults.push_back(fault);
       }
+      continue;
+    }
+
+    auto & merged_fault = pending_faults[it->second];
+    if (merged_fault.fault_key.find(fault.fault_key) == std::string::npos) {
+      merged_fault.fault_key += ";" + fault.fault_key;
+    }
+    if (merged_fault.reason.find(fault.reason) == std::string::npos) {
+      merged_fault.reason += " | " + fault.reason;
     }
   }
 
@@ -1641,9 +1892,10 @@ void Nav2MonitorNode::check_health()
       std_msgs::msg::String cmd;
       std::ostringstream oss;
       oss << '{'
-          << "\"module_name\":\"" << fault.module_name << "\","
+          << "\"module_name\":\"" << json_escape(fault.module_name) << "\","
+          << "\"fault_keys\":\"" << json_escape(fault.fault_key) << "\","
           << "\"nodes_to_restart\":[],"
-          << "\"reason\":\"" << fault.reason << "\"}";
+          << "\"reason\":\"" << json_escape(fault.reason) << "\"}";
       cmd.data = oss.str();
       supervisor_pub_->publish(cmd);
       monitor_reporter_.cache_supervisor_json(cmd.data, now);
@@ -1705,8 +1957,8 @@ void Nav2MonitorNode::update_navigation_mode_from_ttc(
   for (const auto & fault : faults) {
     if (
       fault.module_name == cfg.module_name &&
-      fault.fault_key.find("|collision:") != std::string::npos &&
-      fault.reason.find("ttc=") != std::string::npos)
+      fault.fault_type == "collision_detection" &&
+      fault.fault_model == "ttc")
     {
       ttc_abnormal = true;
       break;
@@ -1796,7 +2048,7 @@ void Nav2MonitorNode::publish_collision_ttc_markers()
   }
 
   const auto & cfg = fault_detector_.get_collision_detection_config();
-  const auto & chassis_state = data_store_.get_chassis_state();
+  const auto chassis_state = data_store_.get_chassis_state();
   const bool prediction_speed_fresh = chassis_state.prediction_speed_received &&
     (this->now() - chassis_state.prediction_speed_stamp).seconds() <= cfg.source_timeout_s;
   const std::string active_source = collision_prediction_router_.active_source();

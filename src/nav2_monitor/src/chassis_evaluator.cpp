@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <sstream>
 #include <utility>
 
 namespace nav2_monitor
@@ -78,6 +79,12 @@ void ChassisEvaluator::append_chassis_faults(
     fault.module_name = cfg.module_name;
     fault.level = level;
     fault.reason = reason;
+    fault.fault_type = fault_key_prefix.find("vehicle_state_source") != std::string::npos ?
+      "vehicle_state_source" :
+      (fault_key_prefix.find("vehicle_state_idle") != std::string::npos ?
+      "vehicle_state_idle" : "vehicle_state_anomaly");
+    fault.fault_model = "vehicle_state";
+    fault.fault_name = fault.fault_type;
     fault.action = ActionType::NONE;
     fault.safety_command = SafetyCommandType::NONE;
     fault.safety_slow_down_percentage = 0.0;
@@ -96,6 +103,12 @@ void ChassisEvaluator::append_chassis_faults(
     fault.module_name = cfg.module_name;
     fault.level = level;
     fault.reason = reason;
+    fault.fault_type = fault_key_prefix.find("vehicle_state_source") != std::string::npos ?
+      "vehicle_state_source" :
+      (fault_key_prefix.find("vehicle_state_idle") != std::string::npos ?
+      "vehicle_state_idle" : "vehicle_state_anomaly");
+    fault.fault_model = "vehicle_state";
+    fault.fault_name = fault.fault_type;
     fault.action = action;
     fault.safety_command =
       action == ActionType::SAFETY_SYSTEM ? cfg.safety_command : SafetyCommandType::NONE;
@@ -112,7 +125,7 @@ std::vector<FaultInfo> ChassisEvaluator::evaluate(
   const rclcpp::Time & now) const
 {
   std::vector<FaultInfo> faults;
-  const auto & chassis_state = store.get_chassis_state();
+  const auto chassis_state = store.get_chassis_state();
   const bool imu_enabled = !cfg.imu_topic.empty();
   const bool odom_enabled = !cfg.odom_topic.empty();
   const bool command_fresh = chassis_state.command_received &&
@@ -135,9 +148,38 @@ std::vector<FaultInfo> ChassisEvaluator::evaluate(
     std::fabs(chassis_state.imu_speed_estimate) >= cfg.imu_speed_threshold ||
     std::fabs(chassis_state.imu_yaw_rate) >= cfg.imu_yaw_rate_threshold);
   const bool command_source_ready = command_fresh;
-  const bool actual_source_available = imu_fresh || odom_fresh || (moto_fresh && chassis_state.moto_valid);
-  const bool actual_motion_has = imu_fresh ? imu_has : (odom_fresh ? odom_has : moto_has);
-  const std::string actual_source_name = imu_fresh ? "IMU" : (odom_fresh ? "raw odom" : "moto feedback");
+  const bool moto_available = moto_fresh && chassis_state.moto_valid;
+  const bool actual_source_available = imu_fresh || odom_fresh || moto_available;
+  const bool actual_motion_has = imu_has || odom_has || moto_has;
+  std::vector<std::string> available_sources;
+  std::vector<std::string> moving_sources;
+  std::vector<std::string> stationary_sources;
+  if (imu_fresh) {
+    available_sources.push_back("IMU");
+    (imu_has ? moving_sources : stationary_sources).push_back("IMU");
+  }
+  if (odom_fresh) {
+    available_sources.push_back("raw odom");
+    (odom_has ? moving_sources : stationary_sources).push_back("raw odom");
+  }
+  if (moto_available) {
+    available_sources.push_back("moto feedback");
+    (moto_has ? moving_sources : stationary_sources).push_back("moto feedback");
+  }
+
+  auto join_sources = [](const std::vector<std::string> & sources) {
+    std::ostringstream oss;
+    for (size_t idx = 0; idx < sources.size(); ++idx) {
+      if (idx > 0) {
+        oss << ",";
+      }
+      oss << sources[idx];
+    }
+    return oss.str();
+  };
+  const std::string available_source_names = join_sources(available_sources);
+  const std::string moving_source_names = join_sources(moving_sources);
+  const std::string stationary_source_names = join_sources(stationary_sources);
 
   bool source_abnormal = false;
   bool anomaly_abnormal = false;
@@ -165,7 +207,7 @@ std::vector<FaultInfo> ChassisEvaluator::evaluate(
     if (command_has && !actual_motion_has) {
       anomaly_abnormal = true;
       anomaly_reason =
-        "Command active but vehicle is not moving according to " + actual_source_name +
+        "Command active but vehicle is not moving according to " + available_source_names +
         " (possible emergency stop or chassis fault)";
       idle_tracking_ = false;
     } else if (!command_has && actual_motion_has) {
@@ -177,7 +219,8 @@ std::vector<FaultInfo> ChassisEvaluator::evaluate(
         anomaly_abnormal = true;
         anomaly_reason =
           "Vehicle still moving without command after coast grace (" +
-          std::to_string(coast_elapsed) + "s, possible chassis damage or feedback abnormal)";
+          std::to_string(coast_elapsed) + "s, moving_sources=" + moving_source_names +
+          ", possible chassis damage or feedback abnormal)";
         idle_tracking_ = false;
       } else {
         if (idle_tracking_) {
@@ -194,11 +237,11 @@ std::vector<FaultInfo> ChassisEvaluator::evaluate(
         idle_tracking_ = true;
         idle_start_time_ = now;
         last_idle_progress_bucket_ = 0;
-        RCLCPP_INFO(
-          logger_,
-          "[vehicle_state_judge] idle start: idle_timeout=%.1fs command=false motion=false source=%s",
-          cfg.idle_timeout_s,
-          actual_source_name.c_str());
+          RCLCPP_INFO(
+            logger_,
+            "[vehicle_state_judge] idle start: idle_timeout=%.1fs command=false motion=false sources=%s",
+            cfg.idle_timeout_s,
+            available_source_names.c_str());
       } else if ((now - idle_start_time_).seconds() >= cfg.idle_timeout_s) {
         idle_abnormal = true;
         idle_reason = "Vehicle stationary without command for too long";
@@ -209,17 +252,18 @@ std::vector<FaultInfo> ChassisEvaluator::evaluate(
           last_idle_progress_bucket_ = bucket;
           RCLCPP_INFO(
             logger_,
-            "[vehicle_state_judge] idle counting: elapsed=%ds / %.1fs command=false motion=false source=%s",
+            "[vehicle_state_judge] idle counting: elapsed=%ds / %.1fs command=false motion=false sources=%s",
             bucket, cfg.idle_timeout_s,
-            actual_source_name.c_str());
+            available_source_names.c_str());
         }
       }
     } else {
       if (idle_tracking_) {
         RCLCPP_INFO(
           logger_,
-          "[vehicle_state_judge] idle reset: command=true motion=true source=%s elapsed=%.2fs",
-          actual_source_name.c_str(),
+          "[vehicle_state_judge] idle reset: command=true motion=true moving_sources=%s stationary_sources=%s elapsed=%.2fs",
+          moving_source_names.c_str(),
+          stationary_source_names.c_str(),
           (now - idle_start_time_).seconds());
       }
       idle_tracking_ = false;

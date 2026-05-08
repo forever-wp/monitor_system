@@ -32,6 +32,8 @@ public:
     uint8_t source_mask,
     const rclcpp::Time & stamp);
 
+  void clear_source(uint8_t source_mask, const rclcpp::Time & now);
+
   void decay_to(const rclcpp::Time & now);
 
   msg::VoxelGrid export_grid(const std_msgs::msg::Header & header) const;
@@ -41,6 +43,7 @@ public:
 private:
   VoxelKey make_key(double x, double y, double z) const;
   void decay_state_to(VoxelState & state, const rclcpp::Time & now) const;
+  void recompute_state(VoxelState & state) const;
 
   double resolution_xy_{0.05};
   double resolution_z_{0.10};

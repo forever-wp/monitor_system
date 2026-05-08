@@ -534,6 +534,44 @@ modules:
   std::remove(config_path.c_str());
 }
 
+TEST(MonitorDataStoreTest, WatchTopicFrequencyUsesReceiveTimeNotHeaderStamp)
+{
+  nav2_monitor::MonitorDataStore store;
+  store.set_watch_topic_publisher("/cmd_vel", true);
+
+  const auto stale_header_stamp = rclcpp::Time(100, 0, RCL_ROS_TIME);
+  for (int i = 0; i < 5; ++i) {
+    store.add_watch_topic_sample(
+      "/cmd_vel",
+      stale_header_stamp,
+      rclcpp::Time(200, static_cast<uint32_t>(i * 100000000), RCL_ROS_TIME),
+      true);
+  }
+
+  const double hz = store.get_watch_topic_frequency(
+    "/cmd_vel", rclcpp::Time(200, 450000000, RCL_ROS_TIME), 5.0);
+  EXPECT_NEAR(hz, 10.0, 0.1);
+}
+
+TEST(MonitorDataStoreTest, WatchTopicFrequencyDropsToZeroAfterReceiveGap)
+{
+  nav2_monitor::MonitorDataStore store;
+  store.set_watch_topic_publisher("/cmd_vel", true);
+
+  for (int i = 0; i < 3; ++i) {
+    const auto stamp = rclcpp::Time(300, static_cast<uint32_t>(i * 100000000), RCL_ROS_TIME);
+    store.add_watch_topic_sample("/cmd_vel", stamp, stamp, true);
+  }
+
+  EXPECT_NEAR(
+    store.get_watch_topic_frequency("/cmd_vel", rclcpp::Time(300, 250000000, RCL_ROS_TIME), 10.0),
+    10.0,
+    0.1);
+  EXPECT_DOUBLE_EQ(
+    store.get_watch_topic_frequency("/cmd_vel", rclcpp::Time(300, 610000000, RCL_ROS_TIME), 10.0),
+    0.0);
+}
+
 TEST_F(FaultDetectorTest, HealthyModuleHasNoFaults)
 {
   const std::string config_text = R"(
@@ -3385,7 +3423,7 @@ modules:
   const auto now = node->now();
   store.mark_node_seen("controller_server", now);
   store.add_feedback_sample(
-    "navigation", "/controller/feedback", "tracking_error", 0.9, true, now);
+    "navigation", "/controller/feedback", "tracking_error", 0.9, true, now, now);
 
   auto faults_first = detector.detect_faults(store, now);
   EXPECT_TRUE(faults_first.empty());

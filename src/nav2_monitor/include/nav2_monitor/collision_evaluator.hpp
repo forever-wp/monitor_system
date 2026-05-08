@@ -137,6 +137,7 @@ private:
   mutable RuntimeMotionDirection stable_motion_direction_{RuntimeMotionDirection::UNKNOWN};
   mutable RuntimeMotionDirection pending_motion_direction_{RuntimeMotionDirection::UNKNOWN};
   mutable size_t pending_motion_direction_count_{0};
+  mutable rclcpp::Time last_source_fallback_log_time_{0, 0, RCL_ROS_TIME};
   mutable CollisionTtcVisualizationState ttc_visualization_;
 };
 
