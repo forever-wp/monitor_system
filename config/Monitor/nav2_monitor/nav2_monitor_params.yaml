@@ -15,7 +15,10 @@ nav2_monitor:
     reporter.cmd_correlation_window_s: 2.0  # reporter 关联安全/重启动作与事件的时间窗（秒）
     battery_state_topic: "/battery_state"  # 电池状态订阅 topic
     battery_state_timeout_s: 90.0  # 电池数据有效超时时间（秒）
-    topic_qos_overrides: []  # 特殊 topic QoS 兜底覆盖，格式 "/topic:reliable|best_effort:volatile|transient_local[:depth]"；默认自动匹配发布端 QoS
+    # 特殊 topic QoS 兜底覆盖；默认不配置，节点自动匹配发布端 QoS
+    # 注意 ROS 2 参数 YAML 不支持无类型空数组 `[]`，需要覆盖时再取消注释并填入字符串列表
+    # topic_qos_overrides:
+    #   - "/topic:reliable|best_effort:volatile|transient_local[:depth]"
 
     fault_config: "/opt/ry/config/Monitor/nav2_monitor/fault_detector_config.yaml"  # 默认故障检测配置文件路径
     fault_config_reload_enabled: true  # 是否启用故障配置热重载

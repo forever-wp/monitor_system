@@ -2,6 +2,7 @@
 #define NAV2_MONITOR__NAV2_MONITOR_NODE_HPP_
 
 #include <rclcpp/rclcpp.hpp>
+#include <rclcpp/executors/multi_threaded_executor.hpp>
 #include <collision_voxel_layer/msg/voxel_grid.hpp>
 #include <nav2_monitor/msg/monitor_status.hpp>
 #include <nav2_monitor/msg/fault_event.hpp>
@@ -48,6 +49,16 @@ struct TransformInfo
 {
   rclcpp::Time last_update;
   double latency_ms;
+};
+
+struct WatchTopicCounter
+{
+  rclcpp::Time last_received{0, 0, RCL_ROS_TIME};
+  size_t valid_count{0};
+  size_t empty_count{0};
+  size_t reported_empty_count{0};
+  std::deque<std::pair<rclcpp::Time, size_t>> frequency_samples;
+  double smoothed_frequency{0.0};
 };
 
 class Nav2MonitorNode : public rclcpp::Node
@@ -107,6 +118,10 @@ private:
   void load_topic_qos_overrides();
   void configure_task_status_subscription();
   void update_task_selected_fault_config(bool force_reload);
+  rclcpp::SubscriptionOptions make_subscription_options(
+    const rclcpp::CallbackGroup::SharedPtr & callback_group) const;
+  void record_watch_topic_receive(const std::string & topic, bool valid_data);
+  void flush_watch_topic_counters(const rclcpp::Time & now);
   bool update_current_nav_task_locked(const std::string & task_name, const std::string & change_source);
   std::optional<TopicQosOverride> find_topic_qos_override(const std::string & topic) const;
   rclcpp::QoS apply_topic_qos_override(
@@ -136,6 +151,11 @@ private:
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr collision_ttc_markers_pub_;
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr navigation_mode_pub_;
   rclcpp::GenericSubscription::SharedPtr moto_sub_;
+  rclcpp::CallbackGroup::SharedPtr sensor_callback_group_;
+  rclcpp::CallbackGroup::SharedPtr chassis_callback_group_;
+  rclcpp::CallbackGroup::SharedPtr watch_callback_group_;
+  rclcpp::CallbackGroup::SharedPtr timer_callback_group_;
+  rclcpp::CallbackGroup::SharedPtr default_callback_group_;
 
   std::mutex mtx_;
   std::vector<std::string> target_nodes_;
@@ -145,6 +165,9 @@ private:
   bool monitor_targets_from_fault_config_{false};
   std::map<std::string, TopicInfo> topic_info_;
   std::map<std::string, rclcpp::SubscriptionBase::SharedPtr> topic_subs_;
+  std::mutex watch_topic_counter_mtx_;
+  std::map<std::string, WatchTopicCounter> watch_topic_counters_;
+  rclcpp::Time last_watch_counter_flush_time_{0, 0, RCL_ROS_TIME};
 
   std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
   std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
@@ -172,7 +195,9 @@ private:
   std::string chassis_imu_topic_;
   std::string moto_topic_type_;
   rclcpp::Time chassis_imu_last_stamp_{0, 0, RCL_ROS_TIME};
+  rclcpp::Time chassis_imu_last_process_time_{0, 0, RCL_ROS_TIME};
   bool chassis_imu_time_initialized_{false};
+  double chassis_imu_process_period_s_{0.02};
   double chassis_imu_speed_estimate_{0.0};
   double chassis_imu_acc_bias_{0.0};
   bool chassis_imu_bias_calibrated_{false};

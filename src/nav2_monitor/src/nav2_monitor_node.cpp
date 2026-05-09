@@ -406,6 +406,12 @@ Nav2MonitorNode::Nav2MonitorNode()
     check_rate = 1.0;
   }
 
+  sensor_callback_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  chassis_callback_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  watch_callback_group_ = this->create_callback_group(rclcpp::CallbackGroupType::Reentrant);
+  timer_callback_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  default_callback_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+
   tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
   tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
   pub_ = this->create_publisher<msg::MonitorStatus>("/nav2_monitor/status", 10);
@@ -429,10 +435,12 @@ Nav2MonitorNode::Nav2MonitorNode()
 
   algorithm_feedback_sub_ = this->create_subscription<msg::AlgorithmFeedback>(
     algorithm_feedback_topic_, build_topic_subscription_qos(algorithm_feedback_topic_, rclcpp::QoS(50), 50),
-    std::bind(&Nav2MonitorNode::on_algorithm_feedback, this, std::placeholders::_1));
+    std::bind(&Nav2MonitorNode::on_algorithm_feedback, this, std::placeholders::_1),
+    make_subscription_options(default_callback_group_));
   battery_sub_ = this->create_subscription<sensor_msgs::msg::BatteryState>(
     battery_state_topic_, build_topic_subscription_qos(battery_state_topic_, rclcpp::SensorDataQoS(), 10),
-    std::bind(&Nav2MonitorNode::on_battery_state, this, std::placeholders::_1));
+    std::bind(&Nav2MonitorNode::on_battery_state, this, std::placeholders::_1),
+    make_subscription_options(default_callback_group_));
   configure_task_status_subscription();
 
   std::string vehicle_status_file = this->declare_parameter<std::string>(
@@ -443,11 +451,13 @@ Nav2MonitorNode::Nav2MonitorNode()
 
   scan_timer_ = this->create_wall_timer(
     std::chrono::milliseconds(static_cast<int>(1000.0 / scan_rate)),
-    std::bind(&Nav2MonitorNode::scan_topology, this));
+    std::bind(&Nav2MonitorNode::scan_topology, this),
+    timer_callback_group_);
 
   check_timer_ = this->create_wall_timer(
     std::chrono::milliseconds(static_cast<int>(1000.0 / check_rate)),
-    std::bind(&Nav2MonitorNode::check_health, this));
+    std::bind(&Nav2MonitorNode::check_health, this),
+    timer_callback_group_);
 
   param_callback_ = this->add_on_set_parameters_callback(
     std::bind(&Nav2MonitorNode::on_parameter_change, this, std::placeholders::_1));
@@ -535,12 +545,20 @@ void Nav2MonitorNode::on_chassis_imu(const sensor_msgs::msg::Imu::SharedPtr msg)
 {
   const auto stamp = (msg->header.stamp.sec != 0 || msg->header.stamp.nanosec != 0) ?
     rclcpp::Time(msg->header.stamp) : this->now();
+  const auto receive_time = this->now();
 
   if (!chassis_imu_time_initialized_) {
     chassis_imu_last_stamp_ = stamp;
+    chassis_imu_last_process_time_ = receive_time;
     chassis_imu_time_initialized_ = true;
+    data_store_.set_imu_motion(0.0, msg->angular_velocity.z, stamp);
     return;
   }
+
+  if ((receive_time - chassis_imu_last_process_time_).seconds() < chassis_imu_process_period_s_) {
+    return;
+  }
+  chassis_imu_last_process_time_ = receive_time;
 
   const double dt = (stamp - chassis_imu_last_stamp_).seconds();
   chassis_imu_last_stamp_ = stamp;
@@ -585,6 +603,85 @@ void Nav2MonitorNode::on_chassis_imu(const sensor_msgs::msg::Imu::SharedPtr msg)
   }
 
   data_store_.set_imu_motion(chassis_imu_speed_estimate_, yaw_rate, stamp);
+}
+
+rclcpp::SubscriptionOptions Nav2MonitorNode::make_subscription_options(
+  const rclcpp::CallbackGroup::SharedPtr & callback_group) const
+{
+  rclcpp::SubscriptionOptions options;
+  options.callback_group = callback_group;
+  return options;
+}
+
+void Nav2MonitorNode::record_watch_topic_receive(const std::string & topic, bool valid_data)
+{
+  const auto now = this->now();
+  std::lock_guard<std::mutex> lock(watch_topic_counter_mtx_);
+  auto & counter = watch_topic_counters_[topic];
+  if (!valid_data) {
+    ++counter.empty_count;
+    return;
+  }
+
+  counter.last_received = now;
+  ++counter.valid_count;
+}
+
+void Nav2MonitorNode::flush_watch_topic_counters(const rclcpp::Time & now)
+{
+  last_watch_counter_flush_time_ = now;
+
+  struct WatchTopicCounterDelta
+  {
+    rclcpp::Time last_received{0, 0, RCL_ROS_TIME};
+    size_t empty_delta{0};
+    double frequency{0.0};
+  };
+
+  std::map<std::string, WatchTopicCounterDelta> counters;
+  {
+    std::lock_guard<std::mutex> lock(watch_topic_counter_mtx_);
+    for (auto & [topic, counter] : watch_topic_counters_) {
+      counter.frequency_samples.push_back({now, counter.valid_count});
+      while (
+        counter.frequency_samples.size() > 2U &&
+        (now - counter.frequency_samples.front().first).seconds() > 1.0)
+      {
+        counter.frequency_samples.pop_front();
+      }
+
+      double frequency = 0.0;
+      if (counter.frequency_samples.size() >= 2U) {
+        const auto & first = counter.frequency_samples.front();
+        const auto & last = counter.frequency_samples.back();
+        const double span = (last.first - first.first).seconds();
+        if (span > 0.0 && last.second >= first.second) {
+          frequency = static_cast<double>(last.second - first.second) / span;
+        }
+      }
+      counter.smoothed_frequency = frequency;
+      counters[topic] = WatchTopicCounterDelta{
+        counter.last_received,
+        counter.empty_count - counter.reported_empty_count,
+        counter.smoothed_frequency};
+      counter.reported_empty_count = counter.empty_count;
+    }
+  }
+
+  for (const auto & [topic, counter] : counters) {
+    if (counter.last_received.nanoseconds() == 0) {
+      data_store_.set_watch_topic_observation(
+        topic, 0.0, now, now, false, counter.empty_delta);
+      continue;
+    }
+
+    const double idle_s = (now - counter.last_received).seconds();
+    const double min_hz = fault_detector_.get_watch_topic_min_hz(topic);
+    const double idle_timeout_s = min_hz > 0.0 ? std::clamp(3.0 / min_hz, 0.3, 2.0) : 0.3;
+    const double frequency = idle_s > idle_timeout_s ? 0.0 : counter.frequency;
+    data_store_.set_watch_topic_observation(
+      topic, frequency, counter.last_received, counter.last_received, true, counter.empty_delta);
+  }
 }
 
 void Nav2MonitorNode::on_collision_control_source_state(const std_msgs::msg::String::SharedPtr msg)
@@ -1342,6 +1439,9 @@ void Nav2MonitorNode::clear_watch_topic_subscriptions()
 {
   topic_subs_.clear();
   topic_info_.clear();
+  std::lock_guard<std::mutex> lock(watch_topic_counter_mtx_);
+  watch_topic_counters_.clear();
+  last_watch_counter_flush_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
 }
 
 void Nav2MonitorNode::apply_loaded_fault_config()
@@ -1424,19 +1524,22 @@ void Nav2MonitorNode::configure_chassis_monitoring()
     const auto command_qos = build_topic_subscription_qos(command_topic_, rclcpp::QoS(20), 20);
     command_sub_ = this->create_subscription<std_msgs::msg::String>(
       command_topic_, command_qos,
-      std::bind(&Nav2MonitorNode::on_command, this, std::placeholders::_1));
+      std::bind(&Nav2MonitorNode::on_command, this, std::placeholders::_1),
+      make_subscription_options(default_callback_group_));
   }
   if (!odom_topic_.empty()) {
     const auto odom_qos = build_topic_subscription_qos(odom_topic_, rclcpp::SensorDataQoS(), 10);
     odom_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
       odom_topic_, odom_qos,
-      std::bind(&Nav2MonitorNode::on_odom, this, std::placeholders::_1));
+      std::bind(&Nav2MonitorNode::on_odom, this, std::placeholders::_1),
+      make_subscription_options(sensor_callback_group_));
   }
   if (!chassis_imu_topic_.empty()) {
     const auto imu_qos = build_topic_subscription_qos(chassis_imu_topic_, rclcpp::SensorDataQoS(), 5);
     chassis_imu_sub_ = this->create_subscription<sensor_msgs::msg::Imu>(
       chassis_imu_topic_, imu_qos,
-      std::bind(&Nav2MonitorNode::on_chassis_imu, this, std::placeholders::_1));
+      std::bind(&Nav2MonitorNode::on_chassis_imu, this, std::placeholders::_1),
+      make_subscription_options(chassis_callback_group_));
   }
   RCLCPP_INFO(
     get_logger(), "Vehicle state judge enabled: command=%s moto=%s odom=%s imu=%s",
@@ -1489,7 +1592,8 @@ void Nav2MonitorNode::configure_collision_monitoring()
       collision_prediction_router_.control_source_state_topic(), state_fallback, 1);
     collision_control_source_state_sub_ = this->create_subscription<std_msgs::msg::String>(
       collision_prediction_router_.control_source_state_topic(), state_qos,
-      std::bind(&Nav2MonitorNode::on_collision_control_source_state, this, std::placeholders::_1));
+      std::bind(&Nav2MonitorNode::on_collision_control_source_state, this, std::placeholders::_1),
+      make_subscription_options(default_callback_group_));
   }
 
   std::ostringstream prediction_routes_oss;
@@ -1508,14 +1612,16 @@ void Nav2MonitorNode::configure_collision_monitoring()
         const geometry_msgs::msg::Twist::SharedPtr msg)
       {
         this->on_collision_prediction_cmd_vel(source, topic, msg);
-      });
+      },
+      make_subscription_options(default_callback_group_));
   }
   if (!cfg.voxel_topic.empty()) {
     auto voxel_fallback = rclcpp::QoS(1).transient_local().reliable();
     const auto voxel_qos = build_topic_subscription_qos(cfg.voxel_topic, voxel_fallback, 1);
     collision_voxel_sub_ = this->create_subscription<collision_voxel_layer::msg::VoxelGrid>(
       cfg.voxel_topic, voxel_qos,
-      std::bind(&Nav2MonitorNode::on_collision_voxel_grid, this, std::placeholders::_1));
+      std::bind(&Nav2MonitorNode::on_collision_voxel_grid, this, std::placeholders::_1),
+      make_subscription_options(sensor_callback_group_));
   }
   if (!cfg.scan_topic.empty()) {
     auto scan_fallback = rclcpp::SensorDataQoS();
@@ -1523,7 +1629,8 @@ void Nav2MonitorNode::configure_collision_monitoring()
     const auto scan_qos = build_topic_subscription_qos(cfg.scan_topic, scan_fallback, 10);
     collision_scan_sub_ = this->create_subscription<sensor_msgs::msg::LaserScan>(
       cfg.scan_topic, scan_qos,
-      std::bind(&Nav2MonitorNode::on_collision_scan, this, std::placeholders::_1));
+      std::bind(&Nav2MonitorNode::on_collision_scan, this, std::placeholders::_1),
+      make_subscription_options(sensor_callback_group_));
   }
   if (!cfg.pointcloud_topic.empty()) {
     auto pointcloud_fallback = rclcpp::SensorDataQoS();
@@ -1531,7 +1638,8 @@ void Nav2MonitorNode::configure_collision_monitoring()
     const auto pointcloud_qos = build_topic_subscription_qos(cfg.pointcloud_topic, pointcloud_fallback, 3);
     collision_pointcloud_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
       cfg.pointcloud_topic, pointcloud_qos,
-      std::bind(&Nav2MonitorNode::on_collision_pointcloud, this, std::placeholders::_1));
+      std::bind(&Nav2MonitorNode::on_collision_pointcloud, this, std::placeholders::_1),
+      make_subscription_options(sensor_callback_group_));
   }
   if (!cfg.ultrasonic_topic.empty()) {
     auto ultrasonic_fallback = rclcpp::QoS(10);
@@ -1539,7 +1647,8 @@ void Nav2MonitorNode::configure_collision_monitoring()
     const auto ultrasonic_qos = build_topic_subscription_qos(cfg.ultrasonic_topic, ultrasonic_fallback, 10);
     collision_ultrasonic_sub_ = this->create_subscription<std_msgs::msg::String>(
       cfg.ultrasonic_topic, ultrasonic_qos,
-      std::bind(&Nav2MonitorNode::on_collision_ultrasonic, this, std::placeholders::_1));
+      std::bind(&Nav2MonitorNode::on_collision_ultrasonic, this, std::placeholders::_1),
+      make_subscription_options(default_callback_group_));
   }
   for (const auto & zone : cfg.zones) {
     if (
@@ -1593,63 +1702,20 @@ void Nav2MonitorNode::subscribe_watch_topics()
 
     const auto qos = build_watch_topic_qos(topic, type);
 
-    if (type == "sensor_msgs/msg/Imu") {
-      auto sub = this->create_subscription<sensor_msgs::msg::Imu>(
-        topic, qos,
-        [this, topic](const sensor_msgs::msg::Imu::SharedPtr msg) {
-          data_store_.add_watch_topic_sample(topic, stamp_or_now(msg->header.stamp), this->now(), true);
-        });
-      topic_subs_[topic] = sub;
-      continue;
-    }
-
-    if (type == "sensor_msgs/msg/LaserScan") {
-      auto sub = this->create_subscription<sensor_msgs::msg::LaserScan>(
-        topic, qos,
-        [this, topic](const sensor_msgs::msg::LaserScan::SharedPtr msg) {
-          data_store_.add_watch_topic_sample(topic, stamp_or_now(msg->header.stamp), this->now(), true);
-        });
-      topic_subs_[topic] = sub;
-      continue;
-    }
-
-    if (type == "sensor_msgs/msg/PointCloud2") {
-      auto sub = this->create_subscription<sensor_msgs::msg::PointCloud2>(
-        topic, qos,
-        [this, topic](const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
-          data_store_.add_watch_topic_sample(topic, stamp_or_now(msg->header.stamp), this->now(), true);
-        });
-      topic_subs_[topic] = sub;
-      continue;
-    }
-
-    if (type == "nav_msgs/msg/Odometry") {
-      auto sub = this->create_subscription<nav_msgs::msg::Odometry>(
-        topic, qos,
-        [this, topic](const nav_msgs::msg::Odometry::SharedPtr msg) {
-          data_store_.add_watch_topic_sample(topic, stamp_or_now(msg->header.stamp), this->now(), true);
-        });
-      topic_subs_[topic] = sub;
-      continue;
-    }
-
     auto sub = this->create_generic_subscription(
       topic, type, qos,
       [this, topic](std::shared_ptr<rclcpp::SerializedMessage> msg) {
         if (msg->size() == 0) {
-          const auto now = this->now();
-          data_store_.add_watch_topic_sample(topic, now, now, false);
-          const auto state = data_store_.get_watch_topic_state(topic);
-          const size_t empty_count = state.has_value() ? state->empty_msg_count : 0U;
+          record_watch_topic_receive(topic, false);
           RCLCPP_WARN_THROTTLE(
             get_logger(), *get_clock(), 5000,
-            "Topic '%s' empty msg (count: %zu)", topic.c_str(), empty_count);
+            "Topic '%s' empty msg", topic.c_str());
           return;
         }
 
-        auto now = this->now();
-        data_store_.add_watch_topic_sample(topic, now, now, true);
-      });
+        record_watch_topic_receive(topic, true);
+      },
+      make_subscription_options(watch_callback_group_));
     topic_subs_[topic] = sub;
   }
 }
@@ -1730,6 +1796,7 @@ void Nav2MonitorNode::check_health()
 {
   const auto now = this->now();
   const auto vehicle_status = vehicle_monitor_->get_status();
+  flush_watch_topic_counters(now);
 
   msg::MonitorStatus status_msg;
   std::vector<FaultInfo> pending_faults;
@@ -2366,7 +2433,10 @@ rcl_interfaces::msg::SetParametersResult Nav2MonitorNode::on_parameter_change(
 int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<nav2_monitor::Nav2MonitorNode>());
+  auto node = std::make_shared<nav2_monitor::Nav2MonitorNode>();
+  rclcpp::executors::MultiThreadedExecutor executor(rclcpp::ExecutorOptions(), 4);
+  executor.add_node(node);
+  executor.spin();
   rclcpp::shutdown();
   return 0;
 }

@@ -2,6 +2,8 @@
 
 本文档描述 `monitor_system` 的项目级功能边界、数据链路、流程图和模块关系。模块级参数细节请继续参考各包 README 与 [INTERFACES.md](../INTERFACES.md)。
 
+后续模块独立化、可靠数据联通、QoS 分层、CPU 满载降级与上层确认边界的完整方案见：[监控系统模块独立化与可靠数据联通设计方案](monitor_modular_isolation_design.md)。
+
 ## 1. 系统定位
 
 `monitor_system` 是机器人本机安全监控与执行链路，不直接承担 MQTT 或云端连接。
@@ -265,4 +267,3 @@ env ROS_DOMAIN_ID=66 ROS_LOG_DIR=/tmp/ros_logs /bin/bash -lc 'source install/set
 - 安全动作集中仲裁，避免多点直接控制底盘。
 - 人工介入提醒和云端上报解耦，本项目只发布本机 ROS topic。
 - 配置统一迁移到 `/opt/ry/config/Monitor`，仓库保持镜像文件用于版本管理。
-

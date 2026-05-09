@@ -138,6 +138,28 @@ void MonitorDataStore::set_watch_topic_frequency(const std::string & topic, doub
   }
 }
 
+void MonitorDataStore::set_watch_topic_observation(
+  const std::string & topic,
+  double frequency,
+  const rclcpp::Time & sample_stamp,
+  const rclcpp::Time & receive_time,
+  bool valid_data,
+  size_t empty_msg_delta)
+{
+  std::lock_guard<std::mutex> lock(mtx_);
+  auto & state = watch_topics_[topic];
+  state.empty_msg_count += empty_msg_delta;
+  if (!valid_data) {
+    return;
+  }
+
+  state.has_valid_data = true;
+  state.has_frequency_override = true;
+  state.frequency = std::max(0.0, frequency);
+  state.last_seen = sample_stamp;
+  state.last_received = receive_time;
+}
+
 void MonitorDataStore::add_watch_topic_sample(
   const std::string & topic,
   const rclcpp::Time & sample_stamp,

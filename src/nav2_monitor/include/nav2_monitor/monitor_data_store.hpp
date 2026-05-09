@@ -110,6 +110,13 @@ public:
   void set_node_active(const std::string & node_name, bool active, const rclcpp::Time & now);
   void set_watch_topic_publisher(const std::string & topic, bool has_publisher);
   void set_watch_topic_frequency(const std::string & topic, double frequency);
+  void set_watch_topic_observation(
+    const std::string & topic,
+    double frequency,
+    const rclcpp::Time & sample_stamp,
+    const rclcpp::Time & receive_time,
+    bool valid_data,
+    size_t empty_msg_delta);
   void add_watch_topic_sample(
     const std::string & topic,
     const rclcpp::Time & sample_stamp,

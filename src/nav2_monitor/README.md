@@ -8,6 +8,7 @@
 轻量级 Nav2 监控、故障检测与安全联动系统。
 
 项目级数据链路见 [项目架构与数据链路](../../docs/project_architecture.md)。
+后续模块独立化与可靠数据联通方案见 [监控系统模块独立化与可靠数据联通设计方案](../../docs/monitor_modular_isolation_design.md)。
 
 ## 设计原则
 

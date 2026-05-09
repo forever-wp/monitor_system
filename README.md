@@ -7,6 +7,7 @@
 ## 文档入口
 
 - [项目架构与数据链路](docs/project_architecture.md)：项目级总览、数据链路、功能图、流程图。
+- [监控系统模块独立化与可靠数据联通设计方案](docs/monitor_modular_isolation_design.md)：面向“模块互不影响、数据可靠联通、CPU 满载可降级”的后续架构设计。
 - [接口说明](INTERFACES.md)：topic、message、参数和包间接口。
 - [algorithm_feedback_adapter](src/algorithm_feedback_adapter/README.md)：算法 topic 适配为 `AlgorithmFeedback`。
 - [nav2_monitor](src/nav2_monitor/README.md)：状态采集、故障判断、事件上报、安全仲裁。
@@ -92,4 +93,3 @@ config/Monitor/nav2_monitor/
 config/Monitor/collision_voxel_layer/
 config/Monitor/safety_emergency_executor/
 ```
-
