@@ -426,6 +426,7 @@ flowchart TB
 - 使用轻量 generic subscription 统计接收频率。
 - 不反序列化高频大消息，除非该 topic 的业务确实需要解析。
 - 输出每个 topic 的发布者状态、接收频率、最后接收时间、是否有效。
+- 当前落地版本输出 `std_msgs/String` JSON，后续可平滑升级为专用 `MonitorTopicStates` 消息。
 
 输入：
 
@@ -440,6 +441,14 @@ flowchart TB
 输出：
 
 - `/monitor/topic_states`
+
+当前 JSON 字段：
+
+- `stamp`：状态发布时间，单位秒。
+- `source_module`：固定为 `topic_frequency_monitor`。
+- `items[].topic`、`items[].type`：被监测 topic 和类型。
+- `items[].has_publisher`、`items[].has_data`、`items[].stale`、`items[].low_frequency`：发布者、数据有效性、新鲜度和低频状态。
+- `items[].frequency_hz`、`items[].min_hz`、`items[].age_s`、`items[].idle_timeout_s`：频率与超时量化字段。
 
 设计要点：
 
@@ -1049,7 +1058,7 @@ safety_emergency_executor
 - 新配置推荐写 `actions: ["nodemanager"]`。
 - 旧模块配置字段 `supervisor: 1` 暂时继续可用，新字段推荐为 `nodemanager: 1`。
 - 旧 `/supervisor/cmd` 可由参数显式配置继续使用，但默认值迁移到 `/nodemanager/cmd`。
-- `FaultEvent.msg` 中旧枚举 `SUPERVISOR=1` 短期保留，新增消息版本时再改为 `NODEMANAGER=1` 或新增别名。
+- `FaultEvent.msg` 中已新增 `NODEMANAGER=1`，并短期保留旧枚举 `SUPERVISOR=1` 作为兼容别名。
 
 收益：
 
@@ -1057,13 +1066,13 @@ safety_emergency_executor
 - 后续文档、配置和日志语义更清晰。
 - 迁移期不打断实机已有配置。
 
-### 阶段 1：保留现有 `nav2_monitor`，抽出频率模块
+### 阶段 1：抽出频率模块并固定状态总线
 
 目标：
 
 - 将 watch topic 频率检测独立为 `topic_frequency_monitor_node`。
-- `nav2_monitor` 改为订阅 `/monitor/topic_states`。
-- 暂时保留原有 topic 直接监听作为回退开关。
+- `nav2_monitor_aggregator` 固定订阅 `/monitor/topic_states`。
+- 移除 aggregator 内部原有 topic 直接监听回退路径。
 
 收益：
 
@@ -1590,18 +1599,16 @@ env ROS_DOMAIN_ID=66 ros2 topic info /livox/imu --verbose
 6. 抽出 `collision_monitor_node`。
 7. 最后整理 `nav2_monitor_aggregator_node`，只保留低频状态汇总和本机输出。
 
-### 17.1 第一阶段最小可落地版本
+### 17.1 当前实现状态
 
-为了降低一次性改造风险，建议第一阶段只做：
+本轮实现按完整新方案落地，不再保留旧直连兼容路径：
 
-- 保留现有 `nav2_monitor` 主功能。
-- 完成 `nodemanager` 命名兼容层，默认使用 `/nodemanager/cmd`，旧 `/supervisor/cmd` 可配置回退。
-- 抽出 `topic_frequency_monitor_node`。
-- 新增 `/monitor/topic_states`。
-- aggregator 或现有 `nav2_monitor` 消费 topic state。
-- 保留旧 watch topic 直连作为回退开关。
-
-第一阶段成功后，再抽 `vehicle_state_judge_node` 和 `collision_monitor_node`。这样可以避免同时改动频率、小车状态、碰撞和上报链路，方便定位问题。
+- 已完成 `nodemanager` 命名兼容层，默认使用 `/nodemanager/cmd`。
+- 已抽出 `topic_frequency_monitor_node`，独立 launch 和独立 `/opt` 配置。
+- 已新增 `/monitor/topic_states` JSON 状态输出。
+- 已抽出 `vehicle_state_judge_node`、`node_tf_monitor_node`、`battery_monitor_node`、`algorithm_feedback_monitor_node`、`collision_monitor_node`。
+- `nav2_monitor_aggregator` 固定消费 `/monitor/*_state`，不再直连 watch topic、底盘反馈、算法反馈原始输入或碰撞原始输入。
+- 后续部署直接按本方案启动全套独立模块和 aggregator。
 
 ## 18. 结论
 

@@ -1,0 +1,8 @@
+vehicle_state_judge:
+  ros__parameters:
+    # 独立小车状态判断节点读取同一份 fault_config 中的 vehicle_state_judge 段。
+    fault_config: "/opt/ry/config/Monitor/nav2_monitor/fault_detector_config.yaml"
+    config_profile_topic: "/monitor/config_profile"
+    publish_topic: "/monitor/vehicle_state"
+    human_intervention_topic: "/nav2_monitor/human_intervention"
+    check_rate_hz: 10.0

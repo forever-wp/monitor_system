@@ -11,7 +11,7 @@ multi_value_judge:
 # - name: 组合规则唯一名称
 # - when_all: 需要同时存在的 fault_key 列表；当前仅支持精确匹配 fault_key
 # - level: 组合故障等级 WARNING/ERROR/CRITICAL
-# - actions: 组合故障动作列表，可选 supervisor/safety_system/none
+# - actions: 组合故障动作列表，可选 nodemanager/safety_system/none
 # - safety_system: 当 actions 包含 safety_system 时生效，0=NONE 1=SLOW_DOWN 2=SOFT_STOP 3=EMERGENCY_STOP
 # - safety_slow_down_percentage: 组合故障触发减速时使用的百分比
 # - reason: 组合故障上报原因；未配置时默认 "Combined fault triggered: <name>"
@@ -21,7 +21,7 @@ combined_fault_rules:
       - "usb_cam|topic_legacy:/front_camera/image_raw|action=0"
       - "livox|topic_legacy:/livox/points|action=1"
     level: "CRITICAL"
-    actions: ["supervisor"]
+    actions: ["nodemanager"]
     reason: "Combined fault: front camera and livox points both unavailable"
 
 # 需要持续监控的 TF 变换对，格式为 "parent->child"
@@ -35,9 +35,9 @@ target_transforms:
 collision_detection:
   enabled: 1  # 是否启用碰撞检测
   module_name: "collision_detection"  # 碰撞故障输出时使用的模块名
-  scan_topic: "scan"  # LaserScan 输入 topic
-  pointcloud_topic: "/livox/points"  # PointCloud2 输入 topic；留空表示不使用
-  voxel_topic: ""  # collision_voxel_layer/VoxelGrid 统一体素输入；非空时 zone/TTC 优先使用该源
+  scan_topic: "/collision_voxel_layer/scan"  # LaserScan 输入 topic
+  pointcloud_topic: "/collision_voxel_layer/points"  # 已过滤/稀疏化 PointCloud2 输入；留空表示不使用
+  voxel_topic: ""  # 默认不再使用旧 VoxelGrid，降低 collision_voxel_layer CPU 占用
   ultrasonic_topic: "/ultrasonic_eight_distance"  # 超声波 JSON 输入 topic
   prediction_speed_topic: "/cmd_vel"  # 动态 TTC 预测速度兼容主 topic；navigation 未单独配置时回退使用
   control_source_state_topic: "/control_source_state"  # 当前控制源状态 topic
@@ -49,14 +49,13 @@ collision_detection:
   ultrasonic_distances_key: "distances"   # JSON 中 8 路距离数组的键名
   ultrasonic_blind_distance: 0.2  # 超声盲区下限，小于此值按该值处理
   ultrasonic_out_of_range_value: 1.0  # 超声超量程值，达到该值视为“无障碍点”
-  pointcloud_min_height: 0.2  # 点云参与碰撞检测的最小高度（米）
-  pointcloud_max_height: 1.4  # 点云参与碰撞检测的最大高度（米）
-  voxel_min_occupancy: 0.35  # 参与 zone/TTC 的最小体素占用权重
-  voxel_min_height: 0.2  # 参与 zone/TTC 的体素最小高度（米）
-  voxel_max_height: 1.4  # 参与 zone/TTC 的体素最大高度（米）
+  pointcloud_height_filter_enabled: 0  # /collision_voxel_layer/points 已完成过滤/压缩，碰撞检测侧不再按 z 二次过滤
+  pointcloud_min_height: 0.2  # 仅 pointcloud_height_filter_enabled=1 时生效：点云参与碰撞检测的最小高度（米）
+  pointcloud_max_height: 1.4  # 仅 pointcloud_height_filter_enabled=1 时生效：点云参与碰撞检测的最大高度（米）
+  # 稀疏点云由 collision_voxel_layer 负责过滤；collision_monitor 直接消费新鲜点，不再二次按高度/占用率过滤。
   source_timeout_s: 0.5  # 各碰撞数据源的有效超时时间（秒）
   source_level: "ERROR"  # 碰撞输入源缺失或超时时的故障等级；源异常时跳过 zone/ttc 判断
-  source_actions: ["supervisor"]  # 碰撞输入源异常触发后的动作列表
+  source_actions: ["nodemanager"]  # 碰撞输入源异常触发后的动作列表
   direction_speed_threshold: 0.05  # 前后向判断阈值；绝对值低于该值时保持当前稳定方向，未建立稳定方向时仅匹配 both 区域（速度）
   direction_confirm_count: 3  # 方向切换确认帧数；连续收到相反方向速度达到该次数后才切换
   navigation_mode_switch_enabled: 1  # 启用 TTC 驱动的导航控制器模式切换；TTC 风险持续存在时切 SAFE，清除后恢复 FAST
@@ -81,7 +80,7 @@ collision_detection:
   # - safety_system: 0=NONE 1=SLOW_DOWN 2=SOFT_STOP 3=EMERGENCY_STOP
   # - safety_slow_down_percentage: 减速动作时的速度百分比
   # - time_before_collision: ttc 模型的 TTC 阈值（秒）
-  # - actions: 触发后的动作列表，可选 safety_system/supervisor
+  # - actions: 触发后的动作列表，可选 safety_system/nodemanager
   # - visualize: 是否发布该区域的 PolygonStamped 可视化
   # - polygon_pub_topic: 区域可视化 topic
   zones:
@@ -144,11 +143,11 @@ vehicle_state_judge:
   imu_bias_calibration_samples: 50  # IMU 偏置校准所需样本数
   imu_decay_rate: 0.98  # IMU 积分速度衰减系数
   anomaly_level: "ERROR"  # 指令与实际运动不一致时的故障等级
-  source_actions: ["supervisor"]  # 数据源异常触发后的动作列表
+  source_actions: ["nodemanager"]  # 数据源异常触发后的动作列表
   idle_level: "WARNING"  # 运营阶段长时间静止提示的故障等级
   safety_system: 2  # 触发安全动作时默认执行 SOFT_STOP
   safety_slow_down_percentage: 50.0  # 若安全动作为减速时使用的百分比
-  anomaly_actions: ["supervisor"]  # 异常触发后的动作列表
+  anomaly_actions: ["nodemanager"]  # 异常触发后的动作列表
   idle_actions: ["none"]  # 久停触发后的动作列表
 
 # ============================================================
@@ -156,12 +155,13 @@ vehicle_state_judge:
 # ============================================================
 # modules 通用字段说明：
 # - name: 模块唯一名称，作为故障 module_name 的来源
-# - supervisor: 1=该模块故障允许触发 /supervisor/cmd
+# - nodemanager: 1=该模块故障允许触发 /nodemanager/cmd
 # - safety_system: 0/1/2/3，模块节点失活时默认对应的安全动作
 # - safety_slow_down_percentage: 若 safety_system=1 时使用的减速百分比
 # - nodes: 需要被监控在线状态的 ROS 节点名列表
 # - watch_topics: 直接监控的真实 ROS topic 列表
 #   - name: topic 名称
+#   - type: 可选消息类型；不写时 topic_frequency_monitor 会从 ROS graph 自动发现
 #   - min_hz: 期望最低频率；省略或注释掉表示只检查发布者存在
 # - feedback_rules: 统一反馈规则列表
 #   - source_topic: AlgorithmFeedback.topic_name
@@ -170,7 +170,9 @@ vehicle_state_judge:
 #   - min_hz: 最低反馈频率
 #   - max_stale_s: 反馈最大允许陈旧时间
 #   - level: WARNING/ERROR/CRITICAL
-#   - actions: supervisor/safety_system/none
+#   - actions: nodemanager/safety_system/none
+
+
 modules:
 
   # ----------------------------------------------------------
@@ -205,7 +207,7 @@ modules:
       - name: "/odom_init"
         # min_hz: 10.0
       - name: "/odom_base"
-        min_hz: 5.0
+        #min_hz: 5.0
 
   # ----------------------------------------------------------
   # 3. battery_node — 电池状态
@@ -299,8 +301,8 @@ modules:
   - name: "uitrasonic"
     supervisor: 1
     safety_system: 0
-    nodes:
-      - "uss_driver_publisher"
+    nodes: []
+      #- "uss_driver_publisher"
     watch_topics: []
       # - name: "/ultrasonic_eight"
         # min_hz: 5.0
@@ -369,13 +371,13 @@ modules:
         min_value: 1.5
         max_value: 2.5
         level: "ERROR"
-        max_stale_s: 2.0
+        max_stale_s: 200.0
         actions: ["supervisor"]
       - source_topic: "/drift_status"
         metric_name: "drift_delta_norm"
         max_value: 10.0
         level: "ERROR"
-        max_stale_s: 2.0
+        max_stale_s: 200.0
         actions: ["supervisor"]
 
   # ----------------------------------------------------------
@@ -390,7 +392,7 @@ modules:
     nodes:
       - "ekf_filter_node"
     watch_topics:
-      - name: "/odometry/filtered"
+      - name: "/odom"
         # min_hz: 10.0
       # - name: "/tf"
       #   min_hz: 10.0
@@ -401,12 +403,12 @@ modules:
   #     发布: /map_cloud
   #     订阅: /fastlio2/body_cloud, /fastlio2/lio_odom
   # ----------------------------------------------------------
-  - name: "amcl"
-    supervisor: 1
-    safety_system: 2
-    nodes:
-      - "amcl"
-    watch_topics: []
+  #- name: "amcl"
+  #  supervisor: 1
+  #  safety_system: 2
+  #  nodes:
+  #    - "amcl"
+  #  watch_topics: []
 
   # ----------------------------------------------------------
   # 12. pointcloud_to_laserscan — 点云转激光扫描
@@ -445,7 +447,7 @@ modules:
     supervisor: 1
     safety_system: 2
     nodes:
-      - "elevator_state_detector"
+      - "elevator_detector_node"
     watch_topics: []
 
 
@@ -505,5 +507,4 @@ modules:
     nodes:
       - "navigate_todoor_server"
     watch_topics: []
-
  

@@ -119,7 +119,8 @@ private:
     double source_timeout_s) const;
   static bool zone_matches_motion_direction(
     CollisionMotionDirectionType zone_direction,
-    RuntimeMotionDirection runtime_direction);
+    RuntimeMotionDirection runtime_direction,
+    bool allow_unknown_direction = false);
   void append_zone_faults(
     const CollisionDetectionConfig & cfg,
     const CollisionZoneConfig & zone,

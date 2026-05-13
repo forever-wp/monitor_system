@@ -1,0 +1,6 @@
+battery_monitor:
+  ros__parameters:
+    input_topic: "/battery_state"
+    publish_topic: "/monitor/battery_state"
+    publish_rate_hz: 2.0
+    stale_timeout_s: 90.0

@@ -1,5 +1,6 @@
 #include "nav2_monitor/fault_state_coordinator.hpp"
 
+#include <algorithm>
 #include <cmath>
 
 #include <nav2_monitor/msg/safety_cmd.hpp>
@@ -7,11 +8,16 @@
 namespace nav2_monitor
 {
 
-void FaultStateCoordinator::configure(rclcpp::Node * node, const std::string & safety_cmd_topic)
+void FaultStateCoordinator::configure(
+  rclcpp::Node * node,
+  const std::string & safety_cmd_topic,
+  double safety_cmd_republish_period_s)
 {
   node_ = node;
+  safety_cmd_republish_period_s_ = std::max(0.05, safety_cmd_republish_period_s);
   if (node_ != nullptr) {
-    auto safety_pub = node_->create_publisher<nav2_monitor::msg::SafetyCmd>(safety_cmd_topic, 10);
+    auto safety_pub = node_->create_publisher<nav2_monitor::msg::SafetyCmd>(
+      safety_cmd_topic, rclcpp::QoS(1).reliable().transient_local());
     publish_safety_update_fn_ = [safety_pub](const SafetyCommandUpdate & safety_update) {
       nav2_monitor::msg::SafetyCmd msg;
       if (safety_update.active) {
@@ -42,6 +48,14 @@ void FaultStateCoordinator::configure(rclcpp::Node * node, const std::string & s
   }
 }
 
+void FaultStateCoordinator::set_publish_callback_for_test(
+  std::function<void(const SafetyCommandUpdate &)> publish_callback,
+  double safety_cmd_republish_period_s)
+{
+  publish_safety_update_fn_ = std::move(publish_callback);
+  safety_cmd_republish_period_s_ = std::max(0.05, safety_cmd_republish_period_s);
+}
+
 std::string FaultStateCoordinator::fallback_fault_key(const FaultInfo & fault)
 {
   return fault.module_name + "|" + std::to_string(static_cast<int>(fault.action)) + "|" + fault.reason;
@@ -65,6 +79,35 @@ int FaultStateCoordinator::safety_command_priority(SafetyCommandType command)
     case SafetyCommandType::NONE:
     default:
       return 0;
+  }
+}
+
+rclcpp::Time FaultStateCoordinator::current_time() const
+{
+  if (node_ != nullptr) {
+    return node_->now();
+  }
+  return rclcpp::Clock(RCL_SYSTEM_TIME).now();
+}
+
+bool FaultStateCoordinator::should_republish_active_safety(const rclcpp::Time & now) const
+{
+  if (!safety_active_ || !publish_safety_update_fn_) {
+    return false;
+  }
+  if (last_safety_publish_time_.nanoseconds() == 0) {
+    return true;
+  }
+  return (now - last_safety_publish_time_).seconds() >= safety_cmd_republish_period_s_;
+}
+
+void FaultStateCoordinator::publish_safety_update(
+  const SafetyCommandUpdate & safety_update,
+  const rclcpp::Time & now)
+{
+  if (publish_safety_update_fn_) {
+    publish_safety_update_fn_(safety_update);
+    last_safety_publish_time_ = now;
   }
 }
 
@@ -121,15 +164,18 @@ FaultStateUpdate FaultStateCoordinator::update(const std::vector<FaultInfo> & fa
     next_safety_command == safety_command_ &&
     same_safety_percentage;
 
-  if (!same_safety_state) {
+  const auto now = current_time();
+  const bool should_republish = same_safety_state ? should_republish_active_safety(now) : false;
+
+  if (!same_safety_state || should_republish) {
     update_result.safety_update = SafetyCommandUpdate{
       next_safety_active,
       next_safety_command,
       next_safety_slow_down_percentage,
       next_safety_active ? next_safety_reason : "All safety faults recovered"};
-    if (publish_safety_update_fn_) {
-      publish_safety_update_fn_(*update_result.safety_update);
-    }
+    publish_safety_update(
+      *update_result.safety_update,
+      now);
   }
 
   active_faults_ = std::move(current_faults);

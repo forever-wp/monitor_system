@@ -1,6 +1,7 @@
 #ifndef COLLISION_VOXEL_LAYER__SOURCE_ADAPTER_HPP_
 #define COLLISION_VOXEL_LAYER__SOURCE_ADAPTER_HPP_
 
+#include <cstddef>
 #include <vector>
 
 #include <sensor_msgs/msg/laser_scan.hpp>
@@ -15,9 +16,8 @@ struct ScanColumnParams
 {
   double min_range{0.0};
   double max_range{10.0};
-  double z_min{0.0};
-  double z_max{0.3};
-  double voxel_size_z{0.1};
+  std::size_t point_step{1U};
+  std::size_t max_points{0U};
 };
 
 struct DepthFilterParams
@@ -26,14 +26,16 @@ struct DepthFilterParams
   double max_range{5.0};
   double min_height{0.0};
   double max_height{2.0};
+  std::size_t point_step{1U};
+  std::size_t max_points{0U};
 };
 
-std::vector<tf2::Vector3> expand_scan_hit_column(
-  double x,
-  double y,
-  double z_min,
-  double z_max,
-  double voxel_size_z);
+struct ExtrinsicTransformParams
+{
+  bool enabled{false};
+  tf2::Vector3 translation{0.0, 0.0, 0.0};
+  tf2::Quaternion rotation{0.0, 0.0, 0.0, 1.0};
+};
 
 std::vector<tf2::Vector3> convert_scan_to_points(
   const sensor_msgs::msg::LaserScan & scan,
@@ -46,6 +48,8 @@ std::vector<tf2::Vector3> filter_depth_cloud(
   const tf2::Transform & transform,
   bool apply_transform,
   const DepthFilterParams & params);
+
+tf2::Transform make_extrinsic_transform(const ExtrinsicTransformParams & params);
 
 }  // namespace collision_voxel_layer
 

@@ -16,6 +16,8 @@
   <depend>nav2_monitor</depend>
   <depend>python3-yaml</depend>
   <depend>ament_index_python</depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
 
   <test_depend>ament_cmake_gtest</test_depend>
   <test_depend>ament_cmake_pytest</test_depend>

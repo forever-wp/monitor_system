@@ -111,9 +111,12 @@ def make_temp_configs(workspace_root: Path, monitor_topic: str, min_hz: float) -
             check_rate: 5.0
             safety_cooldown_s: 2.0
             supervisor_cooldown_s: 5.0
-            algorithm_feedback_topic: "/nav2_monitor/algorithm_feedback"
-            battery_state_topic: "/battery_state"
-            battery_state_timeout_s: 90.0
+            topic_states_topic: "/monitor/topic_states"
+            vehicle_state_topic: "/monitor/vehicle_state"
+            node_tf_state_topic: "/monitor/node_tf_state"
+            monitor_battery_state_topic: "/monitor/battery_state"
+            feedback_state_topic: "/monitor/feedback_state"
+            collision_state_topic: "/monitor/collision_state"
             fault_config: "{fault_config}"
             vehicle_status_file: "/tmp/nav2_monitor_dummy_status.json"
             target_transforms: []
@@ -145,7 +148,7 @@ def main() -> int:
     source_setup = f'source /opt/ros/humble/setup.bash && source {workspace_root / "install" / "setup.bash"}'
     monitor_cmd = (
         f'{source_setup} && '
-        f'ros2 run nav2_monitor nav2_monitor_node --ros-args --params-file {params_file}'
+        f'ros2 run nav2_monitor nav2_monitor_aggregator_node --ros-args --params-file {params_file}'
     )
     bag_cmd = (
         f'{source_setup} && '

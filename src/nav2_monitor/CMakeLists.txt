@@ -31,8 +31,8 @@ rosidl_generate_interfaces(${PROJECT_NAME}
 
 include_directories(include)
 
-add_executable(nav2_monitor_node
-  src/nav2_monitor_node.cpp
+add_executable(nav2_monitor_aggregator_node
+  src/nav2_monitor_aggregator_node.cpp
   src/collision_prediction_router.cpp
   src/system_monitor.cpp
   src/fault_detector.cpp
@@ -49,12 +49,81 @@ add_executable(nav2_monitor_node
   src/watch_topic_evaluator.cpp
   src/vehicle_status_monitor.cpp
 )
-ament_target_dependencies(nav2_monitor_node rclcpp std_msgs nav_msgs sensor_msgs geometry_msgs visualization_msgs tf2_ros master_interfaces ament_index_cpp collision_voxel_layer)
+ament_target_dependencies(nav2_monitor_aggregator_node rclcpp std_msgs nav_msgs sensor_msgs geometry_msgs visualization_msgs tf2_ros master_interfaces ament_index_cpp collision_voxel_layer)
 rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
-target_link_libraries(nav2_monitor_node "${cpp_typesupport_target}")
-target_link_libraries(nav2_monitor_node nvidia-ml yaml-cpp)
+target_link_libraries(nav2_monitor_aggregator_node "${cpp_typesupport_target}")
+target_link_libraries(nav2_monitor_aggregator_node nvidia-ml yaml-cpp)
 
-install(TARGETS nav2_monitor_node DESTINATION lib/${PROJECT_NAME})
+add_executable(topic_frequency_monitor_node
+  src/topic_frequency_monitor_node.cpp
+)
+ament_target_dependencies(topic_frequency_monitor_node rclcpp std_msgs ament_index_cpp)
+target_link_libraries(topic_frequency_monitor_node yaml-cpp)
+
+add_executable(vehicle_state_judge_node
+  src/vehicle_state_judge_node.cpp
+  src/fault_detector.cpp
+  src/chassis_evaluator.cpp
+  src/watch_topic_evaluator.cpp
+  src/feedback_rule_evaluator.cpp
+  src/collision_evaluator.cpp
+  src/monitor_data_store.cpp
+)
+ament_target_dependencies(vehicle_state_judge_node rclcpp std_msgs nav_msgs sensor_msgs ament_index_cpp collision_voxel_layer)
+target_link_libraries(vehicle_state_judge_node yaml-cpp)
+
+add_executable(node_tf_monitor_node
+  src/node_tf_monitor_node.cpp
+  src/fault_detector.cpp
+  src/chassis_evaluator.cpp
+  src/watch_topic_evaluator.cpp
+  src/feedback_rule_evaluator.cpp
+  src/collision_evaluator.cpp
+  src/monitor_data_store.cpp
+)
+ament_target_dependencies(node_tf_monitor_node rclcpp std_msgs tf2_ros ament_index_cpp collision_voxel_layer)
+target_link_libraries(node_tf_monitor_node yaml-cpp)
+
+add_executable(battery_monitor_node
+  src/battery_monitor_node.cpp
+)
+ament_target_dependencies(battery_monitor_node rclcpp std_msgs sensor_msgs)
+
+add_executable(algorithm_feedback_monitor_node
+  src/algorithm_feedback_monitor_node.cpp
+  src/fault_detector.cpp
+  src/chassis_evaluator.cpp
+  src/watch_topic_evaluator.cpp
+  src/feedback_rule_evaluator.cpp
+  src/collision_evaluator.cpp
+  src/monitor_data_store.cpp
+)
+ament_target_dependencies(algorithm_feedback_monitor_node rclcpp std_msgs ament_index_cpp collision_voxel_layer)
+target_link_libraries(algorithm_feedback_monitor_node yaml-cpp "${cpp_typesupport_target}")
+
+add_executable(collision_monitor_node
+  src/collision_monitor_node.cpp
+  src/collision_prediction_router.cpp
+  src/fault_detector.cpp
+  src/chassis_evaluator.cpp
+  src/watch_topic_evaluator.cpp
+  src/feedback_rule_evaluator.cpp
+  src/collision_evaluator.cpp
+  src/monitor_data_store.cpp
+)
+ament_target_dependencies(collision_monitor_node rclcpp std_msgs sensor_msgs geometry_msgs visualization_msgs tf2_ros ament_index_cpp collision_voxel_layer)
+target_link_libraries(collision_monitor_node yaml-cpp)
+
+install(TARGETS
+  nav2_monitor_aggregator_node
+  topic_frequency_monitor_node
+  vehicle_state_judge_node
+  node_tf_monitor_node
+  battery_monitor_node
+  algorithm_feedback_monitor_node
+  collision_monitor_node
+  DESTINATION lib/${PROJECT_NAME}
+)
 install(DIRECTORY include/ DESTINATION include)
 install(DIRECTORY config launch DESTINATION share/${PROJECT_NAME})
 

@@ -22,12 +22,13 @@ public:
 
   void configure(rclcpp::Node * node);
   void publish_heartbeat(const msg::MonitorStatus & status, const rclcpp::Time & now) const;
+  void cache_nodemanager_json(const std::string & json_payload, const rclcpp::Time & now);
   void cache_supervisor_json(const std::string & json_payload, const rclcpp::Time & now);
   void cache_safety_cmd(const msg::SafetyCmd & msg, const rclcpp::Time & now);
   void publish_fault_event_json(const msg::FaultEvent & event, const rclcpp::Time & now) const;
 
 private:
-  struct SupervisorCache
+  struct NodeManagerCache
   {
     bool valid{false};
     rclcpp::Time stamp{0, 0, RCL_ROS_TIME};
@@ -59,7 +60,7 @@ private:
   double cmd_correlation_window_s_{2.0};
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr heartbeat_pub_;
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr event_pub_;
-  SupervisorCache last_supervisor_cmd_;
+  NodeManagerCache last_nodemanager_cmd_;
   SafetyCache last_safety_cmd_;
 };
 

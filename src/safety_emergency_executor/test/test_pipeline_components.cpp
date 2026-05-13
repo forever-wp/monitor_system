@@ -192,7 +192,12 @@ TEST_F(SafetyExecutorComponentTest, SafetyPolicyTransitionsPreserveExpectedSeman
 
   nav2_monitor::msg::SafetyCmd stop_msg;
   stop_msg.action = nav2_monitor::msg::SafetyCmd::SOFT_STOP;
-  EXPECT_TRUE(policy.on_safety_cmd(stop_msg, template_frame).empty());
+  const auto stop_sequence = policy.on_safety_cmd(stop_msg, template_frame);
+  ASSERT_EQ(stop_sequence.size(), 1u);
+  EXPECT_DOUBLE_EQ(stop_sequence.front().speed, 0.0);
+  EXPECT_DOUBLE_EQ(stop_sequence.front().angle, 0.0);
+  EXPECT_EQ(stop_sequence.front().acc, template_frame.acc);
+  EXPECT_EQ(stop_sequence.front().press, template_frame.press);
 
   safety_emergency_executor::CommandFrame stop_frame;
   stop_frame.speed = 0.8;

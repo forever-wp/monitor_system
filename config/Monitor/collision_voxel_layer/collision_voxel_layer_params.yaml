@@ -5,14 +5,35 @@ collision_voxel_layer:
     config_reload_period_s: 1.0
 
     base_frame: "base_link"
-    scan_topic: "/scan"
-    depth_cloud_topic: "/camera/depth_registered/points"
+    scan_topic: "/scan"  # 兼容旧单 scan 配置；实际订阅以 scan_topics 为准
+    scan_topics:
+      - "/scan"
+      - "/uss_laserscan"  # 超声 LaserScan，frame_id=baselink/base_link；与主雷达 scan 独立融合
+    scan_point_steps: [1, 1]  # 与 scan_topics 一一对应；超声 scan 点量小，保留完整输入
+    scan_max_points: [0, 0]  # 与 scan_topics 一一对应；0=不限制，超声不再额外限点
+    scan_voxel_prefilters: [0.0, 0.0]  # 与 scan_topics 一一对应；超声不做二次去重，避免漏掉近距离稀疏点
+    depth_cloud_topic: "/camera/depth/points"
+    lidar_cloud_topic: "/livox/points"  # 雷达 PointCloud2 输入；用于生成低成本稀疏障碍点云
+    # RGBD 深度点云优先使用 TF 转到 base_frame；若 TF 树断链，则用下面的标定外参兜底。
+    # 外参含义：base_frame <- depth_source_frame，即把 depth_source_frame 下的点转换到 base_frame。
+    depth_source_frame: "camera_color_optical_frame"
+    depth_use_extrinsic_fallback: true
+    depth_extrinsic_xyz: [0.363, -0.040, -0.284]
+    depth_extrinsic_qxyzw: [0.000000, 0.216440, 0.000000, 0.976296]
+    points_topic: "/collision_voxel_layer/points"  # 主输出：已过滤/稀疏化 PointCloud2，供 collision_monitor 直接使用
     grid_topic: "/collision_voxel_layer/grid"
     markers_topic: "/collision_voxel_layer/markers"
     debug_cloud_topic: "/collision_voxel_layer/debug_cloud"
     source_status_topic: "/collision_voxel_layer/source_status"  # 输入源健康状态 JSON 字符串；用于观察 scan/depth 是否 seen/stale
+    visualization_control_topic: "/collision_voxel_layer/visualization_enabled"
 
-    publish_rate: 10.0
+    publish_points: true
+    publish_fused_scan: true  # 融合后的无高度 scan 输出，供 2D 碰撞模块直接使用
+    publish_voxel_grid: false  # 默认不维护旧 3D 体素网格，降低 CPU；需要兼容旧 VoxelGrid 时再开启
+    visualization_enabled: false  # 总可视化开关；可 ros2 topic pub /collision_voxel_layer/visualization_enabled std_msgs/msg/Bool "{data: true}"
+    publish_markers: false  # 单项允许开关；总开关关闭时不会生成可视化
+    publish_debug_cloud: false
+    publish_rate: 5.0
     tf_timeout_s: 0.05
     sync_queue_size: 20  # 兼容旧配置保留；当前 scan/depth 已独立订阅，不再做强同步
     source_timeout_s: 1.0  # 单路输入超过该时间未更新即标记 stale，但不会阻塞另一可用数据源发布体素
@@ -23,16 +44,35 @@ collision_voxel_layer:
     voxel_decay_time_s: 1.0
     prune_threshold: 0.05
     occupancy_max: 1.0
+    voxel_region_xy: [-3.0, -3.0, 3.0, -3.0, 3.0, 3.0, -3.0, 3.0]  # base_frame 下 XY 多边形区域；只按 XY 裁剪体素，不限制 Z
 
     scan_min_range: 0.05
     scan_max_range: 8.0
-    scan_z_min: 0.0
-    scan_z_max: 0.4
-    scan_weight: 0.6
+    scan_weight: 0.6  # scan 类输入统一占用权重；抽稀强度由 scan_point_steps/scan_max_points/scan_voxel_prefilters 分源控制
+    fused_scan_angle_min: -3.141592653589793
+    fused_scan_angle_max: 3.141592653589793
+    fused_scan_angle_increment: 0.017453292519943295
+    fused_scan_range_min: 0.05
+    fused_scan_range_max: 8.0
 
-    depth_min_range: 0.10
+    depth_min_range: 0.0
     depth_max_range: 4.0
-    depth_min_height: -0.10
+    depth_min_height: -0.180  # 原始深度点云坐标过滤下限；先过滤再变换，避免 TF 后高度误差导致整片相机点云丢失
     depth_max_height: 1.50
+    depth_min_base_height: -0.7  # base_frame 离地高度过滤；转换后去掉地面薄片
+    depth_max_base_height: 1.80
     depth_weight: 0.8
-    depth_voxel_prefilter: 0.10
+    depth_voxel_prefilter: 0.08
+    depth_process_rate_hz: 5.0
+    depth_point_step: 2
+    depth_max_points: 2400
+
+    lidar_min_range: 0.05
+    lidar_max_range: 8.0
+    lidar_min_height: 0.05
+    lidar_max_height: 1.80
+    lidar_weight: 0.8
+    lidar_voxel_prefilter: 0.15
+    lidar_process_rate_hz: 5.0
+    lidar_point_step: 8
+    lidar_max_points: 1800

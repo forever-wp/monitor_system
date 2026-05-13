@@ -83,7 +83,7 @@ public:
     loc_odom_pub_ = this->create_publisher<nav_msgs::msg::Odometry>(
       "/test/control_source/odom", rclcpp::QoS(20));
     safety_pub_ = this->create_publisher<nav2_monitor::msg::SafetyCmd>(
-      "/test/control_source/safety_cmd", rclcpp::QoS(20));
+      "/test/control_source/safety_cmd", rclcpp::QoS(1).reliable().transient_local());
     pressure_pub_ = this->create_publisher<std_msgs::msg::Int32>(
       "/test/control_source/pressure", rclcpp::QoS(20));
     control_source_cmd_pub_ = this->create_publisher<std_msgs::msg::String>(
@@ -883,6 +883,53 @@ TEST_F(SafetyExecutorRoutingTest, SafetyCommandsStillApplyAfterSwitchingToRemote
   EXPECT_DOUBLE_EQ(slowed_command["angle"].asDouble(), 0.2);
 }
 
+TEST_F(SafetyExecutorRoutingTest, SoftStopImmediatelyPublishesZeroCommand)
+{
+  auto harness = std::make_shared<ControlSourceHarness>();
+
+  rclcpp::NodeOptions options;
+  options.parameter_overrides(
+    {
+      rclcpp::Parameter("command_output_topic", "/test/control_source/command"),
+      rclcpp::Parameter("cmd_vel_navigation_topic", "/test/control_source/cmd_vel/navigation"),
+      rclcpp::Parameter("cmd_vel_miniapp_topic", "/test/control_source/cmd_vel/miniapp"),
+      rclcpp::Parameter("cmd_vel_remote_topic", "/test/control_source/cmd_vel/remote"),
+      rclcpp::Parameter("cmd_vel_other_topic", "/test/control_source/cmd_vel/other"),
+      rclcpp::Parameter("safety_cmd_topic", "/test/control_source/safety_cmd"),
+      rclcpp::Parameter("control_source_state_topic", "/test/control_source/state"),
+      rclcpp::Parameter("wheel_odom_topic", "/test/control_source/odom_base"),
+      rclcpp::Parameter("loc_odom_topic", "/test/control_source/odom"),
+      rclcpp::Parameter("active_control_source", "navigation")
+    });
+  auto executor_node = std::make_shared<safety_emergency_executor::SafetyEmergencyExecutorNode>(
+    options);
+
+  rclcpp::executors::SingleThreadedExecutor executor;
+  executor.add_node(harness);
+  executor.add_node(executor_node);
+  std::thread spin_thread([&executor]() {executor.spin();});
+  struct ExecutorCleanup
+  {
+    rclcpp::executors::SingleThreadedExecutor & executor;
+    std::thread & spin_thread;
+    ~ExecutorCleanup()
+    {
+      executor.cancel();
+      if (spin_thread.joinable()) {
+        spin_thread.join();
+      }
+    }
+  } cleanup{executor, spin_thread};
+
+  ASSERT_TRUE(harness->wait_for_graph_ready(std::chrono::milliseconds(2000)));
+  harness->publish_safety_cmd(nav2_monitor::msg::SafetyCmd::SOFT_STOP);
+
+  ASSERT_TRUE(harness->wait_for_command_count_at_least(1, std::chrono::milliseconds(2000)));
+  const auto stop_command = harness->latest_command_json();
+  EXPECT_DOUBLE_EQ(stop_command["speed"].asDouble(), 0.0);
+  EXPECT_DOUBLE_EQ(stop_command["angle"].asDouble(), 0.0);
+}
+
 TEST_F(SafetyExecutorRoutingTest, SafetyDisabledRemoteBypassesSlowDownPolicy)
 {
   auto harness = std::make_shared<ControlSourceHarness>();
@@ -931,6 +978,51 @@ TEST_F(SafetyExecutorRoutingTest, SafetyDisabledRemoteBypassesSlowDownPolicy)
   const auto command = harness->latest_command_json();
   EXPECT_DOUBLE_EQ(command["speed"].asDouble(), 1.0);
   EXPECT_DOUBLE_EQ(command["angle"].asDouble(), 0.4);
+}
+
+TEST_F(SafetyExecutorRoutingTest, SafetyDisabledRemoteIgnoresSoftStopImmediateCommand)
+{
+  auto harness = std::make_shared<ControlSourceHarness>();
+
+  rclcpp::NodeOptions options;
+  options.parameter_overrides(
+    {
+      rclcpp::Parameter("command_output_topic", "/test/control_source/command"),
+      rclcpp::Parameter("cmd_vel_navigation_topic", "/test/control_source/cmd_vel/navigation"),
+      rclcpp::Parameter("cmd_vel_miniapp_topic", "/test/control_source/cmd_vel/miniapp"),
+      rclcpp::Parameter("cmd_vel_remote_topic", "/test/control_source/cmd_vel/remote"),
+      rclcpp::Parameter("cmd_vel_other_topic", "/test/control_source/cmd_vel/other"),
+      rclcpp::Parameter("safety_cmd_topic", "/test/control_source/safety_cmd"),
+      rclcpp::Parameter("control_source_state_topic", "/test/control_source/state"),
+      rclcpp::Parameter("wheel_odom_topic", "/test/control_source/odom_base"),
+      rclcpp::Parameter("loc_odom_topic", "/test/control_source/odom"),
+      rclcpp::Parameter("control_source_remote_safety_enabled", false),
+      rclcpp::Parameter("active_control_source", "remote")
+    });
+  auto executor_node = std::make_shared<safety_emergency_executor::SafetyEmergencyExecutorNode>(
+    options);
+
+  rclcpp::executors::SingleThreadedExecutor executor;
+  executor.add_node(harness);
+  executor.add_node(executor_node);
+  std::thread spin_thread([&executor]() {executor.spin();});
+  struct ExecutorCleanup
+  {
+    rclcpp::executors::SingleThreadedExecutor & executor;
+    std::thread & spin_thread;
+    ~ExecutorCleanup()
+    {
+      executor.cancel();
+      if (spin_thread.joinable()) {
+        spin_thread.join();
+      }
+    }
+  } cleanup{executor, spin_thread};
+
+  ASSERT_TRUE(harness->wait_for_graph_ready(std::chrono::milliseconds(2000)));
+
+  harness->publish_safety_cmd(nav2_monitor::msg::SafetyCmd::SOFT_STOP);
+  EXPECT_TRUE(harness->command_count_stays(0, std::chrono::milliseconds(300)));
 }
 
 TEST_F(SafetyExecutorRoutingTest, SafetyDisabledRemoteIgnoresEmergencyStopSequence)

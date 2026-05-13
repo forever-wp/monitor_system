@@ -42,6 +42,9 @@ install(DIRECTORY include/
 install(DIRECTORY config/
   DESTINATION share/${PROJECT_NAME}/config
 )
+install(DIRECTORY launch/
+  DESTINATION share/${PROJECT_NAME}/launch
+)
 
 if(BUILD_TESTING)
   set(ament_cmake_copyright_FOUND TRUE)

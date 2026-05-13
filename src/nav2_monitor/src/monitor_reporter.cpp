@@ -47,7 +47,7 @@ std::string MonitorReporter::fault_level_to_string(uint8_t level)
 std::string MonitorReporter::action_to_string(uint8_t action)
 {
   switch (action) {
-    case msg::FaultEvent::SUPERVISOR: return "SUPERVISOR";
+    case msg::FaultEvent::NODEMANAGER: return "NODEMANAGER";
     case msg::FaultEvent::SAFETY_SYSTEM: return "SAFETY_SYSTEM";
     default: return "NONE";
   }
@@ -145,13 +145,18 @@ size_t MonitorReporter::extract_json_array_count(const std::string & json, const
   return count;
 }
 
+void MonitorReporter::cache_nodemanager_json(const std::string & json_payload, const rclcpp::Time & now)
+{
+  last_nodemanager_cmd_.valid = true;
+  last_nodemanager_cmd_.stamp = now;
+  last_nodemanager_cmd_.module_name = extract_json_string_field(json_payload, "module_name");
+  last_nodemanager_cmd_.nodes_to_restart_count = extract_json_array_count(json_payload, "nodes_to_restart");
+  last_nodemanager_cmd_.raw_json = json_payload;
+}
+
 void MonitorReporter::cache_supervisor_json(const std::string & json_payload, const rclcpp::Time & now)
 {
-  last_supervisor_cmd_.valid = true;
-  last_supervisor_cmd_.stamp = now;
-  last_supervisor_cmd_.module_name = extract_json_string_field(json_payload, "module_name");
-  last_supervisor_cmd_.nodes_to_restart_count = extract_json_array_count(json_payload, "nodes_to_restart");
-  last_supervisor_cmd_.raw_json = json_payload;
+  cache_nodemanager_json(json_payload, now);
 }
 
 void MonitorReporter::cache_safety_cmd(const msg::SafetyCmd & msg, const rclcpp::Time & now)
@@ -208,13 +213,13 @@ void MonitorReporter::publish_fault_event_json(const msg::FaultEvent & event, co
     return;
   }
 
-  bool supervisor_match = false;
+  bool nodemanager_match = false;
   bool safety_match = false;
-  if (last_supervisor_cmd_.valid) {
-    supervisor_match =
-      event.action == msg::FaultEvent::SUPERVISOR &&
-      event.module_name == last_supervisor_cmd_.module_name &&
-      (now - last_supervisor_cmd_.stamp).seconds() <= cmd_correlation_window_s_;
+  if (last_nodemanager_cmd_.valid) {
+    nodemanager_match =
+      event.action == msg::FaultEvent::NODEMANAGER &&
+      event.module_name == last_nodemanager_cmd_.module_name &&
+      (now - last_nodemanager_cmd_.stamp).seconds() <= cmd_correlation_window_s_;
   }
   if (last_safety_cmd_.valid) {
     safety_match =
@@ -234,12 +239,18 @@ void MonitorReporter::publish_fault_event_json(const msg::FaultEvent & event, co
       << "\"fault_message\":\"" << json_escape(event.reason) << "\"," 
       << "\"measure_execution\":{"
       << "\"action_type\":\"" << action_to_string(event.action) << "\"," 
-      << "\"supervisor\":{"
-      << "\"matched\":" << (supervisor_match ? "true" : "false") << ','
+      << "\"nodemanager\":{"
+      << "\"matched\":" << (nodemanager_match ? "true" : "false") << ','
       << "\"module_name\":\""
-      << json_escape(supervisor_match ? last_supervisor_cmd_.module_name : std::string()) << "\"," 
+      << json_escape(nodemanager_match ? last_nodemanager_cmd_.module_name : std::string()) << "\","
       << "\"nodes_to_restart_count\":"
-      << (supervisor_match ? last_supervisor_cmd_.nodes_to_restart_count : 0) << "},"
+      << (nodemanager_match ? last_nodemanager_cmd_.nodes_to_restart_count : 0) << "},"
+      << "\"supervisor\":{"
+      << "\"matched\":" << (nodemanager_match ? "true" : "false") << ','
+      << "\"module_name\":\""
+      << json_escape(nodemanager_match ? last_nodemanager_cmd_.module_name : std::string()) << "\","
+      << "\"nodes_to_restart_count\":"
+      << (nodemanager_match ? last_nodemanager_cmd_.nodes_to_restart_count : 0) << "},"
       << "\"safety\":{"
       << "\"matched\":" << (safety_match ? "true" : "false") << ','
       << "\"action\":\""
@@ -249,7 +260,7 @@ void MonitorReporter::publish_fault_event_json(const msg::FaultEvent & event, co
       << "\"reason\":\""
       << json_escape(safety_match ? last_safety_cmd_.reason : std::string()) << "\"},"
       << "\"details\":\""
-      << json_escape(supervisor_match || safety_match ? "matched_by_correlation" : "placeholder_only")
+      << json_escape(nodemanager_match || safety_match ? "matched_by_correlation" : "placeholder_only")
       << "\"}}";
 
   std_msgs::msg::String out;

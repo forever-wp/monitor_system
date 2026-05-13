@@ -27,14 +27,13 @@ collision_detection:
   ultrasonic_distances_key: "distances"   # JSON 中 8 路距离数组的键名
   ultrasonic_blind_distance: 0.2  # 超声盲区下限，小于此值按该值处理
   ultrasonic_out_of_range_value: 1.0  # 超声超量程值，达到该值视为“无障碍点”
+  pointcloud_height_filter_enabled: 1  # 若启用原始 PointCloud2，默认仍由碰撞检测侧按高度过滤
   pointcloud_min_height: 0.2  # 点云参与碰撞检测的最小高度（米）
   pointcloud_max_height: 1.4  # 点云参与碰撞检测的最大高度（米）
-  voxel_min_occupancy: 0.35  # 参与 zone/TTC 的最小体素占用权重
-  voxel_min_height: 0.2  # 参与 zone/TTC 的体素最小高度（米）
-  voxel_max_height: 1.4  # 参与 zone/TTC 的体素最大高度（米）
+  # 体素由 collision_voxel_layer 负责过滤；collision_monitor 直接消费新鲜体素，不再二次按高度/占用率过滤。
   source_timeout_s: 0.5  # 各碰撞数据源的有效超时时间（秒）
   source_level: "ERROR"  # 碰撞输入源缺失或超时时的故障等级；源异常时跳过 zone/ttc 判断
-  source_actions: ["supervisor"]  # 碰撞输入源异常触发后的动作列表
+  source_actions: ["nodemanager"]  # 碰撞输入源异常触发后的动作列表
   direction_speed_threshold: 0.05  # 前后向判断阈值；绝对值低于该值时保持当前稳定方向，未建立稳定方向时仅匹配 both 区域
   direction_confirm_count: 3  # 方向切换确认帧数；连续收到相反方向速度达到该次数后才切换
   navigation_mode_switch_enabled: 1  # 电梯任务启用 TTC->SAFE 控制器切换；清除后恢复 FAST
@@ -109,11 +108,11 @@ vehicle_state_judge:
   imu_bias_calibration_samples: 50  # IMU 偏置校准所需样本数
   imu_decay_rate: 0.98  # IMU 积分速度衰减系数
   anomaly_level: "ERROR"  # 指令与实际运动不一致时的故障等级
-  source_actions: ["supervisor"]  # 数据源异常触发后的动作列表
+  source_actions: ["nodemanager"]  # 数据源异常触发后的动作列表
   idle_level: "WARNING"  # 运营阶段长时间静止提示的故障等级
   safety_system: 2  # 触发安全动作时默认执行 SOFT_STOP
   safety_slow_down_percentage: 50.0  # 若安全动作为减速时使用的百分比
-  anomaly_actions: ["safety_system", "supervisor"]  # 异常触发后的动作列表
+  anomaly_actions: ["safety_system", "nodemanager"]  # 异常触发后的动作列表
   idle_actions: ["none"]  # 久停触发后的动作列表
 
 # ============================================================
@@ -129,7 +128,7 @@ modules:
   #    订阅: /command, /joy
   # ----------------------------------------------------------
   - name: "chassis_node"
-    supervisor: 1
+    nodemanager: 1
     safety_system: 2
     nodes:
       - "chassis_node"
@@ -146,7 +145,7 @@ modules:
   #    订阅: /moto_info, /is_emergency_stop
   # ----------------------------------------------------------
   - name: "chassid_odometry_node"
-    supervisor: 1
+    nodemanager: 1
     safety_system: 2
     nodes:
       - "odometry_node"
@@ -162,7 +161,7 @@ modules:
   #    发布: /battery_state
   # ----------------------------------------------------------
   - name: "battery_node"
-    supervisor: 0
+    nodemanager: 0
     safety_system: 2
     nodes:
       - "battery_node"
@@ -175,13 +174,13 @@ modules:
     #     min_value: 20.0
     #     level: "WARNING"
     #     max_stale_s: 150.0
-    #     actions: ["supervisor"]
+    #     actions: ["nodemanager"]
     #   - source_topic: "/battery_state"
     #     metric_name: "percentage"
     #     min_value: 0.10
     #     level: "ERROR"
     #     max_stale_s: 150.0
-    #     actions: ["safety_system", "supervisor"]
+    #     actions: ["safety_system", "nodemanager"]
 
   # ----------------------------------------------------------
   # 4. livox — 激光雷达驱动 (livox MID-360)
@@ -189,7 +188,7 @@ modules:
   #    发布: /livox/lidar (CustomMsg), /livox/imu (Imu)
   # ----------------------------------------------------------
   - name: "livox"
-    supervisor: 1
+    nodemanager: 1
     safety_system: 2
     nodes:
       - "livox_lidar_publisher"   # 监测实际系统时替换为 "livox_lidar_publisher"
@@ -206,7 +205,7 @@ modules:
   #         /left_camera/image_raw, /right_camera/image_raw
   # ----------------------------------------------------------
   - name: "usb_cam"
-    supervisor: 0
+    nodemanager: 0
     safety_system: 0
     nodes:
       - "front_camera"
@@ -229,7 +228,7 @@ modules:
   #    发布: /camera/color/image_raw, /camera/depth/image_raw
   # ----------------------------------------------------------
   - name: "rgbd_cam"
-    supervisor: 1
+    nodemanager: 1
     safety_system: 2
     nodes:
       - "camera/camera"
@@ -246,7 +245,7 @@ modules:
   #    订阅: /elevator_status, /odom
   # ----------------------------------------------------------
   - name: "uitrasonic"
-    supervisor: 1
+    nodemanager: 1
     safety_system: 0
     nodes:
       - "uss_driver_publisher"
@@ -268,7 +267,7 @@ modules:
   #      /global_costmap/costmap, /local_costmap/costmap
   # ----------------------------------------------------------
   - name: "navigation"
-    supervisor: 1
+    nodemanager: 1
     safety_system: 2
     nodes:
       - "controller_server"
@@ -303,7 +302,7 @@ modules:
   #    订阅: /livox/imu, /livox/lidar
   # ----------------------------------------------------------
   - name: "light-lm"
-    supervisor: 1
+    nodemanager: 1
     safety_system: 2
     nodes: []
       # - "lio_node"
@@ -319,13 +318,13 @@ modules:
         max_value: 2.5
         level: "ERROR"
         max_stale_s: 2.0
-        actions: ["supervisor"]
+        actions: ["nodemanager"]
       - source_topic: "/drift_status"
         metric_name: "drift_delta_norm"
         max_value: 10.0
         level: "ERROR"
         max_stale_s: 2.0
-        actions: ["supervisor"]
+        actions: ["nodemanager"]
 
   # ----------------------------------------------------------
   # 10. localization_ekf — EKF 定位融合
@@ -334,7 +333,7 @@ modules:
   #     订阅: /cmd_vel, /livox/imu, /odom_init, /set_pose
   # ----------------------------------------------------------
   - name: "localization_ekf"
-    supervisor: 1
+    nodemanager: 1
     safety_system: 2
     nodes:
       - "ekf_filter_node"
@@ -351,7 +350,7 @@ modules:
   #     订阅: /fastlio2/body_cloud, /fastlio2/lio_odom
   # ----------------------------------------------------------
   - name: "amcl"
-    supervisor: 1
+    nodemanager: 1
     safety_system: 2
     nodes:
       - "amcl"
@@ -364,7 +363,7 @@ modules:
   #     订阅: cloud_in (PointCloud2)
   # ----------------------------------------------------------
   #- name: "pointcloud_to_laserscan"
-  #  supervisor: 1
+  #  nodemanager: 1
   #  safety_system: 2
   #  nodes:
   #    - "pointcloud_to_laserscan"
@@ -378,7 +377,7 @@ modules:
   #     服务: /elevator/call
   # ----------------------------------------------------------
   # - name: "elevator_server"
-  #   supervisor: 1
+  #   nodemanager: 1
   #   safety_system: 0
   #   nodes:
   #     - "elevator_server"
@@ -391,7 +390,7 @@ modules:
   #     发布: /elevator_status
   # ----------------------------------------------------------
   - name: "elevator_state_detector"
-    supervisor: 1
+    nodemanager: 1
     safety_system: 2
     nodes:
       - "elevator_state_detector"
@@ -406,7 +405,7 @@ modules:
   #     订阅: /camera/color/image_raw, /camera/depth/image_raw
   # ----------------------------------------------------------
   - name: "rgbd_detect"
-    supervisor: 1
+    nodemanager: 1
     safety_system: 2
     nodes:
       - "object_detection_node"
@@ -423,7 +422,7 @@ modules:
   #     订阅: /detected_objects_pointcloud
   # ----------------------------------------------------------
   - name: "rgbd_post_process"
-    supervisor: 1
+    nodemanager: 1
     safety_system: 0
     nodes:
       - "pointcloud_processor"
@@ -437,7 +436,7 @@ modules:
   #     订阅: /navigate_todoor/_action/feedback
   # ----------------------------------------------------------
   - name: "task_execute_server"
-    supervisor: 1
+    nodemanager: 1
     safety_system: 0
     nodes:
       - "task_execute_server"
@@ -449,7 +448,7 @@ modules:
   #     发布: /navigation_status
   # ----------------------------------------------------------
   - name: "navigation_todoor_server"
-    supervisor: 1
+    nodemanager: 1
     safety_system: 0
     nodes:
       - "navigate_todoor_server"
@@ -462,7 +461,7 @@ modules:
   #     订阅: /cmd_vel, /odom_base, /odom, /livox/imu
   # ----------------------------------------------------------
   - name: "cmd_vel_to_command"
-    supervisor: 1
+    nodemanager: 1
     safety_system: 2
     nodes:
       - "cmd_vel_to_command_node"

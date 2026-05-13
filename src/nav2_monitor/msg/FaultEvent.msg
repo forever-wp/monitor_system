@@ -11,7 +11,8 @@ uint8 fault_level
 
 # 动作类型
 uint8 NONE = 0
-uint8 SUPERVISOR = 1
+uint8 NODEMANAGER = 1
+uint8 SUPERVISOR = 1  # legacy alias for NODEMANAGER
 uint8 SAFETY_SYSTEM = 2
 uint8 action
 

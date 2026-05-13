@@ -63,7 +63,7 @@ bool parse_fault_level(const YAML::Node & node, FaultLevel & level)
 bool parse_action(const std::string & raw_action, ActionType & action)
 {
   const std::string action_str = to_lower(raw_action);
-  if (action_str == "supervisor") {
+  if (action_str == "nodemanager" || action_str == "node_manager" || action_str == "supervisor") {
     action = ActionType::SUPERVISOR;
     return true;
   }
@@ -650,21 +650,26 @@ void FaultDetector::load_config(const std::string & config_file)
           collision_cfg_.ultrasonic_blind_distance,
           cd["ultrasonic_out_of_range_value"].as<double>());
       }
+      if (cd["pointcloud_height_filter_enabled"]) {
+        try {
+          if (cd["pointcloud_height_filter_enabled"].IsScalar()) {
+            const std::string raw =
+              to_lower(cd["pointcloud_height_filter_enabled"].as<std::string>());
+            collision_cfg_.pointcloud_height_filter_enabled =
+              (raw == "1" || raw == "true" || raw == "yes");
+          } else {
+            collision_cfg_.pointcloud_height_filter_enabled =
+              cd["pointcloud_height_filter_enabled"].as<bool>();
+          }
+        } catch (...) {
+          collision_cfg_.pointcloud_height_filter_enabled = true;
+        }
+      }
       if (cd["pointcloud_min_height"]) {
         collision_cfg_.pointcloud_min_height = cd["pointcloud_min_height"].as<double>();
       }
       if (cd["pointcloud_max_height"]) {
         collision_cfg_.pointcloud_max_height = cd["pointcloud_max_height"].as<double>();
-      }
-      if (cd["voxel_min_occupancy"]) {
-        collision_cfg_.voxel_min_occupancy = std::clamp(
-          cd["voxel_min_occupancy"].as<double>(), 0.0, 1.0);
-      }
-      if (cd["voxel_min_height"]) {
-        collision_cfg_.voxel_min_height = cd["voxel_min_height"].as<double>();
-      }
-      if (cd["voxel_max_height"]) {
-        collision_cfg_.voxel_max_height = cd["voxel_max_height"].as<double>();
       }
       if (cd["source_timeout_s"]) {
         collision_cfg_.source_timeout_s = std::max(0.0, cd["source_timeout_s"].as<double>());
@@ -1031,7 +1036,11 @@ void FaultDetector::load_config(const std::string & config_file)
       ModuleConfig mc;
       try {
         mc.name = mod["name"].as<std::string>();
-        mc.enable_supervisor = mod["supervisor"].as<int>() == 1;
+        if (mod["nodemanager"]) {
+          mc.enable_supervisor = mod["nodemanager"].as<int>() == 1;
+        } else {
+          mc.enable_supervisor = mod["supervisor"].as<int>() == 1;
+        }
         mc.safety_command = SafetyCommandType::NONE;
         mc.safety_slow_down_percentage = 50.0;
       } catch (const std::exception & e) {
@@ -1341,6 +1350,32 @@ std::vector<FaultInfo> FaultDetector::detect_faults(
   append_combined_faults(base_faults, now, faults);
 
   return faults;
+}
+
+std::vector<FaultInfo> FaultDetector::detect_feedback_faults(
+  const MonitorDataStore & store,
+  const rclcpp::Time & now)
+{
+  std::vector<FaultInfo> faults;
+  for (const auto & module : modules_) {
+    auto feedback_faults = feedback_rule_evaluator_->evaluate(
+      module, store, now, config_loaded_time_);
+    faults.insert(
+      faults.end(),
+      std::make_move_iterator(feedback_faults.begin()),
+      std::make_move_iterator(feedback_faults.end()));
+  }
+  return faults;
+}
+
+std::vector<FaultInfo> FaultDetector::detect_collision_faults(
+  const MonitorDataStore & store,
+  const rclcpp::Time & now)
+{
+  if (!collision_cfg_.enabled) {
+    return {};
+  }
+  return collision_evaluator_->evaluate(collision_cfg_, store, now);
 }
 
 void FaultDetector::append_combined_faults(

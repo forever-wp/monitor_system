@@ -23,7 +23,7 @@
 
 当前实现按职责分为 6 层：
 
-1. **输入采集层**：`Nav2MonitorNode`
+1. **输入采集层**：`Nav2MonitorAggregatorNode`
 2. **数据快照层**：`MonitorDataStore`
 3. **规则判断层**：`WatchTopicEvaluator` / `FeedbackRuleEvaluator` / `ChassisEvaluator` / `CollisionEvaluator`
 4. **故障编排层**：`FaultDetector`
@@ -32,7 +32,7 @@
 
 数据主链路如下：
 
-`ROS 输入 -> Nav2MonitorNode -> MonitorDataStore -> FaultDetector -> FaultStateCoordinator -> SafetyCmd -> safety_emergency_executor`
+`ROS 输入 -> Nav2MonitorAggregatorNode -> MonitorDataStore -> FaultDetector -> FaultStateCoordinator -> SafetyCmd -> safety_emergency_executor`
 
 同时还有两条输出链路：
 
@@ -43,9 +43,9 @@
 
 ## 3. 各模块职责
 
-### 3.1 Nav2MonitorNode
+### 3.1 Nav2MonitorAggregatorNode
 
-`Nav2MonitorNode` 是系统入口，负责：
+`Nav2MonitorAggregatorNode` 是系统入口，负责：
 
 - 加载参数与故障配置
 - 建立所有 ROS 订阅/发布/定时器
@@ -377,7 +377,7 @@
 
 建议从以下顺序理解代码：
 
-1. `Nav2MonitorNode`
+1. `Nav2MonitorAggregatorNode`
 2. `MonitorDataStore`
 3. `FaultDetector`
 4. 各 evaluator
@@ -386,7 +386,7 @@
 
 推荐入口文件：
 
-- `include/nav2_monitor/nav2_monitor_node.hpp`
+- `include/nav2_monitor/nav2_monitor_aggregator_node.hpp`
 - `include/nav2_monitor/monitor_data_store.hpp`
 - `include/nav2_monitor/fault_detector.hpp`
 - `include/nav2_monitor/fault_state_coordinator.hpp`

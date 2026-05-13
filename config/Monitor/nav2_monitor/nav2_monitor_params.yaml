@@ -1,20 +1,30 @@
-nav2_monitor:
+nav2_monitor_aggregator:
   ros__parameters:
     timeout: 5.0  # 节点/TF/反馈等通用超时时间（秒）
-    scan_rate: 5.0  # 拓扑扫描频率（Hz），用于扫描节点、topic 发布者和 TF
+    scan_rate: 5.0  # 配置热重载检查频率（Hz），不再直接扫描高频 topic/TF
     check_rate: 10.0  # 健康检查与状态发布频率（Hz）
     safety_cooldown_s: 2.0  # 安全动作重复发布冷却时间（秒）
-    supervisor_cooldown_s: 5.0  # supervisor 重启命令重复发布冷却时间（秒）
-    algorithm_feedback_topic: "/nav2_monitor/algorithm_feedback"  # 统一反馈输入 topic
+    nodemanager_cooldown_s: 5.0  # 节点管理器重启命令重复发布冷却时间（秒）
+    topic_states_topic: "/monitor/topic_states"  # topic_frequency_monitor_node 输出的 topic 状态 JSON
+    vehicle_state_topic: "/monitor/vehicle_state"  # vehicle_state_judge_node 输出的小车状态 JSON
+    vehicle_state_timeout_s: 1.0  # 小车状态模块状态超时时间（秒）
+    node_tf_state_topic: "/monitor/node_tf_state"  # node_tf_monitor_node 输出的节点/TF 状态 JSON
+    node_tf_state_timeout_s: 2.0  # 节点/TF 状态模块状态超时时间（秒）
+    monitor_battery_state_topic: "/monitor/battery_state"  # battery_monitor_node 输出的电池状态 JSON
+    monitor_battery_state_timeout_s: 3.0  # 电池状态模块状态超时时间（秒）
+    feedback_state_topic: "/monitor/feedback_state"  # algorithm_feedback_monitor_node 输出的反馈状态 JSON
+    feedback_state_timeout_s: 2.0  # 算法反馈状态模块状态超时时间（秒）
+    collision_state_topic: "/monitor/collision_state"  # collision_monitor_node 输出的碰撞状态 JSON
+    collision_state_timeout_s: 1.0  # 碰撞状态模块状态超时时间（秒）
+    config_profile_topic: "/monitor/config_profile"  # 当前任务 fault_config profile 广播 topic
     fault_event_topic: "/nav2_monitor/fault_event"  # 故障边沿事件输出 topic
-    supervisor_cmd_topic: "/supervisor/cmd"  # supervisor 重启命令输出 topic
+    nodemanager_cmd_topic: "/nodemanager/cmd"  # 节点管理器重启命令输出 topic
     safety_cmd_topic: "/safety_system/cmd"  # 安全执行命令输出 topic
+    safety_cmd_republish_period_s: 0.2  # 安全状态激活期间重复发布周期，避免单帧命令丢失导致执行器没收到
     human_intervention_topic: "/nav2_monitor/human_intervention"  # 小车状态异常人工介入提醒 topic
     reporter.heartbeat_json_topic: "/nav2_monitor/reporter/heartbeat_json"  # 心跳 JSON 上报 topic
     reporter.event_json_topic: "/nav2_monitor/reporter/event_json"  # 事件 JSON 上报 topic
     reporter.cmd_correlation_window_s: 2.0  # reporter 关联安全/重启动作与事件的时间窗（秒）
-    battery_state_topic: "/battery_state"  # 电池状态订阅 topic
-    battery_state_timeout_s: 90.0  # 电池数据有效超时时间（秒）
     # 特殊 topic QoS 兜底覆盖；默认不配置，节点自动匹配发布端 QoS
     # 注意 ROS 2 参数 YAML 不支持无类型空数组 `[]`，需要覆盖时再取消注释并填入字符串列表
     # topic_qos_overrides:
@@ -50,7 +60,7 @@ nav2_monitor:
 
     vehicle_status_file: "/home/ry/.ros/navigate_status/navigate_todoor_status.json"  # 导航状态 JSON 文件路径
 
-    # 兼容回退配置：当 fault_config 缺失或无 modules 时生效
+    # 状态清单回退配置：当 fault_config 缺失或无 modules 时仅用于状态汇总清单
     # 基于实际系统节点/topic 信息 (2026-03-12)
     # target_nodes:
     #   # 底盘

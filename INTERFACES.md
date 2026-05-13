@@ -1,9 +1,15 @@
 # Worktree External Interfaces
 
-本文件汇总当前 worktree 中 3 个对外接口面：
+本文件汇总当前 worktree 中对外接口面：
 
 - `algorithm_feedback_adapter`
 - `nav2_monitor`
+- `topic_frequency_monitor`
+- `vehicle_state_judge`
+- `node_tf_monitor`
+- `battery_monitor`
+- `algorithm_feedback_monitor`
+- `collision_monitor`
 - `safety_emergency_executor`
 
 不包含 `master_interfaces` 协议包说明。
@@ -12,11 +18,14 @@
 
 当前对外主链路如下：
 
-`业务 topic -> algorithm_feedback_adapter -> /nav2_monitor/algorithm_feedback -> nav2_monitor -> /safety_system/cmd -> safety_emergency_executor -> /command`
+`业务 topic -> algorithm_feedback_adapter -> /nav2_monitor/algorithm_feedback -> algorithm_feedback_monitor -> /monitor/feedback_state -> nav2_monitor_aggregator -> /safety_system/cmd -> safety_emergency_executor -> /command`
 
 补充链路：
 
-- `nav2_monitor` 同时对外发布状态、故障事件、JSON 上报、碰撞区可视化
+- `nav2_monitor_aggregator` 对外发布状态、故障事件、JSON 上报、节点管理器请求和安全动作
+- `topic_frequency_monitor` 独立统计高频 watch topic，并发布 `/monitor/topic_states`
+- `vehicle_state_judge` 独立发布 `/monitor/vehicle_state` 和人工介入提醒
+- `collision_monitor` 独立处理碰撞/TTC、`/navigation_mode` 切换和 TTC marker
 - `safety_emergency_executor` 同时接收多路速度源，并通过标准 ROS 2 参数服务切换当前控制源
 
 ## 2. Algorithm Feedback Adapter
@@ -194,25 +203,137 @@ valid: true
 
 ## 3. nav2_monitor
 
-### 3.1 角色
+### 3.1 Topic Frequency Monitor
 
-`nav2_monitor` 是轻量监控、故障检测与安全联动节点。
+`topic_frequency_monitor_node` 是独立高频 topic 频率监测节点，用于把 `/livox/imu`、点云、雷达、里程计等 watch topic 的接收频率从主监控进程中剥离。
+
+监控清单来自当前 `fault_config` 的 `modules[].watch_topics`。节点订阅 `/monitor/config_profile` 后会随任务 profile 自动重载清单。只有配置 `min_hz > 0` 的 topic 才会订阅数据流并计算频率；未配置频率阈值的 topic 只检查 publisher 是否存在，避免对大流量 topic 产生额外 CPU 开销。
+
+启动与配置：
+
+- 启动文件：`src/nav2_monitor/launch/topic_frequency_monitor.launch.py`
+- `/opt` 配置：`/opt/ry/config/Monitor/nav2_monitor/topic_frequency_monitor_params.yaml`
+- 包内默认配置：`src/nav2_monitor/config/topic_frequency_monitor_params.yaml`
+
+状态输出接口：
+
+| Topic | Type | 说明 |
+|---|---|---|
+| `/monitor/topic_states` | `std_msgs/msg/String` | 所有被监测 topic 的频率、新鲜度、是否有数据的 JSON 快照 |
+
+同步输入接口：
+
+| Topic | Type | 说明 |
+|---|---|---|
+| `/monitor/config_profile` | `std_msgs/msg/String` | 聚合器广播的当前任务 profile，频率节点订阅后自动重建 watch topic 清单 |
+
+JSON 字段：
+
+- `stamp`：状态发布时间，单位秒
+- `source_module`：固定为 `topic_frequency_monitor`
+- `items[].topic`：被监测 topic 名
+- `items[].type`：ROS 消息类型
+- `items[].frequency_required`：是否需要订阅数据并计算频率
+- `items[].type_discovered`：消息类型是否已从配置或 ROS graph 获取
+- `items[].has_publisher`：当前 graph 中是否存在发布者
+- `items[].has_data`：是否至少收到过有效数据
+- `items[].stale`：是否超过 idle timeout
+- `items[].low_frequency`：未 stale 时，频率是否低于 `min_hz`
+- `items[].frequency_hz`：滚动窗口接收频率
+- `items[].min_hz`：最低期望频率
+- `items[].age_s`：距离最后一帧的时间，未收到过时为 `-1`
+- `items[].idle_timeout_s`：数据源超时阈值
+
+`nav2_monitor_aggregator` 固定消费该输出，不再直连高频 watch topic。
+
+### 3.2 Vehicle State Judge
+
+`vehicle_state_judge_node` 是独立小车状态判断节点，用于把“有速度指令但车不动 / 无速度指令但车仍移动 / 数据源缺失”从主监控进程中拆出。
+
+启动与配置：
+
+- 启动文件：`src/nav2_monitor/launch/vehicle_state_judge.launch.py`
+- `/opt` 配置：`/opt/ry/config/Monitor/nav2_monitor/vehicle_state_judge_params.yaml`
+- 判断规则：复用 `/opt/ry/config/Monitor/nav2_monitor/fault_detector_config.yaml` 中的 `vehicle_state_judge` 段
+
+输出接口：
+
+| Topic | Type | 说明 |
+|---|---|---|
+| `/monitor/vehicle_state` | `std_msgs/msg/String` | 小车状态判断 JSON 快照 |
+| `/nav2_monitor/human_intervention` | `std_msgs/msg/String` | 异常边沿触发的人工介入提醒 JSON |
+
+`/monitor/vehicle_state` 关键字段：
+
+- `source_module`：固定为 `vehicle_state_judge`
+- `state` / `healthy` / `summary`：当前状态摘要
+- `command_received` / `command_fresh` / `command_has_speed` / `command_speed`
+- `motion_detected`
+- `imu_fresh` / `imu_motion` / `imu_speed_estimate` / `imu_yaw_rate`
+- `odom_fresh` / `odom_motion` / `odom_speed`
+- `moto_fresh` / `moto_valid` / `moto_motion`
+- `faults[]`：当前激活的小车状态故障
+
+### 3.3 Algorithm Feedback Monitor
+
+`algorithm_feedback_monitor_node` 是独立算法反馈判断节点，订阅 adapter 输出的 `AlgorithmFeedback`，按 `fault_config` 中的 `feedback_rules` 生成标准状态。
+
+启动与配置：
+
+- 启动文件：`src/nav2_monitor/launch/algorithm_feedback_monitor.launch.py`
+- `/opt` 配置：`/opt/ry/config/Monitor/nav2_monitor/algorithm_feedback_monitor_params.yaml`
+
+输出接口：
+
+| Topic | Type | 说明 |
+|---|---|---|
+| `/monitor/feedback_state` | `std_msgs/msg/String` | 算法反馈规则状态 JSON，包含 `faults[]` |
+
+### 3.4 Collision Monitor
+
+`collision_monitor_node` 是独立碰撞/TTC 判断节点，订阅体素、scan、点云、超声波、预测速度和控制源状态，独立输出碰撞状态与导航控制器模式。
+
+启动与配置：
+
+- 启动文件：`src/nav2_monitor/launch/collision_monitor.launch.py`
+- `/opt` 配置：`/opt/ry/config/Monitor/nav2_monitor/collision_monitor_params.yaml`
+
+输出接口：
+
+| Topic | Type | 说明 |
+|---|---|---|
+| `/monitor/collision_state` | `std_msgs/msg/String` | 碰撞/TTC 状态 JSON，包含 `faults[]` 和当前 `navigation_mode` |
+| `/navigation_mode` | `std_msgs/msg/String` | 导航控制器模式，`FAST` / `SAFE` |
+| `/nav2_monitor/collision_ttc_markers` | `visualization_msgs/msg/MarkerArray` | TTC 可视化 marker |
+
+### 3.5 Battery Monitor
+
+`battery_monitor_node` 是独立电池状态节点，订阅 `/battery_state` 并输出标准状态。
+
+输出接口：
+
+| Topic | Type | 说明 |
+|---|---|---|
+| `/monitor/battery_state` | `std_msgs/msg/String` | 电池数据新鲜度、温度、电量 JSON |
+
+### 3.6 Aggregator 角色
+
+`nav2_monitor_aggregator` 是轻量状态聚合、故障事件、安全仲裁与本机输出节点。
 
 它负责：
 
-- 收集运行状态
-- 监控节点、topic、TF
-- 消费统一反馈
-- 进行故障检测与仲裁
+- 消费独立模块输出的标准状态
+- 汇总节点、topic、TF、电池、小车状态、算法反馈、碰撞状态
+- 进行故障边沿事件发布与安全动作仲裁
 - 发布故障事件
 - 下发安全动作
 - 发布上报 JSON
-- 发布碰撞区域可视化
 
-### 3.2 启动与配置入口
+### 3.7 启动与配置入口
 
 - 启动文件：
   - `src/nav2_monitor/launch/nav2_monitor.launch.py`
+  - `src/nav2_monitor/launch/nav2_monitor_aggregator.launch.py`
 - 主参数文件：
   - `src/nav2_monitor/config/nav2_monitor_params.yaml`
 - 功能文档：
@@ -223,21 +344,25 @@ valid: true
 
 节点名：
 
-- `nav2_monitor`
+- `nav2_monitor_aggregator`
 
-### 3.3 固定输入接口
+### 3.8 固定输入接口
 
 固定订阅输入：
 
 | Topic | Type | 说明 |
 |---|---|---|
-| `/nav2_monitor/algorithm_feedback` | `nav2_monitor/msg/AlgorithmFeedback` | 来自 algorithm_feedback_adapter 的统一指标反馈 |
-| `/battery_state` | `sensor_msgs/msg/BatteryState` | 电池状态 |
+| `/monitor/topic_states` | `std_msgs/msg/String` | 来自 topic_frequency_monitor_node |
+| `/monitor/vehicle_state` | `std_msgs/msg/String` | 来自 vehicle_state_judge_node |
+| `/monitor/node_tf_state` | `std_msgs/msg/String` | 来自 node_tf_monitor_node |
+| `/monitor/battery_state` | `std_msgs/msg/String` | 来自 battery_monitor_node |
+| `/monitor/feedback_state` | `std_msgs/msg/String` | 来自 algorithm_feedback_monitor_node |
+| `/monitor/collision_state` | `std_msgs/msg/String` | 来自 collision_monitor_node |
 | `/task_status_code` | `master_interfaces/msg/TaskStatus` | 外层任务状态码输入，用于任务配置切换 |
 
-### 3.4 动态输入接口
+### 3.9 原始数据归属
 
-以下输入由 `fault_config` 或运行时监控目标决定：
+新架构下，aggregator 不再订阅高频原始传感器。以下原始输入由独立模块处理，aggregator 只消费对应 `/monitor/*_state` 低频状态：
 
 | 接口类型 | 来源 | 说明 |
 |---|---|---|
@@ -253,16 +378,16 @@ valid: true
 
 说明：
 
-- `watch_topics` 会被节点动态发现并按 topic 实际类型建立订阅
-- 这些动态输入是否启用取决于当前 `fault_config`
+- 默认部署和当前实现均使用独立模块处理这些原始输入。
+- `nav2_monitor_aggregator` 只消费 `/monitor/*_state` 低频状态。
 
-### 3.5 对外输出接口
+### 3.10 对外输出接口
 
 | Topic | Type | 说明 |
 |---|---|---|
 | `/nav2_monitor/status` | `nav2_monitor/msg/MonitorStatus` | 周期状态总览 |
 | `/nav2_monitor/fault_event` | `nav2_monitor/msg/FaultEvent` | 故障触发/恢复边沿事件 |
-| `/supervisor/cmd` | `std_msgs/msg/String` | supervisor 命令 JSON |
+| `/nodemanager/cmd` | `std_msgs/msg/String` | 节点管理器命令 JSON |
 | `/safety_system/cmd` | `nav2_monitor/msg/SafetyCmd` | 安全执行命令 |
 | `/nav2_monitor/human_intervention` | `std_msgs/msg/String` | 小车状态异常人工介入提醒 JSON |
 | `/nav2_monitor/reporter/heartbeat_json` | `std_msgs/msg/String` | 心跳 JSON |
@@ -272,10 +397,10 @@ valid: true
 说明：
 
 - `/nav2_monitor/status` 是固定 topic，目前不是参数化输出
-- `/supervisor/cmd` 当前真实输出是 JSON 字符串，不是 `SupervisorCmd.msg`
+- `/nodemanager/cmd` 当前真实输出是 JSON 字符串，不是 `SupervisorCmd.msg`（历史兼容名称）
 - 碰撞区可视化 topic 名由 zone 配置动态决定
 
-### 3.6 输出消息定义
+### 3.8 输出消息定义
 
 #### `nav2_monitor/msg/MonitorStatus`
 
@@ -338,7 +463,7 @@ valid: true
   - `CRITICAL=3`
 - `action`
   - `NONE=0`
-  - `SUPERVISOR=1`
+  - `NODEMANAGER=1（SUPERVISOR=1 为兼容别名）`
   - `SAFETY_SYSTEM=2`
 - `edge`
   - `EDGE_NONE=0`
@@ -362,7 +487,7 @@ valid: true
 
 ### 3.7 JSON 输出协议
 
-#### `/supervisor/cmd`
+#### `/nodemanager/cmd`
 
 类型：
 
@@ -449,15 +574,15 @@ JSON 顶层字段：
 `measure_execution` 包含：
 
 - `action_type`
-- `supervisor`
+- `nodemanager`
 - `safety`
 - `details`
 
 其中：
 
-- `supervisor.matched`
-- `supervisor.module_name`
-- `supervisor.nodes_to_restart_count`
+- `nodemanager.matched`
+- `nodemanager.module_name`
+- `nodemanager.nodes_to_restart_count`
 - `safety.matched`
 - `safety.action`
 - `safety.slow_down_percentage`
@@ -471,17 +596,25 @@ JSON 顶层字段：
 - `scan_rate`
 - `check_rate`
 - `safety_cooldown_s`
-- `supervisor_cooldown_s`
-- `algorithm_feedback_topic`
+- `nodemanager_cooldown_s`
+- `topic_states_topic`
+- `vehicle_state_topic`
+- `vehicle_state_timeout_s`
+- `node_tf_state_topic`
+- `node_tf_state_timeout_s`
+- `monitor_battery_state_topic`
+- `monitor_battery_state_timeout_s`
+- `feedback_state_topic`
+- `feedback_state_timeout_s`
+- `collision_state_topic`
+- `collision_state_timeout_s`
 - `fault_event_topic`
-- `supervisor_cmd_topic`
+- `nodemanager_cmd_topic`
 - `safety_cmd_topic`
 - `human_intervention_topic`
 - `reporter.heartbeat_json_topic`
 - `reporter.event_json_topic`
 - `reporter.cmd_correlation_window_s`
-- `battery_state_topic`
-- `battery_state_timeout_s`
 - `fault_config`
 - `fault_config_reload_enabled`
 - `current_nav_task`
@@ -507,8 +640,12 @@ JSON 顶层字段：
 - `target_transforms`
 - `timeout`
 - `safety_cooldown_s`
-- `supervisor_cooldown_s`
-- `battery_state_timeout_s`
+- `nodemanager_cooldown_s`
+- `vehicle_state_timeout_s`
+- `node_tf_state_timeout_s`
+- `monitor_battery_state_timeout_s`
+- `feedback_state_timeout_s`
+- `collision_state_timeout_s`
 
 说明：
 
@@ -584,10 +721,10 @@ slow_down_percentage: 50.0
 reason: "Collision risk"
 ```
 
-#### supervisor JSON 输出示例
+#### 节点管理器 JSON 输出示例
 
 ```bash
-ros2 topic echo /supervisor/cmd
+ros2 topic echo /nodemanager/cmd
 ```
 
 典型内容：
@@ -1033,7 +1170,7 @@ ros2 topic pub /pressure_ std_msgs/msg/String \
 
 ## 6. 当前接口注意事项
 
-- `nav2_monitor` 中定义了 `SupervisorCmd.msg`，但当前真实对外输出仍是 `/supervisor/cmd` 的 JSON 字符串
+- `nav2_monitor` 中定义了 `SupervisorCmd.msg`（历史兼容名称），但当前真实对外输出仍是 `/nodemanager/cmd` 的 JSON 字符串
 - `safety_emergency_executor` 当前控制源切换完全依赖标准参数服务，不提供自定义 service
 - `algorithm_feedback_adapter_node` 的对外 topic 集合不是固定的，最终以 `spec_file` 为准
 - `nav2_monitor` 的动态监控 topic、碰撞输入和碰撞区发布 topic 最终以当前 `fault_config` 为准

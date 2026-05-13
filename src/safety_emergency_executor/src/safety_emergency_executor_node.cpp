@@ -177,7 +177,7 @@ SafetyEmergencyExecutorNode::SafetyEmergencyExecutorNode(const rclcpp::NodeOptio
     std::bind(&SafetyEmergencyExecutorNode::on_imu, this, std::placeholders::_1),
     subscription_options);
   safety_cmd_sub_ = this->create_subscription<nav2_monitor::msg::SafetyCmd>(
-    safety_cmd_topic, rclcpp::QoS(20),
+    safety_cmd_topic, rclcpp::QoS(1).reliable().transient_local(),
     std::bind(&SafetyEmergencyExecutorNode::on_safety_cmd, this, std::placeholders::_1),
     subscription_options);
   parameter_callback_handle_ = this->add_on_set_parameters_callback(
@@ -285,7 +285,10 @@ void SafetyEmergencyExecutorNode::on_safety_cmd(const nav2_monitor::msg::SafetyC
   const auto emergency_sequence = safety_policy_.on_safety_cmd(
     *msg, velocity_converter_.template_frame());
 
-  if (msg->action != nav2_monitor::msg::SafetyCmd::EMERGENCY_STOP) {
+  if (
+    msg->action != nav2_monitor::msg::SafetyCmd::SOFT_STOP &&
+    msg->action != nav2_monitor::msg::SafetyCmd::EMERGENCY_STOP)
+  {
     return;
   }
 

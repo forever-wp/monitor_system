@@ -1,0 +1,17 @@
+topic_frequency_monitor:
+  ros__parameters:
+    # 频率状态统一输出给 nav2_monitor 或上层聚合器。
+    publish_topic: "/monitor/topic_states"
+    fault_config: "/opt/ry/config/Monitor/nav2_monitor/fault_detector_config.yaml"
+    config_profile_topic: "/monitor/config_profile"
+    publish_rate_hz: 10.0
+
+    # 统计窗口越短响应越快，波动也越大；1.0s 是响应与稳定性的折中。
+    frequency_window_s: 1.0
+    default_idle_timeout_s: 0.5
+    min_idle_timeout_s: 0.3
+    max_idle_timeout_s: 2.0
+
+    # 主路径从 fault_config/modules/watch_topics 读取监控清单，并通过 ROS graph 自动发现消息类型。
+    # watched_topics.N.* 仅作为 fault_config 不可用时的兜底，不参与任务 profile 切换。
+    watched_topic_count: 0

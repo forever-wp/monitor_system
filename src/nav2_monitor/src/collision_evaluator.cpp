@@ -1,9 +1,10 @@
 #include "nav2_monitor/collision_evaluator.hpp"
 
 #include <algorithm>
-#include <sstream>
 #include <cmath>
 #include <limits>
+#include <map>
+#include <sstream>
 #include <utility>
 
 namespace nav2_monitor
@@ -207,27 +208,37 @@ std::vector<CollisionPoint> CollisionEvaluator::collect_evaluation_points(
     return store.get_collision_points(now, cfg.source_timeout_s);
   }
 
+  const auto voxel_state = store.get_collision_voxel_state();
+  const bool voxel_fresh = voxel_state.has_data &&
+    (now - voxel_state.last_seen).seconds() <= cfg.source_timeout_s;
+  if (!voxel_fresh) {
+    return store.get_collision_points(now, cfg.source_timeout_s);
+  }
+
   const auto voxels = store.get_collision_voxels(now, cfg.source_timeout_s);
+  std::map<std::pair<long long, long long>, size_t> xy_index;
   std::vector<CollisionPoint> points;
   points.reserve(voxels.size());
 
   for (const auto & voxel : voxels) {
-    if (voxel.occupancy < cfg.voxel_min_occupancy) {
+    constexpr double kProjectionResolution = 0.001;
+    const auto key = std::make_pair(
+      static_cast<long long>(std::llround(voxel.x / kProjectionResolution)),
+      static_cast<long long>(std::llround(voxel.y / kProjectionResolution)));
+    const auto it = xy_index.find(key);
+    if (it == xy_index.end()) {
+      xy_index.emplace(key, points.size());
+      points.push_back(CollisionPoint{voxel.x, voxel.y, voxel.occupancy});
       continue;
     }
-    if (voxel.z < cfg.voxel_min_height || voxel.z > cfg.voxel_max_height) {
-      continue;
-    }
-    points.push_back(CollisionPoint{voxel.x, voxel.y, voxel.occupancy});
+    auto & projected = points[it->second];
+    projected.weight = std::max(projected.weight, voxel.occupancy);
   }
 
-  if (!points.empty()) {
-    return points;
-  }
-
-  // Voxel is preferred when configured, but direct point sources keep the
-  // monitor useful if the voxel pipeline drops out.
-  return store.get_collision_points(now, cfg.source_timeout_s);
+  // VoxelGrid is already filtered by collision_voxel_layer. A fresh empty grid
+  // means "no obstacle", not "fallback to raw points". Zone/TTC are planar
+  // checks, so vertical voxel columns are projected into one XY obstacle point.
+  return points;
 }
 
 bool CollisionEvaluator::has_fresh_evaluation_source(
@@ -526,14 +537,15 @@ CollisionEvaluator::RuntimeMotionDirection CollisionEvaluator::resolve_runtime_m
 
 bool CollisionEvaluator::zone_matches_motion_direction(
   CollisionMotionDirectionType zone_direction,
-  RuntimeMotionDirection runtime_direction)
+  RuntimeMotionDirection runtime_direction,
+  bool allow_unknown_direction)
 {
   if (zone_direction == CollisionMotionDirectionType::BOTH) {
     return true;
   }
 
   if (runtime_direction == RuntimeMotionDirection::UNKNOWN) {
-    return false;
+    return allow_unknown_direction;
   }
 
   if (zone_direction == CollisionMotionDirectionType::FORWARD) {
@@ -736,7 +748,7 @@ std::vector<FaultInfo> CollisionEvaluator::evaluate(
     const bool currently_latched = judge_states_[key].latched;
     const bool keep_latched_without_fresh_speed = currently_latched && !prediction_speed_fresh;
     const bool zone_direction_matches =
-      zone_matches_motion_direction(zone.motion_direction, runtime_direction) ||
+      zone_matches_motion_direction(zone.motion_direction, runtime_direction, !is_ttc_zone) ||
       keep_latched_without_fresh_speed;
     bool abnormal = false;
     std::string reason;

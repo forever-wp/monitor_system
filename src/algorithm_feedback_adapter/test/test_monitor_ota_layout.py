@@ -180,7 +180,7 @@ def test_launch_files_use_ota_paths_and_nav2_runtime_configs_are_removed():
         / "safety_emergency_executor.launch.py"
     ).read_text()
     nav2_source = (
-        REPO_ROOT / "src" / "nav2_monitor" / "src" / "nav2_monitor_node.cpp"
+        REPO_ROOT / "src" / "nav2_monitor" / "src" / "nav2_monitor_aggregator_node.cpp"
     ).read_text()
     nav2_package = (REPO_ROOT / "src" / "nav2_monitor" / "package.xml").read_text()
 

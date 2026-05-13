@@ -46,13 +46,22 @@ class FaultStateCoordinator
 public:
   FaultStateCoordinator() = default;
 
-  void configure(rclcpp::Node * node, const std::string & safety_cmd_topic = "/safety_system/cmd");
+  void configure(
+    rclcpp::Node * node,
+    const std::string & safety_cmd_topic = "/safety_system/cmd",
+    double safety_cmd_republish_period_s = 0.2);
+  void set_publish_callback_for_test(
+    std::function<void(const SafetyCommandUpdate &)> publish_callback,
+    double safety_cmd_republish_period_s = 0.2);
   FaultStateUpdate update(const std::vector<FaultInfo> & faults);
 
 private:
   static std::string fallback_fault_key(const FaultInfo & fault);
   static std::string format_recover_reason(const FaultInfo & fault, const std::string & fault_key);
   static int safety_command_priority(SafetyCommandType command);
+  rclcpp::Time current_time() const;
+  bool should_republish_active_safety(const rclcpp::Time & now) const;
+  void publish_safety_update(const SafetyCommandUpdate & safety_update, const rclcpp::Time & now);
 
   rclcpp::Node * node_{nullptr};
   std::function<void(const SafetyCommandUpdate &)> publish_safety_update_fn_;
@@ -60,6 +69,8 @@ private:
   bool safety_active_{false};
   SafetyCommandType safety_command_{SafetyCommandType::NONE};
   double safety_slow_down_percentage_{0.0};
+  double safety_cmd_republish_period_s_{0.2};
+  rclcpp::Time last_safety_publish_time_{0, 0, RCL_ROS_TIME};
 };
 
 }  // namespace nav2_monitor

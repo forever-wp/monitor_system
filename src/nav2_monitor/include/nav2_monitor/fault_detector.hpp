@@ -150,11 +150,9 @@ struct CollisionDetectionConfig
   bool ttc_visualization_enabled{false};
   double ultrasonic_blind_distance{0.2};
   double ultrasonic_out_of_range_value{1.0};
+  bool pointcloud_height_filter_enabled{true};
   double pointcloud_min_height{0.0};
   double pointcloud_max_height{2.0};
-  double voxel_min_occupancy{0.0};
-  double voxel_min_height{-std::numeric_limits<double>::infinity()};
-  double voxel_max_height{std::numeric_limits<double>::infinity()};
   double source_timeout_s{0.5};
   double direction_speed_threshold{0.05};
   size_t direction_confirm_count{3};
@@ -286,6 +284,12 @@ public:
 
   std::vector<FaultInfo> detect_faults();
   std::vector<FaultInfo> detect_faults(const MonitorDataStore & store, const rclcpp::Time & now);
+  std::vector<FaultInfo> detect_feedback_faults(
+    const MonitorDataStore & store,
+    const rclcpp::Time & now);
+  std::vector<FaultInfo> detect_collision_faults(
+    const MonitorDataStore & store,
+    const rclcpp::Time & now);
 
 private:
   bool check_module_nodes(

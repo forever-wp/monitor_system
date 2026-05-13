@@ -181,11 +181,15 @@ EMERGENCY_STOP > SOFT_STOP > SLOW_DOWN > NONE
 ```mermaid
 flowchart TB
   Faults["FaultInfo[]"] --> Coordinator["FaultStateCoordinator"]
-  Faults --> Node["Nav2MonitorNode"]
+  Faults --> Node["Nav2MonitorAggregatorNode"]
+  TopicFreq["topic_frequency_monitor_node"] --> TopicStates["/monitor/topic_states"]
+  TopicStates --> Node
+  VehicleJudge["vehicle_state_judge_node"] --> VehicleState["/monitor/vehicle_state"]
+  VehicleJudge --> Human
   Coordinator --> SafetyCmd["/safety_system/cmd"]
   Node --> Status["/nav2_monitor/status"]
   Node --> Event["/nav2_monitor/fault_event"]
-  Node --> Supervisor["/supervisor/cmd"]
+  Node --> NodeManager["/nodemanager/cmd"]
   Node --> Human["/nav2_monitor/human_intervention"]
   Node --> Reporter["MonitorReporter"]
   Reporter --> Heartbeat["/nav2_monitor/reporter/heartbeat_json"]
@@ -194,9 +198,11 @@ flowchart TB
 
 输出说明：
 
+- `/monitor/topic_states`：独立 topic 频率监测 JSON；`nav2_monitor` 可配置为消费该状态。
+- `/monitor/vehicle_state`：独立小车状态判断 JSON；当前供上层/后续 aggregator 消费。
 - `/nav2_monitor/status`：周期状态总览。
 - `/nav2_monitor/fault_event`：故障触发/恢复边沿事件。
-- `/supervisor/cmd`：supervisor JSON 命令，保留兼容。
+- `/nodemanager/cmd`：节点管理器 JSON 命令；旧 `/supervisor/cmd` 仅作为兼容配置保留。
 - `/nav2_monitor/human_intervention`：仅小车状态检测触发的人工介入提醒。
 - `/safety_system/cmd`：安全执行命令。
 - reporter JSON：给外部上报模块消费的本机 JSON topic。
@@ -208,6 +214,8 @@ flowchart LR
   Repo["config/Monitor/*"] --> Deploy["/opt/ry/config/Monitor/*"]
   Deploy --> AFA["algorithm_feedback_adapter params/spec"]
   Deploy --> Monitor["nav2_monitor params/fault_config/profiles"]
+  Deploy --> TopicFreq["topic_frequency_monitor params"]
+  Deploy --> VehicleJudge["vehicle_state_judge params"]
   Deploy --> Voxel["collision_voxel_layer params"]
   Deploy --> Safety["safety_emergency_executor params"]
 ```
@@ -225,6 +233,8 @@ flowchart LR
 | Topic | Type | 生产者 | 消费者 | 说明 |
 |---|---|---|---|---|
 | `/nav2_monitor/algorithm_feedback` | `nav2_monitor/msg/AlgorithmFeedback` | `algorithm_feedback_adapter` | `nav2_monitor` | 统一算法反馈指标 |
+| `/monitor/topic_states` | `std_msgs/msg/String` | `topic_frequency_monitor_node` | `nav2_monitor` / 上层模块 | watch topic 频率与新鲜度状态 |
+| `/monitor/vehicle_state` | `std_msgs/msg/String` | `vehicle_state_judge_node` | 上层模块 / 后续 aggregator | 小车运动状态是否符合期望 |
 | `/collision_voxel_layer/voxels` | `collision_voxel_layer/msg/VoxelGrid` | `collision_voxel_layer` | `nav2_monitor` | 融合障碍体素 |
 | `/collision_voxel_layer/source_status` | `std_msgs/msg/String` | `collision_voxel_layer` | 调试/上报模块 | 体素输入源状态 |
 | `/nav2_monitor/status` | `nav2_monitor/msg/MonitorStatus` | `nav2_monitor` | 外部模块 | 周期状态 |
@@ -232,6 +242,7 @@ flowchart LR
 | `/nav2_monitor/human_intervention` | `std_msgs/msg/String` | `nav2_monitor` | 外部云端/MQTT模块 | 小车状态人工介入提醒 |
 | `/nav2_monitor/reporter/heartbeat_json` | `std_msgs/msg/String` | `nav2_monitor` | 外部云端/MQTT模块 | JSON 心跳 |
 | `/nav2_monitor/reporter/event_json` | `std_msgs/msg/String` | `nav2_monitor` | 外部云端/MQTT模块 | JSON 事件 |
+| `/nodemanager/cmd` | `std_msgs/msg/String` | `nav2_monitor` | 节点管理器 / 外部模块 | 模块重启请求 |
 | `/safety_system/cmd` | `nav2_monitor/msg/SafetyCmd` | `nav2_monitor` | `safety_emergency_executor` | 安全动作 |
 | `/navigation_mode` | `std_msgs/msg/String` | `nav2_monitor` | 导航控制器切换模块 | `FAST` / `SAFE` |
 | `/control_source_state` | `std_msgs/msg/String` | `safety_emergency_executor` | `nav2_monitor` | 当前速度控制源 |

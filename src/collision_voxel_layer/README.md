@@ -18,4 +18,7 @@ The node supports:
 - File-based hot reload through `config_file`, `config_reload_enabled`, and `config_reload_period_s`
 - Independent `/scan` and depth `PointCloud2` inputs. If one source is missing, stale, or has no
   publishers, the node logs a throttled warning and still publishes voxels from any available source.
+- Depth cloud prefers TF to `base_frame`; if the TF tree is disconnected for the configured
+  `depth_source_frame`, the node can fall back to the calibrated extrinsic parameters and keep
+  producing sparse obstacle points.
 - Runtime source health on `/collision_voxel_layer/source_status`

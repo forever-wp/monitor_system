@@ -1,0 +1,8 @@
+node_tf_monitor:
+  ros__parameters:
+    # 独立节点/TF 监测节点读取同一份 fault_config 的 nodes / target_transforms。
+    fault_config: "/opt/ry/config/Monitor/nav2_monitor/fault_detector_config.yaml"
+    config_profile_topic: "/monitor/config_profile"
+    publish_topic: "/monitor/node_tf_state"
+    scan_rate_hz: 2.0
+    timeout_s: 5.0

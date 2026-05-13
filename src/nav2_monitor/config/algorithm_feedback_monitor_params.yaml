@@ -1,0 +1,8 @@
+algorithm_feedback_monitor:
+  ros__parameters:
+    # 独立算法反馈判断器：订阅 adapter 输出，按 fault_config 中 feedback_rules 判断。
+    fault_config: "/opt/ry/config/Monitor/nav2_monitor/fault_detector_config.yaml"
+    config_profile_topic: "/monitor/config_profile"
+    input_topic: "/nav2_monitor/algorithm_feedback"
+    publish_topic: "/monitor/feedback_state"
+    check_rate_hz: 10.0

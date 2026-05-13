@@ -40,13 +40,19 @@
 
 ## 架构摘要
 
-当前主链路：
+当前默认主链路：
 
-`ROS输入 -> Nav2MonitorNode -> MonitorDataStore -> FaultDetector -> FaultStateCoordinator -> SafetyCmd -> safety_emergency_executor`
+`ROS输入 -> 独立监控模块 -> /monitor/*_state -> nav2_monitor_aggregator -> FaultStateCoordinator -> SafetyCmd -> safety_emergency_executor`
 
 模块职责：
 
-- `Nav2MonitorNode`：ROS 接线、数据采集、状态发布、事件发布
+- `topic_frequency_monitor_node`：从当前 `fault_config` 的 `modules[].watch_topics` 自动生成清单，统计高频 topic 频率、新鲜度和发布者状态
+- `vehicle_state_judge_node`：小车状态判断检测与人工介入提醒
+- `node_tf_monitor_node`：节点/TF 状态检测
+- `battery_monitor_node`：电池状态标准化
+- `algorithm_feedback_monitor_node`：统一算法反馈规则判断
+- `collision_monitor_node`：碰撞/TTC 判断、`/navigation_mode` 切换和 TTC 可视化
+- `nav2_monitor_aggregator_node`：消费低频标准状态，发布总状态、事件、节点管理器请求和安全动作
 - `MonitorDataStore`：统一保存最新有效快照
 - `FaultDetector`：加载配置并编排 evaluator
 - `WatchTopicEvaluator`：直接监控 topic 规则
@@ -68,6 +74,8 @@ ros2 launch nav2_monitor nav2_monitor.launch.py
 ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
 ```
 
+`nav2_monitor.launch.py` 默认启动全部独立监控模块和 `nav2_monitor_aggregator_node`。单独调试聚合器时可使用 `nav2_monitor_aggregator.launch.py`。
+
 当前 OTA 参数源文件位于 `config/Monitor/nav2_monitor/`，
 部署后的运行时路径为 `/opt/ry/config/Monitor/nav2_monitor/`。
 
@@ -84,14 +92,19 @@ ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
 - `timeout`
 - `scan_rate`
 - `check_rate`
-- `algorithm_feedback_topic`
+- `topic_states_topic`
+- `vehicle_state_topic`
+- `node_tf_state_topic`
+- `monitor_battery_state_topic`
+- `feedback_state_topic`
+- `collision_state_topic`
 - `fault_event_topic`
-- `supervisor_cmd_topic`
+- `nodemanager_cmd_topic`
+- `supervisor_cmd_topic`（兼容旧字段）
 - `safety_cmd_topic`
 - `human_intervention_topic`
 - `reporter.heartbeat_json_topic`
 - `reporter.event_json_topic`
-- `battery_state_topic`
 - `fault_config`
 - `fault_config_reload_enabled`
 - `current_nav_task`
@@ -140,12 +153,8 @@ ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
   - 单 topic 八路超声波 JSON 输入
 - `collision_detection.voxel_topic`
   - `collision_voxel_layer/msg/VoxelGrid` 统一体素输入 topic
-  - 非空时，`zone/ttc` 优先使用 voxel source，不再回退到 raw `scan/pointcloud/ultrasonic` 做重复计数
-- `collision_detection.voxel_min_occupancy`
-  - 参与 `zone/ttc` 的最小体素占用权重
-- `collision_detection.voxel_min_height`
-- `collision_detection.voxel_max_height`
-  - 参与 `zone/ttc` 的体素高度过滤范围
+  - 新鲜体素直接参与 `zone/ttc`，不再按高度/占用率二次过滤
+  - 新鲜空体素表示“当前无障碍”，不会回退到 raw `scan/pointcloud/ultrasonic` 误触发
 - `collision_detection.ultrasonic_widget`
   - 8 个 `0~1` 权重，顺序对应 8 路超声波
   - 当前编号约定：`1号左前，之后顺时针编号`
@@ -201,18 +210,21 @@ ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
 
 ## 发布 Topic 总表
 
-下表按“当前系统涉及的功能模块”整理所有**对外发布**的 topic，包含：`nav2_monitor`、包内 `MonitorReporter`、`safety_emergency_executor`。其中 `/nav2_monitor/fault_event`、`/supervisor/cmd`、`/safety_system/cmd` 以及 reporter JSON topic 均已支持通过参数修改。
+下表按“当前系统涉及的功能模块”整理所有**对外发布**的 topic，包含：`nav2_monitor`、包内 `MonitorReporter`、`safety_emergency_executor`。其中 `/nav2_monitor/fault_event`、`/nodemanager/cmd`、`/safety_system/cmd` 以及 reporter JSON topic 均已支持通过参数修改。
 
 | 名称 | 类型 | 作用 | 方式 | 示例 |
 |---|---|---|---|---|
 | `/nav2_monitor/status` | `nav2_monitor/msg/MonitorStatus` | 周期发布整体监控状态 | 周期发布（`check_rate`） | `all_ok=true`, `cpu_usage=12.3`, `battery_percentage=0.86` |
 | `/nav2_monitor/fault_event` | `nav2_monitor/msg/FaultEvent` | 发布故障触发/恢复边沿事件 | 边沿发布（触发 / 恢复） | `module_name=navigation`, `fault_level=ERROR`, `edge=TRIGGER` |
-| `/supervisor/cmd` | `std_msgs/msg/String` | 向 supervisor 下发重启命令 | 故障触发后按 cooldown 发布 | `{"module_name":"navigation","nodes_to_restart":[],"reason":"Node inactive"}` |
+| `/nodemanager/cmd` | `std_msgs/msg/String` | 向节点管理器下发重启请求 | 故障触发后按 cooldown 发布 | `{"module_name":"navigation","nodes_to_restart":[],"reason":"Node inactive"}` |
 | `/safety_system/cmd` | `nav2_monitor/msg/SafetyCmd` | 向安全执行链路下发动作 | 安全状态变化时发布 | `action=2`, `slow_down_percentage=0.0`, `reason="Node inactive"` |
 | `/nav2_monitor/reporter/heartbeat_json` | `std_msgs/msg/String` | 发布系统心跳 JSON，上报系统资源/电池/导航状态 | 周期发布（随 `/nav2_monitor/status`） | `{"all_ok":true,"system":{"cpu_usage":12.3},"battery":{"percentage":0.86},"navigation":{"active":true}}` |
 | `/nav2_monitor/reporter/event_json` | `std_msgs/msg/String` | 发布异常/恢复事件 JSON | 边沿发布（随 `/nav2_monitor/fault_event`） | `{"edge":"TRIGGER","fault_type":"node_inactive","fault_module":"navigation","fault_level":"CRITICAL"}` |
 | `collision_detection.zones[*].polygon_pub_topic` | `geometry_msgs/msg/PolygonStamped` | 发布碰撞区可视化轮廓 | 周期发布（随 `check_health()`） | `/nav2_monitor/collision_zone/front_stop` |
 | `/nav2_monitor/collision_ttc_markers` | `visualization_msgs/msg/MarkerArray` | 发布 TTC 动态 corridor / footprint / 最近碰撞点 / 文本 | 周期发布（开启 `ttc_visualization_enabled` 后） | `front_ttc ttc=1.42 clr=0.08` |
+| `/monitor/topic_states` | `std_msgs/msg/String` | 独立频率监测输出所有 watch topic 状态 | `topic_frequency_monitor_node` 周期发布 | `{"source_module":"topic_frequency_monitor","items":[...]}` |
+| `/monitor/config_profile` | `std_msgs/msg/String` | 当前任务 profile 广播，独立模块据此重载业务规则 | `nav2_monitor_aggregator_node` 任务切换/配置重载后发布 | `{"task_name":"elevator","fault_config":"/opt/ry/config/Monitor/nav2_monitor/profiles/fault_detector_elevator.yaml"}` |
+| `/monitor/vehicle_state` | `std_msgs/msg/String` | 独立小车状态判断输出 | `vehicle_state_judge_node` 周期发布 | `{"source_module":"vehicle_state_judge","healthy":true}` |
 | `/command` | `std_msgs/msg/String` | 执行器输出到底盘协议命令 | 动作触发后透传/限速/制动发布 | `{"speed":0.000,"angle":0.0,"press":1000,"acc":1000,"place":-1,"ulock":-1}` |
 
 **说明**
@@ -226,11 +238,11 @@ ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
 
 ## JSON 字段说明
 
-### `/supervisor/cmd` JSON 字段
+### `/nodemanager/cmd` JSON 字段
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| `module_name` | string | 触发 supervisor 重启的模块名 |
+| `module_name` | string | 触发节点管理器重启的模块名 |
 | `nodes_to_restart` | array | 预留字段，当前通常为空数组 |
 | `reason` | string | 触发该次重启的原因说明 |
 
@@ -270,10 +282,11 @@ ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
 | `fault_module` | string | 错误所属模块 |
 | `fault_level` | string | 错误等级，`NORMAL/WARNING/ERROR/CRITICAL` |
 | `fault_message` | string | 详细错误信息 |
-| `measure_execution.action_type` | string | 措施类型，`SUPERVISOR / SAFETY_SYSTEM / NONE` |
-| `measure_execution.supervisor.matched` | bool | 是否关联到了具体 supervisor 执行 |
-| `measure_execution.supervisor.module_name` | string | supervisor 关联模块名，未关联时为空字符串 |
-| `measure_execution.supervisor.nodes_to_restart_count` | number | supervisor 关联节点数量，未关联时为 0 |
+| `measure_execution.action_type` | string | 措施类型，`NODEMANAGER / SAFETY_SYSTEM / NONE` |
+| `measure_execution.nodemanager.matched` | bool | 是否关联到了具体节点管理器执行 |
+| `measure_execution.nodemanager.module_name` | string | 节点管理器关联模块名，未关联时为空字符串 |
+| `measure_execution.nodemanager.nodes_to_restart_count` | number | 节点管理器关联节点数量，未关联时为 0 |
+| `measure_execution.supervisor.*` | object | 兼容旧字段，内容同 `measure_execution.nodemanager` |
 | `measure_execution.safety.matched` | bool | 是否关联到了具体 safety 执行 |
 | `measure_execution.safety.action` | string | safety 动作，未关联时为 `NONE` |
 | `measure_execution.safety.slow_down_percentage` | number | safety 减速百分比，未关联时为 0 |
@@ -295,7 +308,7 @@ ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
 | `stamp` | builtin_interfaces/Time | 故障事件时间戳 |
 | `module_name` | string | 故障所属模块名 |
 | `fault_level` | uint8 | 故障等级：`0=NORMAL`，`1=WARNING`，`2=ERROR`，`3=CRITICAL` |
-| `action` | uint8 | 对应动作：`0=NONE`，`1=SUPERVISOR`，`2=SAFETY_SYSTEM` |
+| `action` | uint8 | 对应动作：`0=NONE`，`1=NODEMANAGER`，`2=SAFETY_SYSTEM`；`SUPERVISOR=1` 为兼容别名 |
 | `edge` | uint8 | 边沿类型：`0=NONE`，`1=TRIGGER`，`2=RECOVER` |
 | `reason` | string | 故障或恢复原因 |
 
@@ -336,20 +349,19 @@ ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
 
 ### 输入
 
-- `/nav2_monitor/algorithm_feedback`
-- `/command`
-- `/moto_info`
-- `/odom`
-- `/battery_state`
-- `collision_detection.scan_topic`
-- `collision_detection.pointcloud_topic`
-- `collision_detection.ultrasonic_topic`
+- `/monitor/topic_states`
+- `/monitor/vehicle_state`
+- `/monitor/node_tf_state`
+- `/monitor/battery_state`
+- `/monitor/feedback_state`
+- `/monitor/collision_state`
+- `/task_status_code`
 
 ### 输出
 
 - `/nav2_monitor/status`
 - `/nav2_monitor/fault_event`
-- `/supervisor/cmd`（JSON 字符串）
+- `/nodemanager/cmd`（JSON 字符串，旧 `/supervisor/cmd` 可通过兼容参数回退）
   - 示例：`{"module_name":"navigation","nodes_to_restart":[],"reason":"Node inactive"}`
 - `/safety_system/cmd`
 - `collision_detection.zones[*].polygon_pub_topic`
@@ -397,7 +409,9 @@ ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
 ros2 topic echo /nav2_monitor/status
 ros2 topic echo /nav2_monitor/fault_event
 ros2 topic echo /safety_system/cmd
-ros2 topic echo /supervisor/cmd
+ros2 topic echo /nodemanager/cmd
+ros2 topic echo /monitor/topic_states
+ros2 topic echo /monitor/vehicle_state
 ```
 
 统一反馈测试示例：
@@ -522,7 +536,7 @@ colcon test --packages-select nav2_monitor --event-handlers console_direct+
 - 已支持第一版 `combined_fault_rules`
 - 当前仅支持 `when_all`，并且按 `fault_key` 精确匹配组合
 - 组合命中后会额外产出一条 `combined_fault|<name>|action=<n>` 故障
-- 该组合故障继续走现有 supervisor / safety_system 仲裁链路
+- 该组合故障继续走现有 nodemanager / safety_system 仲裁链路
 - 当前不支持 `when_any`、时间窗、排除条件、模糊匹配
 
 ## 许可证

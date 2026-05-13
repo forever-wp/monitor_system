@@ -82,6 +82,10 @@ std::vector<CommandFrame> SafetyPolicyExecutor::on_safety_cmd(
     speed_limit_percentage_ = true;
     speed_limit_value_ = 0.0;
     speed_limit_active_ = true;
+    CommandFrame frame = template_frame;
+    frame.speed = 0.0;
+    frame.angle = 0.0;
+    emergency_sequence.push_back(frame);
     return emergency_sequence;
   }
 
