@@ -1,0 +1,1103 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>2026-04-13-collision-voxel-layer</title>
+  <style>
+    :root {
+      --bg: #f6f7f8;
+      --paper: #ffffff;
+      --ink: #1f2a2c;
+      --muted: #5f6f73;
+      --line: #dbe3e6;
+      --brand: #1f6f50;
+      --brand-soft: #e7f3ee;
+      --shadow: 0 10px 28px rgb(31 42 44 / 8%);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: linear-gradient(160deg, #f6f7f8 0%, #edf3f5 100%);
+      font-family: "Noto Sans SC", "Microsoft YaHei", Arial, sans-serif;
+      line-height: 1.72;
+    }
+    .page {
+      width: min(1100px, calc(100% - 28px));
+      margin: 0 auto;
+      padding: 28px 0 48px;
+    }
+    .card {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+      padding: 28px;
+    }
+    h1, h2, h3, h4, h5, h6 { line-height: 1.28; margin: 22px 0 10px; }
+    h1 { margin-top: 6px; font-size: clamp(28px, 4vw, 44px); }
+    h2 { font-size: clamp(21px, 2.7vw, 31px); }
+    h3 { font-size: clamp(18px, 2.1vw, 24px); }
+    p { margin: 10px 0; }
+    code {
+      padding: 2px 6px;
+      border-radius: 6px;
+      background: var(--brand-soft);
+      color: #154933;
+      font-family: "JetBrains Mono", Consolas, monospace;
+      font-size: 0.93em;
+    }
+    pre {
+      margin: 14px 0;
+      padding: 14px;
+      border-radius: 12px;
+      background: #152124;
+      color: #e6f0f2;
+      overflow-x: auto;
+      border: 1px solid #26363a;
+    }
+    pre code {
+      padding: 0;
+      background: transparent;
+      color: inherit;
+      font-size: 0.9em;
+    }
+    ul, ol { padding-left: 22px; margin: 8px 0 14px; }
+    li { margin: 4px 0; }
+    blockquote {
+      margin: 14px 0;
+      padding: 10px 14px;
+      border-left: 4px solid var(--brand);
+      background: var(--brand-soft);
+      color: #1f4f3c;
+    }
+    a { color: #1f5f8c; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .toc {
+      margin-bottom: 18px;
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #f9fcfd;
+    }
+    .toc strong { display: block; margin-bottom: 8px; color: var(--brand); }
+    .toc ul { margin: 0; padding-left: 18px; }
+    .table-wrap {
+      overflow-x: auto;
+      margin: 12px 0;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+    }
+    table { border-collapse: collapse; width: 100%; min-width: 520px; }
+    th, td {
+      border-bottom: 1px solid var(--line);
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+    thead th {
+      color: var(--brand);
+      background: var(--brand-soft);
+    }
+    tbody tr:last-child td { border-bottom: none; }
+    .meta {
+      margin-top: 20px;
+      color: var(--muted);
+      font-size: 13px;
+      border-top: 1px dashed var(--line);
+      padding-top: 12px;
+    }
+    @media (max-width: 720px) {
+      .card { padding: 20px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <article class="card">
+      <aside class="toc"><strong>目录</strong><ul><li><a href="#collision-voxel-layer-implementation-plan">Collision Voxel Layer Implementation Plan</a></li><li><a href="#file-map">File Map</a></li><li><a href="#chunk-1-baseline-protection-and-package-skeleton">Chunk 1: Baseline Protection And Package Skeleton</a></li><li><a href="#task-0-save-the-current-worktree-baseline-before-implementation">Task 0: Save The Current Worktree Baseline Before Implementation</a></li><li><a href="#task-1-scaffold-the-new-package-and-message-contracts">Task 1: Scaffold The New Package And Message Contracts</a></li><li><a href="#chunk-2-sparse-voxel-core-and-sensor-adapters">Chunk 2: Sparse Voxel Core And Sensor Adapters</a></li><li><a href="#task-2-implement-sparse-voxel-storage-with-decay">Task 2: Implement Sparse Voxel Storage With Decay</a></li><li><a href="#task-3-implement-scan-columnization-and-depth-filtering">Task 3: Implement Scan Columnization And Depth Filtering</a></li><li><a href="#chunk-3-node-synchronization-and-voxel-publishing">Chunk 3: Node, Synchronization, And Voxel Publishing</a></li><li><a href="#task-4-add-the-runtime-node-and-debug-outputs">Task 4: Add The Runtime Node And Debug Outputs</a></li><li><a href="#chunk-4-nav2monitor-voxel-consumer-path">Chunk 4: `nav2_monitor` Voxel Consumer Path</a></li><li><a href="#task-5-parse-voxel-config-and-store-voxel-state">Task 5: Parse Voxel Config And Store Voxel State</a></li><li><a href="#task-6-use-voxel-occupancy-in-zone-and-ttc-evaluation">Task 6: Use Voxel Occupancy In Zone And TTC Evaluation</a></li><li><a href="#chunk-5-config-docs-verification-and-worktree-sync">Chunk 5: Config, Docs, Verification, And Worktree Sync</a></li><li><a href="#task-7-document-and-wire-default-configs">Task 7: Document And Wire Default Configs</a></li><li><a href="#task-8-final-verification-and-sync-to-the-control-worktree">Task 8: Final Verification And Sync To The Control Worktree</a></li></ul></aside>
+<h1 id="collision-voxel-layer-implementation-plan">Collision Voxel Layer Implementation Plan</h1>
+<blockquote><strong>For agentic workers:</strong> REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (<code>- [ ]</code>) syntax for tracking.</blockquote>
+<p><strong>Goal:</strong> Build an independent <code>collision_voxel_layer</code> package that fuses <code>LaserScan + depth PointCloud2</code> into a decaying sparse voxel layer, then add a voxel-backed collision input path to <code>nav2_monitor</code>.</p>
+<p><strong>Architecture:</strong> Implement a new ROS 2 package responsible for synchronization, preprocessing, sparse voxel maintenance, decay, and voxel publishing. Keep <code>nav2_monitor</code> as the collision policy engine by adding a <code>voxel_topic</code> input path that consumes voxel occupancy for zone and TTC evaluation without depending on Nav2.</p>
+<p><strong>Tech Stack:</strong> C++17, ROS 2 Humble, <code>rclcpp</code>, ROS 2 official <code>message_filters</code>, <code>sensor_msgs</code>, <code>visualization_msgs</code>, <code>geometry_msgs</code>, <code>tf2_ros</code>, <code>tf2_sensor_msgs</code>, <code>rosidl_default_generators</code>, <code>ament_cmake_gtest</code>, YAML config files, git worktrees</p>
+<p>---</p>
+<h2 id="file-map">File Map</h2>
+<ul>
+<li>Create: <code>src/collision_voxel_layer/CMakeLists.txt</code></li>
+</ul>
+<ul>
+<li>Build the new package, generate voxel messages, define node and tests.</li>
+</ul>
+<ul>
+<li>Create: <code>src/collision_voxel_layer/package.xml</code></li>
+</ul>
+<ul>
+<li>Declare runtime and build dependencies for messages, TF, and synchronization.</li>
+</ul>
+<ul>
+<li>Create: <code>src/collision_voxel_layer/msg/VoxelCell.msg</code></li>
+</ul>
+<ul>
+<li>Sparse voxel cell payload with occupancy and source provenance.</li>
+</ul>
+<ul>
+<li>Create: <code>src/collision_voxel_layer/msg/VoxelGrid.msg</code></li>
+</ul>
+<ul>
+<li>Sparse voxel grid output message for downstream consumers.</li>
+</ul>
+<ul>
+<li>Create: <code>src/collision_voxel_layer/include/collision_voxel_layer/voxel_types.hpp</code></li>
+</ul>
+<ul>
+<li>Internal key / state structs for sparse voxel storage.</li>
+</ul>
+<ul>
+<li>Create: <code>src/collision_voxel_layer/include/collision_voxel_layer/sparse_voxel_grid.hpp</code></li>
+</ul>
+<ul>
+<li>Sparse grid API for insertion, decay, pruning, and export.</li>
+</ul>
+<ul>
+<li>Create: <code>src/collision_voxel_layer/src/sparse_voxel_grid.cpp</code></li>
+</ul>
+<ul>
+<li>Sparse grid implementation.</li>
+</ul>
+<ul>
+<li>Create: <code>src/collision_voxel_layer/include/collision_voxel_layer/source_adapter.hpp</code></li>
+</ul>
+<ul>
+<li>Source preprocessing helpers for scan columns and depth cloud filtering.</li>
+</ul>
+<ul>
+<li>Create: <code>src/collision_voxel_layer/src/source_adapter.cpp</code></li>
+</ul>
+<ul>
+<li>Source adapter implementation.</li>
+</ul>
+<ul>
+<li>Create: <code>src/collision_voxel_layer/include/collision_voxel_layer/collision_voxel_layer_node.hpp</code></li>
+</ul>
+<ul>
+<li>Node declaration, subscriptions, synchronization wiring, timers, publishers.</li>
+</ul>
+<ul>
+<li>Create: <code>src/collision_voxel_layer/src/collision_voxel_layer_node.cpp</code></li>
+</ul>
+<ul>
+<li>Node implementation.</li>
+</ul>
+<ul>
+<li>Create: <code>src/collision_voxel_layer/src/main.cpp</code></li>
+</ul>
+<ul>
+<li>Executable entrypoint.</li>
+</ul>
+<ul>
+<li>Create: <code>src/collision_voxel_layer/config/collision_voxel_layer_params.yaml</code></li>
+</ul>
+<ul>
+<li>Default parameters for scan/depth sources and decay behavior.</li>
+</ul>
+<ul>
+<li>Create: <code>src/collision_voxel_layer/launch/collision_voxel_layer.launch.py</code></li>
+</ul>
+<ul>
+<li>Launch file for local validation.</li>
+</ul>
+<ul>
+<li>Create: <code>src/collision_voxel_layer/README.md</code></li>
+</ul>
+<ul>
+<li>Package usage and topic contract.</li>
+</ul>
+<ul>
+<li>Create: <code>src/collision_voxel_layer/test/test_sparse_voxel_grid.cpp</code></li>
+</ul>
+<ul>
+<li>Unit tests for insertion, decay, and pruning.</li>
+</ul>
+<ul>
+<li>Create: <code>src/collision_voxel_layer/test/test_source_adapter.cpp</code></li>
+</ul>
+<ul>
+<li>Unit tests for scan columnization and depth filtering.</li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/CMakeLists.txt</code></li>
+</ul>
+<ul>
+<li>Add dependency on <code>collision_voxel_layer</code> messages.</li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/package.xml</code></li>
+</ul>
+<ul>
+<li>Declare dependency on <code>collision_voxel_layer</code>.</li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/include/nav2_monitor/fault_detector.hpp</code></li>
+</ul>
+<ul>
+<li>Extend collision config with voxel input fields.</li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/src/fault_detector.cpp</code></li>
+</ul>
+<ul>
+<li>Parse voxel config fields.</li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/include/nav2_monitor/monitor_data_store.hpp</code></li>
+</ul>
+<ul>
+<li>Add voxel runtime state and accessors.</li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/src/monitor_data_store.cpp</code></li>
+</ul>
+<ul>
+<li>Store and expose voxel occupancy state.</li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/include/nav2_monitor/nav2_monitor_node.hpp</code></li>
+</ul>
+<ul>
+<li>Add voxel subscription declaration.</li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/src/nav2_monitor_node.cpp</code></li>
+</ul>
+<ul>
+<li>Subscribe to voxel grid topic and feed data store.</li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/include/nav2_monitor/collision_evaluator.hpp</code></li>
+</ul>
+<ul>
+<li>Declare voxel-backed collision helpers.</li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/src/collision_evaluator.cpp</code></li>
+</ul>
+<ul>
+<li>Consume voxel occupancy for zone and TTC evaluation.</li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/test/test_fault_detector.cpp</code></li>
+</ul>
+<ul>
+<li>Add config parser and evaluator tests for voxel-backed collision input.</li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/README.md</code></li>
+</ul>
+<ul>
+<li>Document new voxel input mode and topic examples.</li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/config/fault_detector_config.yaml</code></li>
+</ul>
+<ul>
+<li>Add example voxel configuration.</li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/config/profiles/fault_detector_elevator.yaml</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/config/profiles/fault_detector_reverse.yaml</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/config/profiles/fault_detector_todoor.yaml</code></li>
+</ul>
+<ul>
+<li>Keep profile mirrors aligned.</li>
+</ul>
+<ul>
+<li>Modify: <code>config/Monitor/nav2_monitor/fault_detector_config.yaml</code></li>
+</ul>
+<ul>
+<li>Modify: <code>config/Monitor/nav2_monitor/profiles/fault_detector_elevator.yaml</code></li>
+</ul>
+<ul>
+<li>Modify: <code>config/Monitor/nav2_monitor/profiles/fault_detector_reverse.yaml</code></li>
+</ul>
+<ul>
+<li>Modify: <code>config/Monitor/nav2_monitor/profiles/fault_detector_todoor.yaml</code></li>
+</ul>
+<ul>
+<li>Sync OTA/runtime config bundle after repo-side validation.</li>
+</ul>
+<h2 id="chunk-1-baseline-protection-and-package-skeleton">Chunk 1: Baseline Protection And Package Skeleton</h2>
+<h3 id="task-0-save-the-current-worktree-baseline-before-implementation">Task 0: Save The Current Worktree Baseline Before Implementation</h3>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Modify: current tracked source/config files already changed in <code>/home/tokou/claude/ry_work/.worktrees/monitor-ota-config</code></li>
+</ul>
+<ul>
+<li>Modify later: the mirrored files in <code>/home/tokou/claude/ry_work/.worktrees/control-source-routing-integration</code></li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 1: Inspect the current monitor worktree state</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-bash">
+git -C /home/tokou/claude/ry_work/.worktrees/monitor-ota-config status --short
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>tracked changes under <code>src/nav2_monitor</code> and <code>config/Monitor/nav2_monitor</code></li>
+</ul>
+<ul>
+<li>untracked build artifacts like <code>build/</code>, <code>install/</code>, <code>log/</code> remain excluded from commits</li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 2: Stage only the current engineering baseline</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-bash">
+git -C /home/tokou/claude/ry_work/.worktrees/monitor-ota-config add \
+  config/Monitor/nav2_monitor/fault_detector_config.yaml \
+  config/Monitor/nav2_monitor/profiles/fault_detector_elevator.yaml \
+  config/Monitor/nav2_monitor/profiles/fault_detector_reverse.yaml \
+  config/Monitor/nav2_monitor/profiles/fault_detector_todoor.yaml \
+  src/nav2_monitor/CMakeLists.txt \
+  src/nav2_monitor/README.md \
+  src/nav2_monitor/config/fault_detector_config.yaml \
+  src/nav2_monitor/config/profiles/fault_detector_elevator.yaml \
+  src/nav2_monitor/config/profiles/fault_detector_reverse.yaml \
+  src/nav2_monitor/config/profiles/fault_detector_todoor.yaml \
+  src/nav2_monitor/include/nav2_monitor/fault_detector.hpp \
+  src/nav2_monitor/include/nav2_monitor/nav2_monitor_node.hpp \
+  src/nav2_monitor/src/collision_evaluator.cpp \
+  src/nav2_monitor/src/fault_detector.cpp \
+  src/nav2_monitor/src/nav2_monitor_node.cpp \
+  src/nav2_monitor/test/test_fault_detector.cpp \
+  src/nav2_monitor/include/nav2_monitor/collision_prediction_router.hpp \
+  src/nav2_monitor/src/collision_prediction_router.cpp
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>no build artifacts or unrelated files staged</li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 3: Commit the baseline save point</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-bash">
+git -C /home/tokou/claude/ry_work/.worktrees/monitor-ota-config commit -m &quot;chore: save pre-voxel-layer baseline&quot;
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>one rollback anchor commit exists before any voxel-layer implementation work</li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 4: Record the baseline commit SHA in the implementation notes</strong></li>
+</ul>
+<p>Baseline save-point created: <code>f8fe058</code> (<code>chore: save pre-voxel-layer baseline</code>).</p>
+<ul>
+<li>[ ] <strong>Step 5: Commit the updated plan note</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-bash">
+git -C /home/tokou/claude/ry_work/.worktrees/monitor-ota-config add docs/superpowers/plans/2026-04-13-collision-voxel-layer.html
+git -C /home/tokou/claude/ry_work/.worktrees/monitor-ota-config commit -m &quot;docs: record pre-voxel-layer baseline&quot;
+</code></pre>
+<h3 id="task-1-scaffold-the-new-package-and-message-contracts">Task 1: Scaffold The New Package And Message Contracts</h3>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Create: <code>src/collision_voxel_layer/CMakeLists.txt</code></li>
+</ul>
+<ul>
+<li>Create: <code>src/collision_voxel_layer/package.xml</code></li>
+</ul>
+<ul>
+<li>Create: <code>src/collision_voxel_layer/msg/VoxelCell.msg</code></li>
+</ul>
+<ul>
+<li>Create: <code>src/collision_voxel_layer/msg/VoxelGrid.msg</code></li>
+</ul>
+<ul>
+<li>Create: <code>src/collision_voxel_layer/README.md</code></li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 1: Write failing package-level message/build tests</strong></li>
+</ul>
+<p>Create <code>src/collision_voxel_layer/test/test_sparse_voxel_grid.cpp</code> with a placeholder include that depends on generated voxel messages:</p>
+<pre><code class="language-cpp">
+#include &quot;collision_voxel_layer/msg/voxel_grid.hpp&quot;
+#include &quot;gtest/gtest.h&quot;
+
+TEST(CollisionVoxelLayerMessageSmokeTest, VoxelGridMessageCompiles)
+{
+  collision_voxel_layer::msg::VoxelGrid msg;
+  msg.resolution_xy = 0.05F;
+  EXPECT_FLOAT_EQ(msg.resolution_xy, 0.05F);
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 2: Run build/test to verify the package is missing</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-bash">
+source /opt/ros/humble/setup.bash &amp;&amp; colcon build --packages-select collision_voxel_layer
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>package not found or target missing</li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 3: Create the package skeleton</strong></li>
+</ul>
+<p>Add:</p>
+<p><code>src/collision_voxel_layer/msg/VoxelCell.msg</code></p>
+<pre><code class="language-text">
+float32 x
+float32 y
+float32 z
+float32 occupancy
+uint8 source_mask
+</code></pre>
+<p><code>src/collision_voxel_layer/msg/VoxelGrid.msg</code></p>
+<pre><code class="language-text">
+std_msgs/Header header
+float32 resolution_xy
+float32 resolution_z
+float32 decay_time_s
+collision_voxel_layer/VoxelCell[] cells
+</code></pre>
+<p>Set up <code>package.xml</code> and <code>CMakeLists.txt</code> with:</p>
+<ul>
+<li><code>ament_cmake</code></li>
+</ul>
+<ul>
+<li><code>rosidl_default_generators</code></li>
+</ul>
+<ul>
+<li><code>rclcpp</code></li>
+</ul>
+<ul>
+<li><code>sensor_msgs</code></li>
+</ul>
+<ul>
+<li><code>geometry_msgs</code></li>
+</ul>
+<ul>
+<li><code>visualization_msgs</code></li>
+</ul>
+<ul>
+<li><code>std_msgs</code></li>
+</ul>
+<ul>
+<li><code>builtin_interfaces</code></li>
+</ul>
+<ul>
+<li><code>tf2_ros</code></li>
+</ul>
+<ul>
+<li><code>tf2_sensor_msgs</code></li>
+</ul>
+<ul>
+<li><code>message_filters</code></li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 4: Build the new package and run the placeholder test</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-bash">
+source /opt/ros/humble/setup.bash &amp;&amp; colcon build --packages-select collision_voxel_layer
+source /opt/ros/humble/setup.bash &amp;&amp; source install/setup.bash &amp;&amp; colcon test --packages-select collision_voxel_layer --event-handlers console_direct+
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>package builds</li>
+</ul>
+<ul>
+<li>placeholder test passes</li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 5: Commit the scaffold</strong></li>
+</ul>
+<pre><code class="language-bash">
+git add src/collision_voxel_layer
+git commit -m &quot;feat(collision_voxel_layer): scaffold package and voxel messages&quot;
+</code></pre>
+<h2 id="chunk-2-sparse-voxel-core-and-sensor-adapters">Chunk 2: Sparse Voxel Core And Sensor Adapters</h2>
+<h3 id="task-2-implement-sparse-voxel-storage-with-decay">Task 2: Implement Sparse Voxel Storage With Decay</h3>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Create: <code>src/collision_voxel_layer/include/collision_voxel_layer/voxel_types.hpp</code></li>
+</ul>
+<ul>
+<li>Create: <code>src/collision_voxel_layer/include/collision_voxel_layer/sparse_voxel_grid.hpp</code></li>
+</ul>
+<ul>
+<li>Create: <code>src/collision_voxel_layer/src/sparse_voxel_grid.cpp</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/collision_voxel_layer/test/test_sparse_voxel_grid.cpp</code></li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 1: Write failing decay / pruning tests</strong></li>
+</ul>
+<p>Add tests:</p>
+<pre><code class="language-cpp">
+TEST(SparseVoxelGridTest, InsertsAndExportsOccupiedCells);
+TEST(SparseVoxelGridTest, DecaysCellsExponentiallyOverTime);
+TEST(SparseVoxelGridTest, PrunesCellsBelowThreshold);
+</code></pre>
+<p>Use a deterministic API like:</p>
+<pre><code class="language-cpp">
+SparseVoxelGrid grid(0.05, 0.10, 1.0, 0.01);
+grid.insert_point(0.20, 0.10, 0.15, 0.6F, 0x01, rclcpp::Time(10, 0, RCL_ROS_TIME));
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 2: Run the voxel grid test to verify failure</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-bash">
+source /opt/ros/humble/setup.bash &amp;&amp; source install/setup.bash &amp;&amp; ./build/collision_voxel_layer/test_sparse_voxel_grid
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>compile or link failure because <code>SparseVoxelGrid</code> is not implemented yet</li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 3: Implement the minimal sparse voxel grid</strong></li>
+</ul>
+<p>Define internal structs in <code>voxel_types.hpp</code>:</p>
+<pre><code class="language-cpp">
+struct VoxelKey
+{
+  int32_t ix;
+  int32_t iy;
+  int32_t iz;
+  bool operator==(const VoxelKey &amp; other) const = default;
+};
+
+struct VoxelState
+{
+  float occupancy{0.0F};
+  uint8_t source_mask{0U};
+  rclcpp::Time last_seen{0, 0, RCL_ROS_TIME};
+};
+</code></pre>
+<p>Implement methods in <code>SparseVoxelGrid</code>:</p>
+<ul>
+<li><code>insert_point(...)</code></li>
+</ul>
+<ul>
+<li><code>decay_to(const rclcpp::Time &amp; now)</code></li>
+</ul>
+<ul>
+<li><code>export_grid(const std_msgs::msg::Header &amp; header) const</code></li>
+</ul>
+<p>Use exponential decay:</p>
+<pre><code class="language-cpp">
+occupancy *= std::exp(-dt / decay_time_s_);
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 4: Re-run the voxel grid unit test and make it pass</strong></li>
+</ul>
+<p>Run the same direct gtest binary or <code>colcon test</code> command.</p>
+<p>Expected:</p>
+<ul>
+<li>all new sparse-grid tests pass</li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 5: Commit the sparse voxel core</strong></li>
+</ul>
+<pre><code class="language-bash">
+git add src/collision_voxel_layer/include/collision_voxel_layer/voxel_types.hpp src/collision_voxel_layer/include/collision_voxel_layer/sparse_voxel_grid.hpp src/collision_voxel_layer/src/sparse_voxel_grid.cpp src/collision_voxel_layer/test/test_sparse_voxel_grid.cpp
+git commit -m &quot;feat(collision_voxel_layer): add sparse voxel grid core&quot;
+</code></pre>
+<h3 id="task-3-implement-scan-columnization-and-depth-filtering">Task 3: Implement Scan Columnization And Depth Filtering</h3>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Create: <code>src/collision_voxel_layer/include/collision_voxel_layer/source_adapter.hpp</code></li>
+</ul>
+<ul>
+<li>Create: <code>src/collision_voxel_layer/src/source_adapter.cpp</code></li>
+</ul>
+<ul>
+<li>Create: <code>src/collision_voxel_layer/test/test_source_adapter.cpp</code></li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 1: Write failing source adapter tests</strong></li>
+</ul>
+<p>Add tests covering:</p>
+<ul>
+<li><code>LaserScan</code> hit expands into vertical voxel candidates between <code>scan_z_min</code> and <code>scan_z_max</code></li>
+</ul>
+<ul>
+<li>depth points outside <code>depth_min_height / depth_max_height</code> are rejected</li>
+</ul>
+<ul>
+<li>invalid depth points are dropped</li>
+</ul>
+<p>Example expectation:</p>
+<pre><code class="language-cpp">
+EXPECT_GT(scan_points.size(), 1u);  // vertical column, not single slice
+EXPECT_TRUE(std::ranges::all_of(scan_points, [](const auto &amp; p) { return p.x &gt; 0.0; }));
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 2: Run the source adapter test to verify failure</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-bash">
+source /opt/ros/humble/setup.bash &amp;&amp; source install/setup.bash &amp;&amp; colcon test --packages-select collision_voxel_layer --event-handlers console_direct+ --ctest-args -R test_source_adapter
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>missing adapter helpers or failing assertions</li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 3: Implement source preprocessing helpers</strong></li>
+</ul>
+<p>Create adapter APIs similar to:</p>
+<pre><code class="language-cpp">
+std::vector&lt;tf2::Vector3&gt; expand_scan_hit_column(double x, double y, double z_min, double z_max, double voxel_size_z);
+std::vector&lt;tf2::Vector3&gt; convert_scan_to_points(...);
+std::vector&lt;tf2::Vector3&gt; filter_depth_cloud(...);
+</code></pre>
+<p>Rules:</p>
+<ul>
+<li>scan points use configured min/max range</li>
+</ul>
+<ul>
+<li>scan hits expand vertically</li>
+</ul>
+<ul>
+<li>depth points use trusted range and height limits</li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 4: Re-run the adapter tests and make them pass</strong></li>
+</ul>
+<p>Run the same focused <code>colcon test</code> command.</p>
+<p>Expected:</p>
+<ul>
+<li><code>test_source_adapter</code> passes</li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 5: Commit the adapter layer</strong></li>
+</ul>
+<pre><code class="language-bash">
+git add src/collision_voxel_layer/include/collision_voxel_layer/source_adapter.hpp src/collision_voxel_layer/src/source_adapter.cpp src/collision_voxel_layer/test/test_source_adapter.cpp
+git commit -m &quot;feat(collision_voxel_layer): add scan and depth adapters&quot;
+</code></pre>
+<h2 id="chunk-3-node-synchronization-and-voxel-publishing">Chunk 3: Node, Synchronization, And Voxel Publishing</h2>
+<h3 id="task-4-add-the-runtime-node-and-debug-outputs">Task 4: Add The Runtime Node And Debug Outputs</h3>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Create: <code>src/collision_voxel_layer/include/collision_voxel_layer/collision_voxel_layer_node.hpp</code></li>
+</ul>
+<ul>
+<li>Create: <code>src/collision_voxel_layer/src/collision_voxel_layer_node.cpp</code></li>
+</ul>
+<ul>
+<li>Create: <code>src/collision_voxel_layer/src/main.cpp</code></li>
+</ul>
+<ul>
+<li>Create: <code>src/collision_voxel_layer/config/collision_voxel_layer_params.yaml</code></li>
+</ul>
+<ul>
+<li>Create: <code>src/collision_voxel_layer/launch/collision_voxel_layer.launch.py</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/collision_voxel_layer/CMakeLists.txt</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/collision_voxel_layer/package.xml</code></li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 1: Write a failing smoke test or compile target expectation</strong></li>
+</ul>
+<p>Add a basic node smoke test or at minimum a constructor test that instantiates the node with parameters.</p>
+<p>If a lightweight constructor test is simpler:</p>
+<pre><code class="language-cpp">
+TEST(CollisionVoxelLayerNodeTest, NodeConstructsWithDefaultParameters);
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 2: Run build/test to verify the runtime node is missing</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-bash">
+source /opt/ros/humble/setup.bash &amp;&amp; colcon build --packages-select collision_voxel_layer
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>node target missing or constructor test failing</li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 3: Implement the node</strong></li>
+</ul>
+<p>Wire:</p>
+<ul>
+<li><code>message_filters::Subscriber&lt;sensor_msgs::msg::LaserScan&gt;</code></li>
+</ul>
+<ul>
+<li><code>message_filters::Subscriber&lt;sensor_msgs::msg::PointCloud2&gt;</code></li>
+</ul>
+<ul>
+<li><code>message_filters::Synchronizer&lt;ApproximateTime&lt;...&gt;&gt;</code></li>
+</ul>
+<ul>
+<li>periodic decay timer</li>
+</ul>
+<ul>
+<li>publishers:</li>
+</ul>
+<ul>
+<li><code>/collision_voxel_layer/grid</code></li>
+</ul>
+<ul>
+<li><code>/collision_voxel_layer/markers</code></li>
+</ul>
+<ul>
+<li><code>/collision_voxel_layer/debug_cloud</code></li>
+</ul>
+<p>Minimal publish path:</p>
+<pre><code class="language-cpp">
+auto grid_msg = sparse_grid_.export_grid(header);
+voxel_pub_-&gt;publish(grid_msg);
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 4: Build and run package tests</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-bash">
+source /opt/ros/humble/setup.bash &amp;&amp; colcon build --packages-select collision_voxel_layer
+source /opt/ros/humble/setup.bash &amp;&amp; source install/setup.bash &amp;&amp; colcon test --packages-select collision_voxel_layer --event-handlers console_direct+
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>package builds</li>
+</ul>
+<ul>
+<li>all <code>collision_voxel_layer</code> tests pass</li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 5: Commit the runtime node</strong></li>
+</ul>
+<pre><code class="language-bash">
+git add src/collision_voxel_layer/CMakeLists.txt src/collision_voxel_layer/package.xml src/collision_voxel_layer/include/collision_voxel_layer/collision_voxel_layer_node.hpp src/collision_voxel_layer/src/collision_voxel_layer_node.cpp src/collision_voxel_layer/src/main.cpp src/collision_voxel_layer/config/collision_voxel_layer_params.yaml src/collision_voxel_layer/launch/collision_voxel_layer.launch.py
+git commit -m &quot;feat(collision_voxel_layer): add voxel layer runtime node&quot;
+</code></pre>
+<h2 id="chunk-4-nav2monitor-voxel-consumer-path">Chunk 4: <code>nav2_monitor</code> Voxel Consumer Path</h2>
+<h3 id="task-5-parse-voxel-config-and-store-voxel-state">Task 5: Parse Voxel Config And Store Voxel State</h3>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Modify: <code>src/nav2_monitor/CMakeLists.txt</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/package.xml</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/include/nav2_monitor/fault_detector.hpp</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/src/fault_detector.cpp</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/include/nav2_monitor/monitor_data_store.hpp</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/src/monitor_data_store.cpp</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/include/nav2_monitor/nav2_monitor_node.hpp</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/src/nav2_monitor_node.cpp</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/test/test_fault_detector.cpp</code></li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 1: Write failing parser and store tests</strong></li>
+</ul>
+<p>Add parser test examples:</p>
+<pre><code class="language-cpp">
+TEST_F(FaultDetectorTest, CollisionDetectionParsesVoxelTopic);
+TEST_F(FaultDetectorTest, CollisionDetectionVoxelStoreFiltersByOccupancy);
+</code></pre>
+<p>Expected config fields:</p>
+<pre><code class="language-yaml">
+collision_detection:
+  voxel_topic: &quot;/collision_voxel_layer/grid&quot;
+  voxel_min_occupancy: 0.35
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 2: Run focused <code>nav2_monitor</code> tests to verify failure</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-bash">
+source /opt/ros/humble/setup.bash &amp;&amp; colcon build --packages-select collision_voxel_layer nav2_monitor
+source /opt/ros/humble/setup.bash &amp;&amp; source install/setup.bash &amp;&amp; ./build/nav2_monitor/test_fault_detector --gtest_filter=&#x27;*Voxel*&#x27;
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>parser/store tests fail because voxel fields do not exist</li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 3: Add config parsing and runtime storage</strong></li>
+</ul>
+<p>Add config fields in <code>fault_detector.hpp</code>:</p>
+<pre><code class="language-cpp">
+std::string voxel_topic;
+double voxel_min_occupancy{0.0};
+double voxel_min_height{-std::numeric_limits&lt;double&gt;::infinity()};
+double voxel_max_height{std::numeric_limits&lt;double&gt;::infinity()};
+</code></pre>
+<p>Add <code>VoxelGrid</code> runtime storage in <code>MonitorDataStore</code> and a subscriber in <code>nav2_monitor_node.cpp</code>.</p>
+<ul>
+<li>[ ] <strong>Step 4: Re-run focused <code>nav2_monitor</code> voxel tests and make them pass</strong></li>
+</ul>
+<p>Run the same focused test command.</p>
+<p>Expected:</p>
+<ul>
+<li>parser and storage tests pass</li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 5: Commit the config/storage changes</strong></li>
+</ul>
+<pre><code class="language-bash">
+git add src/nav2_monitor/CMakeLists.txt src/nav2_monitor/package.xml src/nav2_monitor/include/nav2_monitor/fault_detector.hpp src/nav2_monitor/src/fault_detector.cpp src/nav2_monitor/include/nav2_monitor/monitor_data_store.hpp src/nav2_monitor/src/monitor_data_store.cpp src/nav2_monitor/include/nav2_monitor/nav2_monitor_node.hpp src/nav2_monitor/src/nav2_monitor_node.cpp src/nav2_monitor/test/test_fault_detector.cpp
+git commit -m &quot;feat(nav2_monitor): add voxel collision input path&quot;
+</code></pre>
+<h3 id="task-6-use-voxel-occupancy-in-zone-and-ttc-evaluation">Task 6: Use Voxel Occupancy In Zone And TTC Evaluation</h3>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Modify: <code>src/nav2_monitor/include/nav2_monitor/collision_evaluator.hpp</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/src/collision_evaluator.cpp</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/test/test_fault_detector.cpp</code></li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 1: Write failing evaluator tests for voxel-backed zones and TTC</strong></li>
+</ul>
+<p>Add tests:</p>
+<pre><code class="language-cpp">
+TEST_F(FaultDetectorTest, CollisionZoneUsesVoxelOccupancyWeight);
+TEST_F(FaultDetectorTest, CollisionTtcUsesVoxelCellCentersAsCandidates);
+TEST_F(FaultDetectorTest, CollisionTtcIgnoresLowOccupancyVoxelCells);
+</code></pre>
+<p>Use synthetic voxel cells rather than raw scan points.</p>
+<ul>
+<li>[ ] <strong>Step 2: Run focused evaluator tests and verify failure</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-bash">
+source /opt/ros/humble/setup.bash &amp;&amp; source install/setup.bash &amp;&amp; ./build/nav2_monitor/test_fault_detector --gtest_filter=&#x27;*Collision*Voxel*:*CollisionTtcUsesVoxelCellCentersAsCandidates*&#x27;
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>no voxel path exists yet</li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 3: Implement voxel-backed collision candidate extraction</strong></li>
+</ul>
+<p>Add helper path in <code>collision_evaluator.cpp</code>:</p>
+<ul>
+<li>convert voxel cells to weighted <code>CollisionPoint</code></li>
+</ul>
+<ul>
+<li>filter by occupancy and height</li>
+</ul>
+<ul>
+<li>prefer voxel evidence when <code>voxel_topic</code> is configured</li>
+</ul>
+<p>Minimal weighting rule:</p>
+<pre><code class="language-cpp">
+point.weight = voxel_cell.occupancy;
+</code></pre>
+<p>Then reuse existing zone and TTC evaluators with those weighted points.</p>
+<ul>
+<li>[ ] <strong>Step 4: Re-run focused evaluator tests, then run the full <code>nav2_monitor</code> test suite</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-bash">
+source /opt/ros/humble/setup.bash &amp;&amp; source install/setup.bash &amp;&amp; ./build/nav2_monitor/test_fault_detector --gtest_filter=&#x27;*Voxel*&#x27;
+source /opt/ros/humble/setup.bash &amp;&amp; export ROS_LOG_DIR=/tmp/ros_logs &amp;&amp; colcon test --packages-select nav2_monitor --event-handlers console_direct+
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>voxel-focused tests pass</li>
+</ul>
+<ul>
+<li>existing collision tests remain green aside from any known pre-existing unrelated reds</li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 5: Commit voxel evaluator support</strong></li>
+</ul>
+<pre><code class="language-bash">
+git add src/nav2_monitor/include/nav2_monitor/collision_evaluator.hpp src/nav2_monitor/src/collision_evaluator.cpp src/nav2_monitor/test/test_fault_detector.cpp
+git commit -m &quot;feat(nav2_monitor): evaluate collisions from voxel occupancy&quot;
+</code></pre>
+<h2 id="chunk-5-config-docs-verification-and-worktree-sync">Chunk 5: Config, Docs, Verification, And Worktree Sync</h2>
+<h3 id="task-7-document-and-wire-default-configs">Task 7: Document And Wire Default Configs</h3>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Modify: <code>src/nav2_monitor/README.md</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/config/fault_detector_config.yaml</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/config/profiles/fault_detector_elevator.yaml</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/config/profiles/fault_detector_reverse.yaml</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/config/profiles/fault_detector_todoor.yaml</code></li>
+</ul>
+<ul>
+<li>Modify: <code>config/Monitor/nav2_monitor/fault_detector_config.yaml</code></li>
+</ul>
+<ul>
+<li>Modify: <code>config/Monitor/nav2_monitor/profiles/fault_detector_elevator.yaml</code></li>
+</ul>
+<ul>
+<li>Modify: <code>config/Monitor/nav2_monitor/profiles/fault_detector_reverse.yaml</code></li>
+</ul>
+<ul>
+<li>Modify: <code>config/Monitor/nav2_monitor/profiles/fault_detector_todoor.yaml</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/collision_voxel_layer/README.md</code></li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 1: Update configs with voxel examples</strong></li>
+</ul>
+<p>Add fields like:</p>
+<pre><code class="language-yaml">
+collision_detection:
+  voxel_topic: &quot;/collision_voxel_layer/grid&quot;
+  voxel_min_occupancy: 0.35
+</code></pre>
+<p>For first repo defaults, keep raw source topics present but commented with migration guidance if needed.</p>
+<ul>
+<li>[ ] <strong>Step 2: Update READMEs</strong></li>
+</ul>
+<p>Document:</p>
+<ul>
+<li>package topics and parameters</li>
+</ul>
+<ul>
+<li><code>LaserScan + depth</code> input model</li>
+</ul>
+<ul>
+<li>voxel decay behavior</li>
+</ul>
+<ul>
+<li><code>nav2_monitor</code> voxel consumption path</li>
+</ul>
+<ul>
+<li>migration rule: use one authoritative obstacle source path to avoid double counting</li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 3: Verify config mirrors stay aligned</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-bash">
+diff -u src/nav2_monitor/config/fault_detector_config.yaml config/Monitor/nav2_monitor/fault_detector_config.yaml
+diff -u src/nav2_monitor/config/profiles/fault_detector_elevator.yaml config/Monitor/nav2_monitor/profiles/fault_detector_elevator.yaml
+diff -u src/nav2_monitor/config/profiles/fault_detector_reverse.yaml config/Monitor/nav2_monitor/profiles/fault_detector_reverse.yaml
+diff -u src/nav2_monitor/config/profiles/fault_detector_todoor.yaml config/Monitor/nav2_monitor/profiles/fault_detector_todoor.yaml
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>no diffs for mirrored config content</li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 4: Commit docs and config wiring</strong></li>
+</ul>
+<pre><code class="language-bash">
+git add src/nav2_monitor/README.md src/nav2_monitor/config/fault_detector_config.yaml src/nav2_monitor/config/profiles/fault_detector_elevator.yaml src/nav2_monitor/config/profiles/fault_detector_reverse.yaml src/nav2_monitor/config/profiles/fault_detector_todoor.yaml config/Monitor/nav2_monitor/fault_detector_config.yaml config/Monitor/nav2_monitor/profiles/fault_detector_elevator.yaml config/Monitor/nav2_monitor/profiles/fault_detector_reverse.yaml config/Monitor/nav2_monitor/profiles/fault_detector_todoor.yaml src/collision_voxel_layer/README.md
+git commit -m &quot;docs: wire voxel collision configuration&quot;
+</code></pre>
+<h3 id="task-8-final-verification-and-sync-to-the-control-worktree">Task 8: Final Verification And Sync To The Control Worktree</h3>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Modify: mirrored implementation files in <code>/home/tokou/claude/ry_work/.worktrees/control-source-routing-integration</code></li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 1: Run final package verification in the monitor worktree</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-bash">
+source /opt/ros/humble/setup.bash &amp;&amp; colcon build --packages-select collision_voxel_layer nav2_monitor
+source /opt/ros/humble/setup.bash &amp;&amp; export ROS_LOG_DIR=/tmp/ros_logs &amp;&amp; colcon test --packages-select collision_voxel_layer nav2_monitor --event-handlers console_direct+
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>both packages build</li>
+</ul>
+<ul>
+<li>new tests pass</li>
+</ul>
+<ul>
+<li>note any pre-existing unrelated test failures explicitly</li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 2: Sync the same source changes into the control worktree</strong></li>
+</ul>
+<p>Mirror:</p>
+<ul>
+<li><code>src/collision_voxel_layer/**</code></li>
+</ul>
+<ul>
+<li><code>src/nav2_monitor/**</code></li>
+</ul>
+<p>Do not copy build artifacts or unrelated files like <code>INTERFACES.html</code>.</p>
+<ul>
+<li>[ ] <strong>Step 3: Build and test the mirrored code in the control worktree</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-bash">
+source /opt/ros/humble/setup.bash &amp;&amp; colcon build --packages-select collision_voxel_layer nav2_monitor
+source /opt/ros/humble/setup.bash &amp;&amp; export ROS_LOG_DIR=/tmp/ros_logs &amp;&amp; colcon test --packages-select collision_voxel_layer nav2_monitor --event-handlers console_direct+
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>mirrored code builds</li>
+</ul>
+<ul>
+<li>the same voxel-related tests pass</li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 4: Commit the mirrored control worktree changes</strong></li>
+</ul>
+<pre><code class="language-bash">
+git -C /home/tokou/claude/ry_work/.worktrees/control-source-routing-integration add src/collision_voxel_layer src/nav2_monitor
+git -C /home/tokou/claude/ry_work/.worktrees/control-source-routing-integration commit -m &quot;feat: add collision voxel layer integration&quot;
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 5: Record verification results and residual risks</strong></li>
+</ul>
+<p>Document in the final handoff:</p>
+<ul>
+<li>baseline save-point SHA</li>
+</ul>
+<ul>
+<li>package build/test commands executed</li>
+</ul>
+<ul>
+<li>known unrelated red tests, if any</li>
+</ul>
+<ul>
+<li>rollout warning that voxel and raw source paths should not be enabled together in production unless explicitly supported</li>
+</ul>
+      <div class="meta">本文档已统一为 HTML 形式，便于浏览、打印和后续可视化扩展。</div>
+    </article>
+  </div>
+</body>
+</html>

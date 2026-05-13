@@ -1,0 +1,789 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>architecture</title>
+  <style>
+    :root {
+      --bg: #f6f7f8;
+      --paper: #ffffff;
+      --ink: #1f2a2c;
+      --muted: #5f6f73;
+      --line: #dbe3e6;
+      --brand: #1f6f50;
+      --brand-soft: #e7f3ee;
+      --shadow: 0 10px 28px rgb(31 42 44 / 8%);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: linear-gradient(160deg, #f6f7f8 0%, #edf3f5 100%);
+      font-family: "Noto Sans SC", "Microsoft YaHei", Arial, sans-serif;
+      line-height: 1.72;
+    }
+    .page {
+      width: min(1100px, calc(100% - 28px));
+      margin: 0 auto;
+      padding: 28px 0 48px;
+    }
+    .card {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+      padding: 28px;
+    }
+    h1, h2, h3, h4, h5, h6 { line-height: 1.28; margin: 22px 0 10px; }
+    h1 { margin-top: 6px; font-size: clamp(28px, 4vw, 44px); }
+    h2 { font-size: clamp(21px, 2.7vw, 31px); }
+    h3 { font-size: clamp(18px, 2.1vw, 24px); }
+    p { margin: 10px 0; }
+    code {
+      padding: 2px 6px;
+      border-radius: 6px;
+      background: var(--brand-soft);
+      color: #154933;
+      font-family: "JetBrains Mono", Consolas, monospace;
+      font-size: 0.93em;
+    }
+    pre {
+      margin: 14px 0;
+      padding: 14px;
+      border-radius: 12px;
+      background: #152124;
+      color: #e6f0f2;
+      overflow-x: auto;
+      border: 1px solid #26363a;
+    }
+    pre code {
+      padding: 0;
+      background: transparent;
+      color: inherit;
+      font-size: 0.9em;
+    }
+    ul, ol { padding-left: 22px; margin: 8px 0 14px; }
+    li { margin: 4px 0; }
+    blockquote {
+      margin: 14px 0;
+      padding: 10px 14px;
+      border-left: 4px solid var(--brand);
+      background: var(--brand-soft);
+      color: #1f4f3c;
+    }
+    a { color: #1f5f8c; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .toc {
+      margin-bottom: 18px;
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #f9fcfd;
+    }
+    .toc strong { display: block; margin-bottom: 8px; color: var(--brand); }
+    .toc ul { margin: 0; padding-left: 18px; }
+    .table-wrap {
+      overflow-x: auto;
+      margin: 12px 0;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+    }
+    table { border-collapse: collapse; width: 100%; min-width: 520px; }
+    th, td {
+      border-bottom: 1px solid var(--line);
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+    thead th {
+      color: var(--brand);
+      background: var(--brand-soft);
+    }
+    tbody tr:last-child td { border-bottom: none; }
+    .meta {
+      margin-top: 20px;
+      color: var(--muted);
+      font-size: 13px;
+      border-top: 1px dashed var(--line);
+      padding-top: 12px;
+    }
+    @media (max-width: 720px) {
+      .card { padding: 20px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <article class="card">
+      <aside class="toc"><strong>目录</strong><ul><li><a href="#nav2monitor-架构设计说明">nav2_monitor 架构设计说明</a></li><li><a href="#1-版本目标">1. 版本目标</a></li><li><a href="#2-总体架构">2. 总体架构</a></li><li><a href="#3-各模块职责">3. 各模块职责</a></li><li><a href="#31-nav2monitoraggregatornode">3.1 Nav2MonitorAggregatorNode</a></li><li><a href="#32-monitordatastore">3.2 MonitorDataStore</a></li><li><a href="#33-watchtopicevaluator">3.3 WatchTopicEvaluator</a></li><li><a href="#34-feedbackruleevaluator">3.4 FeedbackRuleEvaluator</a></li><li><a href="#35-chassisevaluator">3.5 ChassisEvaluator</a></li><li><a href="#36-collisionevaluator">3.6 CollisionEvaluator</a></li><li><a href="#37-faultdetector">3.7 FaultDetector</a></li><li><a href="#38-faultstatecoordinator">3.8 FaultStateCoordinator</a></li><li><a href="#39-safetyemergencyexecutor">3.9 safety_emergency_executor</a></li><li><a href="#4-数据流与执行流">4. 数据流与执行流</a></li><li><a href="#41-状态采集流">4.1 状态采集流</a></li><li><a href="#42-故障检测流">4.2 故障检测流</a></li><li><a href="#43-安全仲裁流">4.3 安全仲裁流</a></li><li><a href="#44-事件与状态输出流">4.4 事件与状态输出流</a></li><li><a href="#5-配置语义">5. 配置语义</a></li><li><a href="#51-watchtopics">5.1 `watch_topics`</a></li><li><a href="#52-feedbackrules">5.2 `feedback_rules`</a></li><li><a href="#52-targettransforms">5.2 `target_transforms`</a></li><li><a href="#53-collisiondetection">5.3 `collision_detection`</a></li><li><a href="#54-zones">5.4 `zones`</a></li><li><a href="#6-当前已实现能力">6. 当前已实现能力</a></li><li><a href="#已实现">已实现</a></li><li><a href="#尚未实现-未来优化点">尚未实现 / 未来优化点</a></li><li><a href="#多错误组合策略已支持第一版">多错误组合策略（已支持第一版）</a></li><li><a href="#7-性能设计原则">7. 性能设计原则</a></li><li><a href="#8-推荐阅读顺序">8. 推荐阅读顺序</a></li></ul></aside>
+<h1 id="nav2monitor-架构设计说明">nav2_monitor 架构设计说明</h1>
+<ul>
+<li>名称：nav2_monitor v2.3</li>
+</ul>
+<ul>
+<li>版本：v2.3</li>
+</ul>
+<ul>
+<li>时间：2026-03-15</li>
+</ul>
+<ul>
+<li>作者：ToTo</li>
+</ul>
+<h2 id="1-版本目标">1. 版本目标</h2>
+<p>当前版本的 <code>nav2_monitor</code> 已形成一条完整的轻量安全链路，目标是：</p>
+<ul>
+<li>低占用</li>
+</ul>
+<ul>
+<li>小内存</li>
+</ul>
+<ul>
+<li>快响应</li>
+</ul>
+<ul>
+<li>配置可扩展</li>
+</ul>
+<ul>
+<li>故障检测与安全执行解耦</li>
+</ul>
+<p>它不是单一的“状态上报节点”，而是一个由<strong>监控采集、规则判断、故障组合、安全执行</strong>组成的轻量安全监控系统。</p>
+<p>---</p>
+<h2 id="2-总体架构">2. 总体架构</h2>
+<p>当前实现按职责分为 6 层：</p>
+<ol>
+<li><strong>输入采集层</strong>：<code>Nav2MonitorAggregatorNode</code></li>
+</ol>
+<ol>
+<li><strong>数据快照层</strong>：<code>MonitorDataStore</code></li>
+</ol>
+<ol>
+<li><strong>规则判断层</strong>：<code>WatchTopicEvaluator</code> / <code>FeedbackRuleEvaluator</code> / <code>ChassisEvaluator</code> / <code>CollisionEvaluator</code></li>
+</ol>
+<ol>
+<li><strong>故障编排层</strong>：<code>FaultDetector</code></li>
+</ol>
+<ol>
+<li><strong>安全状态层</strong>：<code>FaultStateCoordinator</code></li>
+</ol>
+<ol>
+<li><strong>动作执行层</strong>：<code>safety_emergency_executor</code></li>
+</ol>
+<p>数据主链路如下：</p>
+<p><code>ROS 输入 -&gt; Nav2MonitorAggregatorNode -&gt; MonitorDataStore -&gt; FaultDetector -&gt; FaultStateCoordinator -&gt; SafetyCmd -&gt; safety_emergency_executor</code></p>
+<p>同时还有两条输出链路：</p>
+<ul>
+<li>状态输出链：<code>/nav2_monitor/status</code></li>
+</ul>
+<ul>
+<li>事件输出链：<code>/nav2_monitor/fault_event</code></li>
+</ul>
+<p>---</p>
+<h2 id="3-各模块职责">3. 各模块职责</h2>
+<h3 id="31-nav2monitoraggregatornode">3.1 Nav2MonitorAggregatorNode</h3>
+<p><code>Nav2MonitorAggregatorNode</code> 是系统入口，负责：</p>
+<ul>
+<li>加载参数与故障配置</li>
+</ul>
+<ul>
+<li>建立所有 ROS 订阅/发布/定时器</li>
+</ul>
+<ul>
+<li>周期扫描节点、话题发布者、TF</li>
+</ul>
+<ul>
+<li>接收并预处理外部输入</li>
+</ul>
+<ul>
+<li>将最新输入写入 <code>MonitorDataStore</code></li>
+</ul>
+<ul>
+<li>周期组装 <code>MonitorStatus</code></li>
+</ul>
+<ul>
+<li>触发故障检测与安全仲裁</li>
+</ul>
+<ul>
+<li>发布 <code>FaultEvent</code> 与 <code>SupervisorCmd</code></li>
+</ul>
+<ul>
+<li>发布碰撞区域可视化</li>
+</ul>
+<p>它负责“接线”和“驱动”，不负责具体规则判断。</p>
+<h3 id="32-monitordatastore">3.2 MonitorDataStore</h3>
+<p><code>MonitorDataStore</code> 是统一快照层，保存<strong>最新有效状态</strong>，不做业务判断。</p>
+<p>当前保存的数据包括：</p>
+<ul>
+<li>节点最后 seen 时间</li>
+</ul>
+<ul>
+<li><code>watch_topics</code> 的发布者状态、有效位、频率、小窗口时间戳</li>
+</ul>
+<ul>
+<li>统一反馈 <code>feedback</code> 的最近值、合法性、时间戳、小窗口时间戳</li>
+</ul>
+<ul>
+<li>底盘输入状态：<code>/command</code>、<code>/moto_info</code>、<code>/odom</code></li>
+</ul>
+<ul>
+<li>电池状态</li>
+</ul>
+<ul>
+<li>碰撞点集（按 source 分类缓存，并按超时聚合）</li>
+</ul>
+<p>设计原则：</p>
+<ul>
+<li>只保留最新值或很小的滑窗</li>
+</ul>
+<ul>
+<li>不保留长历史</li>
+</ul>
+<ul>
+<li>不做规则逻辑</li>
+</ul>
+<ul>
+<li>尽量避免重复缓存</li>
+</ul>
+<h3 id="33-watchtopicevaluator">3.3 WatchTopicEvaluator</h3>
+<p>负责直接监控型 topic 的规则判断。</p>
+<p>判断内容：</p>
+<ul>
+<li>发布频率是否低于配置阈值</li>
+</ul>
+<ul>
+<li>连续计数防误报</li>
+</ul>
+<ul>
+<li>输出 legacy topic 类故障</li>
+</ul>
+<p>适用对象：</p>
+<ul>
+<li><code>watch_topics</code></li>
+</ul>
+<h3 id="34-feedbackruleevaluator">3.4 FeedbackRuleEvaluator</h3>
+<p>负责统一反馈规则判断。</p>
+<p>判断内容：</p>
+<ul>
+<li>missing</li>
+</ul>
+<ul>
+<li>stale</li>
+</ul>
+<ul>
+<li>invalid</li>
+</ul>
+<ul>
+<li>数值越界</li>
+</ul>
+<ul>
+<li>频率不足</li>
+</ul>
+<ul>
+<li>规则级安全动作覆盖</li>
+</ul>
+<ul>
+<li>连续计数防误报</li>
+</ul>
+<p>适用对象：</p>
+<ul>
+<li><code>feedback_rules</code></li>
+</ul>
+<ul>
+<li>配置中的 <code>source_topic + metric_name</code></li>
+</ul>
+<h3 id="35-chassisevaluator">3.5 ChassisEvaluator</h3>
+<p>负责底盘异常与久停判断。</p>
+<p>判断内容：</p>
+<ul>
+<li><code>command有 / moto无</code></li>
+</ul>
+<ul>
+<li><code>command无 / moto有</code></li>
+</ul>
+<ul>
+<li><code>command无 / moto无</code> 且持续超时</li>
+</ul>
+<ul>
+<li>连续计数防误报</li>
+</ul>
+<p>适用对象：</p>
+<ul>
+<li><code>/command</code></li>
+</ul>
+<ul>
+<li><code>/moto_info</code></li>
+</ul>
+<ul>
+<li><code>/odom</code></li>
+</ul>
+<h3 id="36-collisionevaluator">3.6 CollisionEvaluator</h3>
+<p>负责轻量碰撞检测。</p>
+<p>当前支持：</p>
+<ul>
+<li><code>LaserScan</code></li>
+</ul>
+<ul>
+<li><code>PointCloud2</code></li>
+</ul>
+<ul>
+<li><code>ultrasonic_eight(JSON)</code></li>
+</ul>
+<ul>
+<li>polygon zone</li>
+</ul>
+<ul>
+<li>slowdown zone</li>
+</ul>
+<ul>
+<li>stop zone</li>
+</ul>
+<ul>
+<li>approach / TTC</li>
+</ul>
+<p>判断方式：</p>
+<ul>
+<li>将 scan / pointcloud 转换到 <code>base_frame</code> 下的 2D 点集</li>
+</ul>
+<ul>
+<li>聚合当前有效 source 点集</li>
+</ul>
+<ul>
+<li>针对每个 zone 做几何判定</li>
+</ul>
+<ul>
+<li>输出统一 <code>FaultInfo</code></li>
+</ul>
+<p>当前 <code>ttc</code> 动态预警区已支持以下增强能力：</p>
+<ul>
+<li>可直接使用车体 <code>footprint_points</code> 计算障碍点到车体轮廓的最短距离</li>
+</ul>
+<ul>
+<li>可基于 <code>prediction_motion</code> 做轻量预测轨迹 TTC，而不只使用单一前向速度</li>
+</ul>
+<ul>
+<li>支持 <code>recover_time_before_collision</code> 形成退出滞回</li>
+</ul>
+<ul>
+<li>支持 <code>min_hold_time_s</code> 保持故障一段时间，避免临界抖动</li>
+</ul>
+<ul>
+<li>未配置 footprint 时，该 TTC 规则会被安全跳过，不再回退到简化版 <code>distance / speed</code></li>
+</ul>
+<p><code>zone</code> 模式的缓停/急停区现在额外支持：</p>
+<ul>
+<li><code>motion_direction=forward/reverse/both</code></li>
+</ul>
+<ul>
+<li>使用 <code>prediction_linear_x</code> 结合 <code>direction_speed_threshold</code> 维护当前稳定运动方向</li>
+</ul>
+<ul>
+<li>当速度接近 0 时保持当前稳定方向；若尚未建立稳定方向，则仅 <code>both</code> 区域继续生效</li>
+</ul>
+<ul>
+<li>连续 <code>direction_confirm_count</code> 帧收到相反方向速度后，<code>zone/ttc</code> 才切换到新方向</li>
+</ul>
+<ul>
+<li>预测速度超时时会清空稳定方向，重新等待方向建立</li>
+</ul>
+<p><code>ttc</code> 可视化现在支持：</p>
+<ul>
+<li>配置项：<code>collision_detection.ttc_visualization_enabled</code></li>
+</ul>
+<ul>
+<li>话题：<code>/nav2_monitor/collision_ttc_markers</code></li>
+</ul>
+<ul>
+<li>内容：动态 corridor、预测轨迹、预测 footprint、最近碰撞点、TTC 文本</li>
+</ul>
+<ul>
+<li>默认关闭，避免增加现网运行开销</li>
+</ul>
+<h3 id="37-faultdetector">3.7 FaultDetector</h3>
+<p><code>FaultDetector</code> 现在是故障编排器，不再承担所有具体判断细节。</p>
+<p>职责：</p>
+<ul>
+<li>解析 <code>fault_detector_config.yaml</code></li>
+</ul>
+<ul>
+<li>保存配置对象</li>
+</ul>
+<ul>
+<li>初始化各 evaluator</li>
+</ul>
+<ul>
+<li>调用 evaluator，汇总当前激活故障 <code>FaultInfo[]</code></li>
+</ul>
+<ul>
+<li>生成稳定 <code>fault_key</code></li>
+</ul>
+<h3 id="38-faultstatecoordinator">3.8 FaultStateCoordinator</h3>
+<p><code>FaultStateCoordinator</code> 是安全状态机与边沿管理中心。</p>
+<p>职责：</p>
+<ul>
+<li>维护当前激活故障标志位</li>
+</ul>
+<ul>
+<li>根据 <code>fault_key</code> 识别触发/恢复边沿</li>
+</ul>
+<ul>
+<li>聚合多个安全故障</li>
+</ul>
+<ul>
+<li>选择当前最高安全动作</li>
+</ul>
+<ul>
+<li>发布 <code>/safety_system/cmd</code></li>
+</ul>
+<ul>
+<li>在所有安全故障恢复后自动发布 <code>RESUME</code></li>
+</ul>
+<p>当前安全动作优先级：</p>
+<p><code>EMERGENCY_STOP &gt; SOFT_STOP &gt; SLOW_DOWN &gt; NORMAL</code></p>
+<h3 id="39-safetyemergencyexecutor">3.9 safety_emergency_executor</h3>
+<p>执行端只负责动作执行：</p>
+<ul>
+<li><code>SLOW_DOWN</code></li>
+</ul>
+<ul>
+<li><code>SOFT_STOP</code></li>
+</ul>
+<ul>
+<li><code>EMERGENCY_STOP</code></li>
+</ul>
+<ul>
+<li><code>RESUME</code></li>
+</ul>
+<p>它不参与故障判断，也不参与多故障组合。</p>
+<p>---</p>
+<h2 id="4-数据流与执行流">4. 数据流与执行流</h2>
+<h3 id="41-状态采集流">4.1 状态采集流</h3>
+<ul>
+<li>拓扑扫描阶段：</li>
+</ul>
+<ul>
+<li>节点在线状态</li>
+</ul>
+<ul>
+<li>topic 发布者状态</li>
+</ul>
+<ul>
+<li>TF 可用性</li>
+</ul>
+<ul>
+<li>输入回调阶段：</li>
+</ul>
+<ul>
+<li>feedback</li>
+</ul>
+<ul>
+<li>command / moto / odom</li>
+</ul>
+<ul>
+<li>battery</li>
+</ul>
+<ul>
+<li>collision scan / pointcloud</li>
+</ul>
+<ul>
+<li>所有输入统一写入 <code>MonitorDataStore</code></li>
+</ul>
+<h3 id="42-故障检测流">4.2 故障检测流</h3>
+<ul>
+<li><code>check_health()</code> 时读取 <code>MonitorDataStore</code></li>
+</ul>
+<ul>
+<li><code>FaultDetector</code> 调用各 evaluator 输出 <code>FaultInfo[]</code></li>
+</ul>
+<ul>
+<li>每条 <code>FaultInfo</code> 带稳定 <code>fault_key</code></li>
+</ul>
+<h3 id="43-安全仲裁流">4.3 安全仲裁流</h3>
+<ul>
+<li><code>FaultStateCoordinator</code> 接收 <code>FaultInfo[]</code></li>
+</ul>
+<ul>
+<li>识别：</li>
+</ul>
+<ul>
+<li>新出现故障 -&gt; <code>TRIGGER</code></li>
+</ul>
+<ul>
+<li>消失故障 -&gt; <code>RECOVER</code></li>
+</ul>
+<ul>
+<li>聚合所有激活安全故障</li>
+</ul>
+<ul>
+<li>选最高安全动作</li>
+</ul>
+<ul>
+<li>发布 <code>/safety_system/cmd</code></li>
+</ul>
+<h3 id="44-事件与状态输出流">4.4 事件与状态输出流</h3>
+<ul>
+<li><code>MonitorStatus</code>：周期发布系统当前总体状态</li>
+</ul>
+<ul>
+<li><code>FaultEvent</code>：只在触发/恢复边沿发布</li>
+</ul>
+<ul>
+<li><code>SupervisorCmd</code>：按 cooldown 控制发布</li>
+</ul>
+<p>---</p>
+<h2 id="5-配置语义">5. 配置语义</h2>
+<h3 id="51-watchtopics">5.1 <code>watch_topics</code></h3>
+<p>表示 <code>nav2_monitor</code> 直接监控的真实 ROS topic。</p>
+<p>用途：</p>
+<ul>
+<li>检查发布者是否存在</li>
+</ul>
+<ul>
+<li>检查频率是否达标</li>
+</ul>
+<h3 id="52-feedbackrules">5.2 <code>feedback_rules</code></h3>
+<p>表示统一反馈规则，而不是 <code>nav2_monitor</code> 直接订阅的真实 topic。</p>
+<p>其中：</p>
+<ul>
+<li><code>source_topic</code> 对应 <code>AlgorithmFeedback.topic_name</code></li>
+</ul>
+<ul>
+<li><code>metric_name</code> 对应 <code>AlgorithmFeedback.metric_name</code></li>
+</ul>
+<h3 id="52-targettransforms">5.2 <code>target_transforms</code></h3>
+<ul>
+<li>顶层 TF 监控列表，格式为 <code>frame1-&gt;frame2</code></li>
+</ul>
+<ul>
+<li>若 <code>fault_config</code> 中存在该字段，则优先使用；否则回退到 <code>nav2_monitor_params.yaml</code> 的 <code>target_transforms</code></li>
+</ul>
+<h3 id="53-collisiondetection">5.3 <code>collision_detection</code></h3>
+<p>表示碰撞检测配置。</p>
+<p>当前字段包括：</p>
+<ul>
+<li><code>scan_topic</code></li>
+</ul>
+<ul>
+<li><code>pointcloud_topic</code></li>
+</ul>
+<ul>
+<li><code>ultrasonic_topic</code></li>
+</ul>
+<ul>
+<li><code>ultrasonic_widget</code></li>
+</ul>
+<ul>
+<li>8 路权重，默认编号为 <code>1号左前，之后顺时针</code></li>
+</ul>
+<ul>
+<li><code>ultrasonic_blind_distance</code></li>
+</ul>
+<ul>
+<li><code>ultrasonic_out_of_range_value</code></li>
+</ul>
+<ul>
+<li><code>pointcloud_min_height</code></li>
+</ul>
+<ul>
+<li><code>pointcloud_max_height</code></li>
+</ul>
+<ul>
+<li><code>source_timeout_s</code></li>
+</ul>
+<ul>
+<li><code>direction_speed_threshold</code></li>
+</ul>
+<ul>
+<li><code>direction_confirm_count</code></li>
+</ul>
+<ul>
+<li><code>prediction_speed_topic</code></li>
+</ul>
+<ul>
+<li><code>ttc_visualization_enabled</code></li>
+</ul>
+<ul>
+<li><code>footprint_points</code></li>
+</ul>
+<ul>
+<li><code>zones</code></li>
+</ul>
+<h3 id="54-zones">5.4 <code>zones</code></h3>
+<p>每个碰撞区支持：</p>
+<ul>
+<li><code>name</code></li>
+</ul>
+<ul>
+<li><code>model</code></li>
+</ul>
+<ul>
+<li>默认：普通命中区</li>
+</ul>
+<ul>
+<li><code>approach</code></li>
+</ul>
+<ul>
+<li><code>points</code></li>
+</ul>
+<ul>
+<li><code>min_points</code></li>
+</ul>
+<ul>
+<li><code>level</code></li>
+</ul>
+<ul>
+<li><code>safety_system</code></li>
+</ul>
+<ul>
+<li><code>safety_slow_down_percentage</code></li>
+</ul>
+<ul>
+<li><code>actions</code></li>
+</ul>
+<ul>
+<li><code>visualize</code></li>
+</ul>
+<ul>
+<li><code>polygon_pub_topic</code></li>
+</ul>
+<ul>
+<li><code>time_before_collision</code></li>
+</ul>
+<p>---</p>
+<h2 id="6-当前已实现能力">6. 当前已实现能力</h2>
+<h3 id="已实现">已实现</h3>
+<ul>
+<li>节点在线监控</li>
+</ul>
+<ul>
+<li><code>watch_topics</code> 频率监控</li>
+</ul>
+<ul>
+<li><code>feedback_rules</code> 阈值/频率/超时/合法性监控</li>
+</ul>
+<ul>
+<li>底盘异常与久停监控</li>
+</ul>
+<ul>
+<li>多故障组合仲裁</li>
+</ul>
+<ul>
+<li>自动恢复与 <code>RESUME</code></li>
+</ul>
+<ul>
+<li><code>LaserScan</code> 碰撞检测</li>
+</ul>
+<ul>
+<li><code>PointCloud2</code> 碰撞检测</li>
+</ul>
+<ul>
+<li>单 topic 八路超声波 JSON 加权碰撞检测</li>
+</ul>
+<ul>
+<li>polygon 区域可视化</li>
+</ul>
+<ul>
+<li>slowdown / stop / approach(TTC) 三类碰撞策略</li>
+</ul>
+<h3 id="尚未实现-未来优化点">尚未实现 / 未来优化点</h3>
+<ul>
+<li>更复杂的超声波场景策略（当前已支持单 topic 八路加权输入，推荐直接配 <code>ultrasonic_widget</code>）</li>
+</ul>
+<ul>
+<li>完整 footprint 前向离散仿真版 TTC</li>
+</ul>
+<ul>
+<li>碰撞 source 抽象层进一步统一</li>
+</ul>
+<ul>
+<li>状态组装进一步独立成 <code>StatusAssembler</code></li>
+</ul>
+<h3 id="多错误组合策略已支持第一版">多错误组合策略（已支持第一版）</h3>
+<ul>
+<li>配置入口：<code>combined_fault_rules</code></li>
+</ul>
+<ul>
+<li>匹配方式：按 <code>fault_key</code> 精确匹配 <code>when_all</code></li>
+</ul>
+<ul>
+<li>输出方式：命中后附加一条新的 <code>FaultInfo</code>，<code>module_name</code> 固定为 <code>combined_fault</code></li>
+</ul>
+<ul>
+<li>仲裁方式：不新增单独仲裁器，继续复用 <code>FaultStateCoordinator</code></li>
+</ul>
+<ul>
+<li>当前边界：不支持 <code>when_any</code>、层级表达式、时间窗聚合、排除条件</li>
+</ul>
+<p>---</p>
+<h2 id="7-性能设计原则">7. 性能设计原则</h2>
+<p>本版本始终遵守以下原则：</p>
+<ul>
+<li>低占用</li>
+</ul>
+<ul>
+<li>小内存</li>
+</ul>
+<ul>
+<li>快响应</li>
+</ul>
+<p>具体体现：</p>
+<ul>
+<li>最新快照驱动，而不是长历史驱动</li>
+</ul>
+<ul>
+<li>小窗口时间戳缓存</li>
+</ul>
+<ul>
+<li>evaluator 做局部轻量判断</li>
+</ul>
+<ul>
+<li><code>FaultStateCoordinator</code> 统一安全仲裁，避免多处重复逻辑</li>
+</ul>
+<ul>
+<li>碰撞检测使用轻量几何判定，而不是重型地图/规划推演</li>
+</ul>
+<p>---</p>
+<h2 id="8-推荐阅读顺序">8. 推荐阅读顺序</h2>
+<p>建议从以下顺序理解代码：</p>
+<ol>
+<li><code>Nav2MonitorAggregatorNode</code></li>
+</ol>
+<ol>
+<li><code>MonitorDataStore</code></li>
+</ol>
+<ol>
+<li><code>FaultDetector</code></li>
+</ol>
+<ol>
+<li>各 evaluator</li>
+</ol>
+<ol>
+<li><code>FaultStateCoordinator</code></li>
+</ol>
+<ol>
+<li><code>safety_emergency_executor</code></li>
+</ol>
+<p>推荐入口文件：</p>
+<ul>
+<li><code>include/nav2_monitor/nav2_monitor_aggregator_node.hpp</code></li>
+</ul>
+<ul>
+<li><code>include/nav2_monitor/monitor_data_store.hpp</code></li>
+</ul>
+<ul>
+<li><code>include/nav2_monitor/fault_detector.hpp</code></li>
+</ul>
+<ul>
+<li><code>include/nav2_monitor/fault_state_coordinator.hpp</code></li>
+</ul>
+<ul>
+<li><code>include/nav2_monitor/collision_evaluator.hpp</code></li>
+</ul>
+<ul>
+<li><code>src/safety_emergency_executor/src/safety_emergency_executor_node.cpp</code></li>
+</ul>
+      <div class="meta">本文档已统一为 HTML 形式，便于浏览、打印和后续可视化扩展。</div>
+    </article>
+  </div>
+</body>
+</html>

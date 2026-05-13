@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>2026-04-13-collision-voxel-layer-config-alignment-design</title>
+  <style>
+    :root {
+      --bg: #f6f7f8;
+      --paper: #ffffff;
+      --ink: #1f2a2c;
+      --muted: #5f6f73;
+      --line: #dbe3e6;
+      --brand: #1f6f50;
+      --brand-soft: #e7f3ee;
+      --shadow: 0 10px 28px rgb(31 42 44 / 8%);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: linear-gradient(160deg, #f6f7f8 0%, #edf3f5 100%);
+      font-family: "Noto Sans SC", "Microsoft YaHei", Arial, sans-serif;
+      line-height: 1.72;
+    }
+    .page {
+      width: min(1100px, calc(100% - 28px));
+      margin: 0 auto;
+      padding: 28px 0 48px;
+    }
+    .card {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+      padding: 28px;
+    }
+    h1, h2, h3, h4, h5, h6 { line-height: 1.28; margin: 22px 0 10px; }
+    h1 { margin-top: 6px; font-size: clamp(28px, 4vw, 44px); }
+    h2 { font-size: clamp(21px, 2.7vw, 31px); }
+    h3 { font-size: clamp(18px, 2.1vw, 24px); }
+    p { margin: 10px 0; }
+    code {
+      padding: 2px 6px;
+      border-radius: 6px;
+      background: var(--brand-soft);
+      color: #154933;
+      font-family: "JetBrains Mono", Consolas, monospace;
+      font-size: 0.93em;
+    }
+    pre {
+      margin: 14px 0;
+      padding: 14px;
+      border-radius: 12px;
+      background: #152124;
+      color: #e6f0f2;
+      overflow-x: auto;
+      border: 1px solid #26363a;
+    }
+    pre code {
+      padding: 0;
+      background: transparent;
+      color: inherit;
+      font-size: 0.9em;
+    }
+    ul, ol { padding-left: 22px; margin: 8px 0 14px; }
+    li { margin: 4px 0; }
+    blockquote {
+      margin: 14px 0;
+      padding: 10px 14px;
+      border-left: 4px solid var(--brand);
+      background: var(--brand-soft);
+      color: #1f4f3c;
+    }
+    a { color: #1f5f8c; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .toc {
+      margin-bottom: 18px;
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #f9fcfd;
+    }
+    .toc strong { display: block; margin-bottom: 8px; color: var(--brand); }
+    .toc ul { margin: 0; padding-left: 18px; }
+    .table-wrap {
+      overflow-x: auto;
+      margin: 12px 0;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+    }
+    table { border-collapse: collapse; width: 100%; min-width: 520px; }
+    th, td {
+      border-bottom: 1px solid var(--line);
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+    thead th {
+      color: var(--brand);
+      background: var(--brand-soft);
+    }
+    tbody tr:last-child td { border-bottom: none; }
+    .meta {
+      margin-top: 20px;
+      color: var(--muted);
+      font-size: 13px;
+      border-top: 1px dashed var(--line);
+      padding-top: 12px;
+    }
+    @media (max-width: 720px) {
+      .card { padding: 20px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <article class="card">
+      <aside class="toc"><strong>目录</strong><ul><li><a href="#collision-voxel-layer-config-alignment-design">Collision Voxel Layer Config Alignment Design</a></li></ul></aside>
+<h1 id="collision-voxel-layer-config-alignment-design">Collision Voxel Layer Config Alignment Design</h1>
+<p><strong>Context</strong></p>
+<p><code>collision_voxel_layer</code> already provides the fused voxel topic consumed by <code>nav2_monitor</code>, but it still behaves like a standalone package demo:</p>
+<ul>
+<li>launch defaults read package-local config</li>
+</ul>
+<ul>
+<li>runtime config is not mirrored under <code>config/Monitor/</code></li>
+</ul>
+<ul>
+<li>there is no file-based hot reload path like <code>bridge</code> and <code>nav2_monitor</code></li>
+</ul>
+<p>The monitor worktree should treat it as a first-class runtime module.</p>
+<p><strong>Goals</strong></p>
+<ul>
+<li>Keep <code>collision_voxel_layer</code> as an independent package with a clear topic contract.</li>
+</ul>
+<ul>
+<li>Store the authoritative runtime config under <code>config/Monitor/collision_voxel_layer/</code>.</li>
+</ul>
+<ul>
+<li>Make the node support both ROS 2 standard parameter updates and file-based hot reload.</li>
+</ul>
+<ul>
+<li>Keep <code>nav2_monitor</code> coupled only through <code>collision_detection.voxel_topic</code>.</li>
+</ul>
+<ul>
+<li>Preserve the existing rule that the control worktree shares the same code and differs only in config entry paths.</li>
+</ul>
+<p><strong>Design</strong></p>
+<ul>
+<li>Add a monitor-side runtime config bundle at <code>config/Monitor/collision_voxel_layer/collision_voxel_layer_params.yaml</code>.</li>
+</ul>
+<ul>
+<li>Change the monitor launch file to load <code>/opt/ry/config/Monitor/collision_voxel_layer/collision_voxel_layer_params.yaml</code>.</li>
+</ul>
+<ul>
+<li>Extend <code>CollisionVoxelLayerNode</code> with:</li>
+</ul>
+<ul>
+<li><code>config_file</code>, <code>config_reload_enabled</code>, <code>config_reload_period_s</code></li>
+</ul>
+<ul>
+<li>a filesystem mtime watcher for the config file</li>
+</ul>
+<ul>
+<li>an <code>on_set_parameters_callback</code> for live parameter validation and reconfiguration</li>
+</ul>
+<ul>
+<li>Reconfigure publishers, subscriptions, synchronizer, timers, and voxel grid in place when parameters change.</li>
+</ul>
+<ul>
+<li>Resolve relative <code>config_file</code> values against the package share directory so package-local configs still work in the control worktree.</li>
+</ul>
+<p><strong>Behavior Notes</strong></p>
+<ul>
+<li>File reload uses ROS 2 parameter file parsing and applies values through standard parameter updates.</li>
+</ul>
+<ul>
+<li>Invalid file reloads log an error and keep the current live configuration.</li>
+</ul>
+<ul>
+<li>Reconfiguring structural parameters resets the in-memory voxel grid to avoid mixing occupancy built from incompatible settings.</li>
+</ul>
+<p><strong>Verification</strong></p>
+<ul>
+<li>Add node tests covering forced reload from a temp YAML file and runtime parameter updates.</li>
+</ul>
+<ul>
+<li>Extend monitor OTA layout tests to verify the new runtime config bundle and launch path.</li>
+</ul>
+<ul>
+<li>Build and test <code>collision_voxel_layer</code> and <code>nav2_monitor</code> in both worktrees after sync.</li>
+</ul>
+      <div class="meta">本文档已统一为 HTML 形式，便于浏览、打印和后续可视化扩展。</div>
+    </article>
+  </div>
+</body>
+</html>

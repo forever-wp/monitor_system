@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>2026-04-13-collision-voxel-layer-config-alignment</title>
+  <style>
+    :root {
+      --bg: #f6f7f8;
+      --paper: #ffffff;
+      --ink: #1f2a2c;
+      --muted: #5f6f73;
+      --line: #dbe3e6;
+      --brand: #1f6f50;
+      --brand-soft: #e7f3ee;
+      --shadow: 0 10px 28px rgb(31 42 44 / 8%);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: linear-gradient(160deg, #f6f7f8 0%, #edf3f5 100%);
+      font-family: "Noto Sans SC", "Microsoft YaHei", Arial, sans-serif;
+      line-height: 1.72;
+    }
+    .page {
+      width: min(1100px, calc(100% - 28px));
+      margin: 0 auto;
+      padding: 28px 0 48px;
+    }
+    .card {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+      padding: 28px;
+    }
+    h1, h2, h3, h4, h5, h6 { line-height: 1.28; margin: 22px 0 10px; }
+    h1 { margin-top: 6px; font-size: clamp(28px, 4vw, 44px); }
+    h2 { font-size: clamp(21px, 2.7vw, 31px); }
+    h3 { font-size: clamp(18px, 2.1vw, 24px); }
+    p { margin: 10px 0; }
+    code {
+      padding: 2px 6px;
+      border-radius: 6px;
+      background: var(--brand-soft);
+      color: #154933;
+      font-family: "JetBrains Mono", Consolas, monospace;
+      font-size: 0.93em;
+    }
+    pre {
+      margin: 14px 0;
+      padding: 14px;
+      border-radius: 12px;
+      background: #152124;
+      color: #e6f0f2;
+      overflow-x: auto;
+      border: 1px solid #26363a;
+    }
+    pre code {
+      padding: 0;
+      background: transparent;
+      color: inherit;
+      font-size: 0.9em;
+    }
+    ul, ol { padding-left: 22px; margin: 8px 0 14px; }
+    li { margin: 4px 0; }
+    blockquote {
+      margin: 14px 0;
+      padding: 10px 14px;
+      border-left: 4px solid var(--brand);
+      background: var(--brand-soft);
+      color: #1f4f3c;
+    }
+    a { color: #1f5f8c; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .toc {
+      margin-bottom: 18px;
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #f9fcfd;
+    }
+    .toc strong { display: block; margin-bottom: 8px; color: var(--brand); }
+    .toc ul { margin: 0; padding-left: 18px; }
+    .table-wrap {
+      overflow-x: auto;
+      margin: 12px 0;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+    }
+    table { border-collapse: collapse; width: 100%; min-width: 520px; }
+    th, td {
+      border-bottom: 1px solid var(--line);
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+    thead th {
+      color: var(--brand);
+      background: var(--brand-soft);
+    }
+    tbody tr:last-child td { border-bottom: none; }
+    .meta {
+      margin-top: 20px;
+      color: var(--muted);
+      font-size: 13px;
+      border-top: 1px dashed var(--line);
+      padding-top: 12px;
+    }
+    @media (max-width: 720px) {
+      .card { padding: 20px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <article class="card">
+      <aside class="toc"><strong>目录</strong><ul><li><a href="#collision-voxel-layer-config-alignment-implementation-plan">Collision Voxel Layer Config Alignment Implementation Plan</a></li><li><a href="#chunk-1-runtime-config-entry">Chunk 1: Runtime Config Entry</a></li><li><a href="#task-1-add-the-monitor-runtime-config-bundle">Task 1: Add the monitor runtime config bundle</a></li><li><a href="#chunk-2-hot-reloadable-node">Chunk 2: Hot Reloadable Node</a></li><li><a href="#task-2-add-runtime-parameter-reload-support-to-the-node">Task 2: Add runtime parameter reload support to the node</a></li><li><a href="#chunk-3-worktree-sync-and-verification">Chunk 3: Worktree Sync And Verification</a></li><li><a href="#task-3-sync-the-control-worktree-and-verify-both-sides">Task 3: Sync the control worktree and verify both sides</a></li></ul></aside>
+<h1 id="collision-voxel-layer-config-alignment-implementation-plan">Collision Voxel Layer Config Alignment Implementation Plan</h1>
+<blockquote><strong>For agentic workers:</strong> REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (<code>- [ ]</code>) syntax for tracking.</blockquote>
+<p><strong>Goal:</strong> Align <code>collision_voxel_layer</code> with the Monitor runtime module conventions: unified config storage, ROS 2 parameter updates, and file-based hot reload.</p>
+<p><strong>Architecture:</strong> Keep <code>collision_voxel_layer</code> as an independent node, but add the same operational shape already used by Monitor modules: <code>/opt/ry</code> runtime config entry, config file watcher, and live parameter callback. <code>nav2_monitor</code> continues to consume only the exported voxel topic.</p>
+<p><strong>Tech Stack:</strong> ROS 2 Humble, <code>rclcpp</code>, <code>message_filters</code>, filesystem mtime polling, ROS parameter YAML parsing, CMake/gtest</p>
+<p>---</p>
+<h2 id="chunk-1-runtime-config-entry">Chunk 1: Runtime Config Entry</h2>
+<h3 id="task-1-add-the-monitor-runtime-config-bundle">Task 1: Add the monitor runtime config bundle</h3>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Create: <code>config/Monitor/collision_voxel_layer/collision_voxel_layer_params.yaml</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/collision_voxel_layer/README.md</code></li>
+</ul>
+<ul>
+<li>Test: <code>src/bridge/test/test_monitor_ota_layout.py</code></li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 1: Write the failing test</strong></li>
+<p>Add OTA layout assertions for the new runtime config bundle and launch path.</p>
+</ul>
+<ul>
+<li>[ ] <strong>Step 2: Run test to verify it fails</strong></li>
+<p>Run: <code>source /opt/ros/humble/setup.bash &amp;&amp; colcon test --packages-select bridge --event-handlers console_direct+</code> Expected: failing assertions because the new config bundle is not present yet.</p>
+</ul>
+<ul>
+<li>[ ] <strong>Step 3: Write minimal implementation</strong></li>
+<p>Create the runtime config file and update docs/launch references.</p>
+</ul>
+<ul>
+<li>[ ] <strong>Step 4: Run test to verify it passes</strong></li>
+<p>Run the same bridge layout test command and confirm the new assertions pass.</p>
+</ul>
+<ul>
+<li>[ ] <strong>Step 5: Commit</strong></li>
+<p>Commit message: <code>feat(collision_voxel_layer): add monitor runtime config bundle</code></p>
+</ul>
+<h2 id="chunk-2-hot-reloadable-node">Chunk 2: Hot Reloadable Node</h2>
+<h3 id="task-2-add-runtime-parameter-reload-support-to-the-node">Task 2: Add runtime parameter reload support to the node</h3>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Modify: <code>src/collision_voxel_layer/include/collision_voxel_layer/collision_voxel_layer_node.hpp</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/collision_voxel_layer/src/collision_voxel_layer_node.cpp</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/collision_voxel_layer/CMakeLists.txt</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/collision_voxel_layer/package.xml</code></li>
+</ul>
+<ul>
+<li>Test: <code>src/collision_voxel_layer/test/test_collision_voxel_layer_node.cpp</code></li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 1: Write the failing test</strong></li>
+<p>Add node tests for file reload and parameter callback driven reconfiguration.</p>
+</ul>
+<ul>
+<li>[ ] <strong>Step 2: Run test to verify it fails</strong></li>
+<p>Run: <code>source /opt/ros/humble/setup.bash &amp;&amp; colcon test --packages-select collision_voxel_layer --event-handlers console_direct+</code> Expected: new reload tests fail because the node cannot hot reload yet.</p>
+</ul>
+<ul>
+<li>[ ] <strong>Step 3: Write minimal implementation</strong></li>
+<p>Add config path resolution, file watcher polling, parameter callback validation, and in-place reconfiguration.</p>
+</ul>
+<ul>
+<li>[ ] <strong>Step 4: Run test to verify it passes</strong></li>
+<p>Run the same package test command and confirm all node tests pass.</p>
+</ul>
+<ul>
+<li>[ ] <strong>Step 5: Commit</strong></li>
+<p>Commit message: <code>feat(collision_voxel_layer): add live config reload</code></p>
+</ul>
+<h2 id="chunk-3-worktree-sync-and-verification">Chunk 3: Worktree Sync And Verification</h2>
+<h3 id="task-3-sync-the-control-worktree-and-verify-both-sides">Task 3: Sync the control worktree and verify both sides</h3>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Modify: <code>src/collision_voxel_layer/launch/collision_voxel_layer.launch.py</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/collision_voxel_layer/config/collision_voxel_layer_params.yaml</code></li>
+</ul>
+<ul>
+<li>Modify: <code>config/Monitor/collision_voxel_layer/collision_voxel_layer_params.yaml</code></li>
+</ul>
+<ul>
+<li>Test: both worktrees</li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 1: Sync the control worktree code</strong></li>
+<p>Copy the monitor implementation into <code>control-source-routing-integration</code>, preserving only the config entry path differences.</p>
+</ul>
+<ul>
+<li>[ ] <strong>Step 2: Run targeted verification in the monitor worktree</strong></li>
+<p>Run: <code>source /opt/ros/humble/setup.bash &amp;&amp; colcon test --packages-select collision_voxel_layer nav2_monitor bridge --event-handlers console_direct+</code> Expected: all targeted suites pass.</p>
+</ul>
+<ul>
+<li>[ ] <strong>Step 3: Run targeted verification in the control worktree</strong></li>
+<p>Run: <code>source /opt/ros/humble/setup.bash &amp;&amp; colcon test --packages-select collision_voxel_layer nav2_monitor --event-handlers console_direct+</code> Expected: all targeted suites pass.</p>
+</ul>
+<ul>
+<li>[ ] <strong>Step 4: Commit</strong></li>
+<p>Commit message: <code>feat(collision_voxel_layer): align runtime config across worktrees</code></p>
+</ul>
+      <div class="meta">本文档已统一为 HTML 形式，便于浏览、打印和后续可视化扩展。</div>
+    </article>
+  </div>
+</body>
+</html>

@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>monitor_system 文档主界面</title>
+  <style>
+    :root {
+      --bg: #f4f6f8;
+      --panel: #ffffff;
+      --ink: #1f2b2d;
+      --muted: #617275;
+      --line: #dbe4e8;
+      --brand: #1f6f50;
+      --brand-soft: #e7f3ee;
+      --blue: #2d5f8a;
+      --blue-soft: #e6eef6;
+      --gold: #8f6a19;
+      --gold-soft: #f6ebc7;
+      --shadow: 0 16px 40px rgb(28 39 42 / 9%);
+      --radius: 18px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 10% 5%, rgb(246 235 199 / 78%), transparent 24%),
+        radial-gradient(circle at 90% 15%, rgb(230 238 246 / 95%), transparent 28%),
+        linear-gradient(160deg, #f4f6f8 0%, #eaf0f3 100%);
+      font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+      line-height: 1.65;
+    }
+
+    .page {
+      width: min(1180px, calc(100% - 30px));
+      margin: 0 auto;
+      padding: 28px 0 48px;
+    }
+
+    .hero {
+      position: relative;
+      overflow: hidden;
+      padding: 32px;
+      border-radius: 24px;
+      border: 1px solid var(--line);
+      background: linear-gradient(140deg, rgb(255 255 255 / 97%), rgb(231 243 238 / 92%));
+      box-shadow: var(--shadow);
+    }
+
+    .hero::after {
+      content: "";
+      position: absolute;
+      right: -65px;
+      top: -50px;
+      width: 210px;
+      height: 210px;
+      border-radius: 50%;
+      background: rgb(31 111 80 / 12%);
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 5px 11px;
+      border-radius: 999px;
+      border: 1px solid rgb(31 111 80 / 20%);
+      background: var(--brand-soft);
+      color: var(--brand);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: .02em;
+    }
+
+    h1 {
+      margin: 14px 0 8px;
+      font-size: clamp(30px, 4.8vw, 52px);
+      line-height: 1.08;
+      letter-spacing: -0.04em;
+    }
+
+    .lead {
+      max-width: 860px;
+      color: var(--muted);
+      margin: 0;
+      font-size: 17px;
+    }
+
+    .toolbar {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 12px;
+      margin-top: 18px;
+    }
+
+    .search {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 11px 13px;
+      font-size: 14px;
+      color: var(--ink);
+      outline: none;
+      background: #fff;
+    }
+
+    .search:focus {
+      border-color: #7fb8a0;
+      box-shadow: 0 0 0 3px rgb(127 184 160 / 20%);
+    }
+
+    .meta {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      color: var(--muted);
+      font-size: 13px;
+      white-space: nowrap;
+    }
+
+    .grid {
+      display: grid;
+      gap: 16px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      margin-top: 22px;
+    }
+
+    .card {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel);
+      box-shadow: 0 12px 30px rgb(28 39 42 / 6%);
+      padding: 18px;
+    }
+
+    .card h2 {
+      margin: 0 0 10px;
+      font-size: 18px;
+      line-height: 1.25;
+    }
+
+    .card p {
+      margin: 0 0 12px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .links {
+      display: grid;
+      gap: 7px;
+    }
+
+    .link {
+      display: block;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 8px 10px;
+      text-decoration: none;
+      color: var(--ink);
+      background: #fff;
+      font-size: 14px;
+    }
+
+    .link small {
+      display: block;
+      color: var(--muted);
+      margin-top: 2px;
+      font-size: 12px;
+    }
+
+    .link:hover {
+      border-color: #9cc8b4;
+      background: #f8fcfa;
+    }
+
+    .group-docs {
+      background: linear-gradient(140deg, #fff, #f8fcfa);
+    }
+
+    .group-modules {
+      background: linear-gradient(140deg, #fff, #f8faff);
+    }
+
+    .group-superpowers {
+      background: linear-gradient(140deg, #fff, #fffbf2);
+    }
+
+    .quick {
+      margin-top: 18px;
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .pill {
+      display: block;
+      text-decoration: none;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      text-align: center;
+      padding: 9px 12px;
+      font-size: 13px;
+    }
+
+    .pill:hover {
+      background: var(--brand-soft);
+      border-color: #9cc8b4;
+    }
+
+    .footer {
+      margin-top: 24px;
+      padding: 16px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    @media (max-width: 1050px) {
+      .grid {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .quick {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    @media (max-width: 720px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+
+      .toolbar {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="hero">
+      <span class="badge">monitor_system / 文档导航</span>
+      <h1>文档索引主界面</h1>
+      <p class="lead">
+        统一入口：README 保留为说明入口，设计/接口/配置文档统一使用 HTML。可通过下方搜索快速定位页面。
+      </p>
+      <div class="toolbar">
+        <input id="search" class="search" type="search" placeholder="搜索文档：架构 / 配置 / 体素 / TTC / 控制源 / 接口 ...">
+        <div class="meta">
+          <span id="doc-count">0</span>
+          <span>个入口</span>
+        </div>
+      </div>
+      <div class="quick">
+        <a class="pill" href="README.md">项目 README</a>
+        <a class="pill" href="docs/project_architecture.html">项目架构</a>
+        <a class="pill" href="INTERFACES.html">接口说明</a>
+        <a class="pill" href="CHANGELOG.html">变更记录</a>
+      </div>
+    </header>
+
+    <main class="grid" id="doc-grid">
+      <section class="card group-docs" data-search="核心 文档 架构 接口 设计 说明">
+        <h2>核心文档</h2>
+        <p>项目总览、接口、配置和主设计方案。</p>
+        <div class="links">
+          <a class="link" href="docs/project_architecture.html">
+            项目架构与数据链路
+            <small>docs/project_architecture.html</small>
+          </a>
+          <a class="link" href="docs/monitor_modular_isolation_design.html">
+            模块独立化与可靠数据联通方案
+            <small>docs/monitor_modular_isolation_design.html</small>
+          </a>
+          <a class="link" href="docs/event_codex_executor_integration_plan.html">
+            事件法典仲裁与事件执行层整合计划
+            <small>docs/event_codex_executor_integration_plan.html</small>
+          </a>
+          <a class="link" href="docs/combined_fault_policy_arbiter_design.html">
+            多错误组合策略仲裁层设计
+            <small>docs/combined_fault_policy_arbiter_design.html</small>
+          </a>
+          <a class="link" href="INTERFACES.html">
+            接口说明
+            <small>INTERFACES.html</small>
+          </a>
+          <a class="link" href="CHANGELOG.html">
+            变更记录
+            <small>CHANGELOG.html</small>
+          </a>
+        </div>
+      </section>
+
+      <section class="card group-modules" data-search="模块 nav2 monitor collision voxel safety adapter readme">
+        <h2>模块入口</h2>
+        <p>各功能包 README（保留 Markdown）和模块内设计页。</p>
+        <div class="links">
+          <a class="link" href="src/nav2_monitor/README.md">
+            nav2_monitor README
+            <small>src/nav2_monitor/README.md</small>
+          </a>
+          <a class="link" href="src/nav2_monitor/docs/architecture.html">
+            nav2_monitor 设计说明
+            <small>src/nav2_monitor/docs/architecture.html</small>
+          </a>
+          <a class="link" href="src/nav2_monitor/docs/architecture_diagrams.html">
+            nav2_monitor 流程图/数据流图
+            <small>src/nav2_monitor/docs/architecture_diagrams.html</small>
+          </a>
+          <a class="link" href="src/nav2_monitor/config/CONFIGURATION.html">
+            nav2_monitor 配置说明（包内）
+            <small>src/nav2_monitor/config/CONFIGURATION.html</small>
+          </a>
+          <a class="link" href="config/Monitor/nav2_monitor/CONFIGURATION.html">
+            nav2_monitor 配置说明（运行镜像）
+            <small>config/Monitor/nav2_monitor/CONFIGURATION.html</small>
+          </a>
+          <a class="link" href="src/algorithm_feedback_adapter/README.md">
+            algorithm_feedback_adapter README
+            <small>src/algorithm_feedback_adapter/README.md</small>
+          </a>
+          <a class="link" href="src/collision_voxel_layer/README.md">
+            collision_voxel_layer README
+            <small>src/collision_voxel_layer/README.md</small>
+          </a>
+          <a class="link" href="src/safety_emergency_executor/README.md">
+            safety_emergency_executor README
+            <small>src/safety_emergency_executor/README.md</small>
+          </a>
+          <a class="link" href="src/fcrp_master/master_interfaces/Readme.md">
+            master_interfaces Readme
+            <small>src/fcrp_master/master_interfaces/Readme.md</small>
+          </a>
+        </div>
+      </section>
+
+      <section class="card group-superpowers" data-search="superpowers plans specs 方案 计划 设计 历史">
+        <h2>历史计划与设计</h2>
+        <p>历史方案归档（plans/specs），统一 HTML 展示。</p>
+        <div class="links">
+          <a class="link" href="docs/superpowers/plans/2026-04-07-control-source-routing.html">
+            Plan: control-source-routing
+            <small>docs/superpowers/plans/2026-04-07-control-source-routing.html</small>
+          </a>
+          <a class="link" href="docs/superpowers/plans/2026-04-13-collision-voxel-layer.html">
+            Plan: collision-voxel-layer
+            <small>docs/superpowers/plans/2026-04-13-collision-voxel-layer.html</small>
+          </a>
+          <a class="link" href="docs/superpowers/plans/2026-04-14-external-pressure-override.html">
+            Plan: external-pressure-override
+            <small>docs/superpowers/plans/2026-04-14-external-pressure-override.html</small>
+          </a>
+          <a class="link" href="docs/superpowers/specs/2026-04-07-control-source-routing-design.html">
+            Spec: control-source-routing-design
+            <small>docs/superpowers/specs/2026-04-07-control-source-routing-design.html</small>
+          </a>
+          <a class="link" href="docs/superpowers/specs/2026-04-13-collision-voxel-layer-design.html">
+            Spec: collision-voxel-layer-design
+            <small>docs/superpowers/specs/2026-04-13-collision-voxel-layer-design.html</small>
+          </a>
+          <a class="link" href="docs/superpowers/specs/2026-04-14-external-pressure-override-design.html">
+            Spec: external-pressure-override-design
+            <small>docs/superpowers/specs/2026-04-14-external-pressure-override-design.html</small>
+          </a>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      建议将此页面设为仓库文档默认入口：<code>index.html</code>
+    </footer>
+  </div>
+
+  <script>
+    (function () {
+      const input = document.getElementById("search");
+      const cards = Array.from(document.querySelectorAll("#doc-grid .card"));
+      const count = document.getElementById("doc-count");
+
+      function cardText(card) {
+        return (card.getAttribute("data-search") || "") + " " + card.innerText.toLowerCase();
+      }
+
+      function update() {
+        const q = (input.value || "").trim().toLowerCase();
+        let visible = 0;
+        cards.forEach((card) => {
+          const show = !q || cardText(card).indexOf(q) !== -1;
+          card.classList.toggle("hidden", !show);
+          if (show) visible++;
+        });
+        count.textContent = String(visible);
+      }
+
+      input.addEventListener("input", update);
+      update();
+    })();
+  </script>
+</body>
+</html>

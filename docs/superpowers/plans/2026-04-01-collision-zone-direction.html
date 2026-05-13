@@ -1,0 +1,385 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>2026-04-01-collision-zone-direction</title>
+  <style>
+    :root {
+      --bg: #f6f7f8;
+      --paper: #ffffff;
+      --ink: #1f2a2c;
+      --muted: #5f6f73;
+      --line: #dbe3e6;
+      --brand: #1f6f50;
+      --brand-soft: #e7f3ee;
+      --shadow: 0 10px 28px rgb(31 42 44 / 8%);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: linear-gradient(160deg, #f6f7f8 0%, #edf3f5 100%);
+      font-family: "Noto Sans SC", "Microsoft YaHei", Arial, sans-serif;
+      line-height: 1.72;
+    }
+    .page {
+      width: min(1100px, calc(100% - 28px));
+      margin: 0 auto;
+      padding: 28px 0 48px;
+    }
+    .card {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+      padding: 28px;
+    }
+    h1, h2, h3, h4, h5, h6 { line-height: 1.28; margin: 22px 0 10px; }
+    h1 { margin-top: 6px; font-size: clamp(28px, 4vw, 44px); }
+    h2 { font-size: clamp(21px, 2.7vw, 31px); }
+    h3 { font-size: clamp(18px, 2.1vw, 24px); }
+    p { margin: 10px 0; }
+    code {
+      padding: 2px 6px;
+      border-radius: 6px;
+      background: var(--brand-soft);
+      color: #154933;
+      font-family: "JetBrains Mono", Consolas, monospace;
+      font-size: 0.93em;
+    }
+    pre {
+      margin: 14px 0;
+      padding: 14px;
+      border-radius: 12px;
+      background: #152124;
+      color: #e6f0f2;
+      overflow-x: auto;
+      border: 1px solid #26363a;
+    }
+    pre code {
+      padding: 0;
+      background: transparent;
+      color: inherit;
+      font-size: 0.9em;
+    }
+    ul, ol { padding-left: 22px; margin: 8px 0 14px; }
+    li { margin: 4px 0; }
+    blockquote {
+      margin: 14px 0;
+      padding: 10px 14px;
+      border-left: 4px solid var(--brand);
+      background: var(--brand-soft);
+      color: #1f4f3c;
+    }
+    a { color: #1f5f8c; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .toc {
+      margin-bottom: 18px;
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #f9fcfd;
+    }
+    .toc strong { display: block; margin-bottom: 8px; color: var(--brand); }
+    .toc ul { margin: 0; padding-left: 18px; }
+    .table-wrap {
+      overflow-x: auto;
+      margin: 12px 0;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+    }
+    table { border-collapse: collapse; width: 100%; min-width: 520px; }
+    th, td {
+      border-bottom: 1px solid var(--line);
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+    thead th {
+      color: var(--brand);
+      background: var(--brand-soft);
+    }
+    tbody tr:last-child td { border-bottom: none; }
+    .meta {
+      margin-top: 20px;
+      color: var(--muted);
+      font-size: 13px;
+      border-top: 1px dashed var(--line);
+      padding-top: 12px;
+    }
+    @media (max-width: 720px) {
+      .card { padding: 20px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <article class="card">
+      <aside class="toc"><strong>目录</strong><ul><li><a href="#collision-zone-direction-implementation-plan">Collision Zone Direction Implementation Plan</a></li><li><a href="#file-map">File Map</a></li><li><a href="#task-1-add-failing-tests-for-direction-aware-zone-filtering">Task 1: Add failing tests for direction-aware zone filtering</a></li><li><a href="#task-2-implement-motion-direction-aware-zone-filtering">Task 2: Implement motion-direction-aware zone filtering</a></li><li><a href="#task-3-apply-the-new-direction-fields-to-ota-and-mirrored-configs">Task 3: Apply the new direction fields to OTA and mirrored configs</a></li><li><a href="#task-4-update-docs-and-operator-guidance">Task 4: Update docs and operator guidance</a></li></ul></aside>
+<h1 id="collision-zone-direction-implementation-plan">Collision Zone Direction Implementation Plan</h1>
+<blockquote><strong>For agentic workers:</strong> REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (<code>- [ ]</code>) syntax for tracking.</blockquote>
+<p><strong>Goal:</strong> Make <code>zone</code>-based collision slow/stop regions in <code>nav2_monitor</code> automatically filter front/rear zones by current motion direction without changing <code>approach / TTC</code> behavior.</p>
+<p><strong>Architecture:</strong> Extend the collision config schema with a global direction threshold and per-zone <code>motion_direction</code>, then apply direction filtering only inside the <code>zone</code> branch of <code>CollisionEvaluator</code>. Keep legacy configs working by defaulting unspecified directions to <code>both</code>, and cover the new behavior with focused gtests plus mirrored YAML/config updates.</p>
+<p><strong>Tech Stack:</strong> ROS 2 C++, YAML config parsing, gtest, Markdown docs</p>
+<p>---</p>
+<h2 id="file-map">File Map</h2>
+<ul>
+<li><code>src/nav2_monitor/include/nav2_monitor/fault_detector.hpp</code></li>
+<p>Responsibility: extend collision config structs and add explicit zone motion direction enum/fields.</p>
+</ul>
+<ul>
+<li><code>src/nav2_monitor/src/fault_detector.cpp</code></li>
+<p>Responsibility: parse <code>direction_speed_threshold</code> and <code>zones[*].motion_direction</code>.</p>
+</ul>
+<ul>
+<li><code>src/nav2_monitor/include/nav2_monitor/collision_evaluator.hpp</code></li>
+<p>Responsibility: store runtime motion-direction state and helper declarations.</p>
+</ul>
+<ul>
+<li><code>src/nav2_monitor/src/collision_evaluator.cpp</code></li>
+<p>Responsibility: apply direction-aware filtering only for <code>zone</code> evaluation.</p>
+</ul>
+<ul>
+<li><code>src/nav2_monitor/test/test_fault_detector.cpp</code></li>
+<p>Responsibility: regression tests for forward/reverse/near-zero direction handling and compatibility.</p>
+</ul>
+<ul>
+<li><code>config/Monitor/nav2_monitor/fault_detector_config.yaml</code></li>
+<p>Responsibility: authoritative OTA default collision zone directions.</p>
+</ul>
+<ul>
+<li><code>config/Monitor/nav2_monitor/profiles/fault_detector_reverse.yaml</code></li>
+<p>Responsibility: authoritative OTA reverse profile zone directions.</p>
+</ul>
+<ul>
+<li><code>config/Monitor/nav2_monitor/profiles/fault_detector_todoor.yaml</code></li>
+<p>Responsibility: authoritative OTA to-door profile zone directions.</p>
+</ul>
+<ul>
+<li><code>config/Monitor/nav2_monitor/profiles/fault_detector_elevator.yaml</code></li>
+<p>Responsibility: authoritative OTA elevator profile zone directions.</p>
+</ul>
+<ul>
+<li><code>src/nav2_monitor/config/fault_detector_config.yaml</code></li>
+<p>Responsibility: package-local mirror of the default OTA collision config.</p>
+</ul>
+<ul>
+<li><code>src/nav2_monitor/config/profiles/fault_detector_reverse.yaml</code></li>
+<p>Responsibility: package-local mirror of reverse profile.</p>
+</ul>
+<ul>
+<li><code>src/nav2_monitor/config/profiles/fault_detector_todoor.yaml</code></li>
+<p>Responsibility: package-local mirror of to-door profile.</p>
+</ul>
+<ul>
+<li><code>src/nav2_monitor/config/profiles/fault_detector_elevator.yaml</code></li>
+<p>Responsibility: package-local mirror of elevator profile.</p>
+</ul>
+<ul>
+<li><code>src/nav2_monitor/README.md</code></li>
+<p>Responsibility: user-facing behavior and config docs.</p>
+</ul>
+<ul>
+<li><code>src/nav2_monitor/docs/architecture.html</code></li>
+<p>Responsibility: internal architecture notes for zone direction filtering.</p>
+</ul>
+<h2 id="task-1-add-failing-tests-for-direction-aware-zone-filtering">Task 1: Add failing tests for direction-aware zone filtering</h2>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Modify: <code>src/nav2_monitor/test/test_fault_detector.cpp</code></li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 1: Add a failing forward-only zone test</strong></li>
+</ul>
+<pre><code class="language-cpp">
+TEST_F(FaultDetectorTest, CollisionZoneIgnoresRearStopWhenMovingForward)
+{
+  // config defines rear_stop with motion_direction=reverse
+  // feed forward prediction_motion and a point inside rear zone
+  // expect no faults
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 2: Add a failing reverse-only zone test</strong></li>
+</ul>
+<pre><code class="language-cpp">
+TEST_F(FaultDetectorTest, CollisionZoneIgnoresFrontStopWhenReversing)
+{
+  // config defines front_stop with motion_direction=forward
+  // feed reverse prediction_motion and a point inside front zone
+  // expect no faults
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 3: Add a failing near-zero speed test for keeping last direction</strong></li>
+</ul>
+<pre><code class="language-cpp">
+TEST_F(FaultDetectorTest, CollisionZoneKeepsLastDirectionWhenSpeedNearZero)
+{
+  // first move forward to establish direction
+  // then send near-zero motion and a rear point
+  // expect forward filtering to remain active
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 4: Run the focused gtest target and verify the new tests fail for the expected reason</strong></li>
+</ul>
+<p>Run: <code>source /opt/ros/humble/setup.bash &amp;&amp; source /home/tokou/claude/ry_work/install/setup.bash &amp;&amp; source /home/tokou/claude/ry_work/.worktrees/monitor-ota-config/install/setup.bash &amp;&amp; colcon test --packages-select nav2_monitor --event-handlers console_direct+</code></p>
+<p>Expected: FAIL because <code>zone</code> evaluation currently ignores motion direction.</p>
+<h2 id="task-2-implement-motion-direction-aware-zone-filtering">Task 2: Implement motion-direction-aware zone filtering</h2>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Modify: <code>src/nav2_monitor/include/nav2_monitor/fault_detector.hpp</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/src/fault_detector.cpp</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/include/nav2_monitor/collision_evaluator.hpp</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/src/collision_evaluator.cpp</code></li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 1: Extend the config model with explicit direction fields</strong></li>
+</ul>
+<p>Add:</p>
+<pre><code class="language-cpp">
+enum class CollisionMotionDirectionType
+{
+  BOTH,
+  FORWARD,
+  REVERSE
+};
+</code></pre>
+<p>and fields:</p>
+<pre><code class="language-cpp">
+CollisionMotionDirectionType motion_direction{CollisionMotionDirectionType::BOTH};
+double direction_speed_threshold{0.05};
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 2: Parse the new YAML fields</strong></li>
+</ul>
+<p>Support:</p>
+<pre><code class="language-yaml">
+direction_speed_threshold: 0.05
+motion_direction: &quot;forward&quot;
+</code></pre>
+<p>with default <code>both</code> when omitted.</p>
+<ul>
+<li>[ ] <strong>Step 3: Implement runtime direction tracking in <code>CollisionEvaluator</code></strong></li>
+</ul>
+<p>Add minimal state:</p>
+<pre><code class="language-cpp">
+enum class RuntimeMotionDirection { UNKNOWN, FORWARD, REVERSE };
+mutable RuntimeMotionDirection last_motion_direction_{RuntimeMotionDirection::UNKNOWN};
+</code></pre>
+<p>Update on each evaluation using <code>prediction_linear_x</code>.</p>
+<ul>
+<li>[ ] <strong>Step 4: Filter only <code>zone</code> model zones by direction</strong></li>
+</ul>
+<p>Pseudo-code:</p>
+<pre><code class="language-cpp">
+if (zone.model == CollisionModelType::ZONE) {
+  const auto direction = resolve_runtime_direction(chassis_state.prediction_linear_x, cfg.direction_speed_threshold);
+  if (!zone_matches_direction(zone.motion_direction, direction)) {
+    continue;
+  }
+}
+</code></pre>
+<p>Keep <code>approach / TTC</code> logic unchanged.</p>
+<ul>
+<li>[ ] <strong>Step 5: Re-run nav2_monitor tests and verify they pass</strong></li>
+</ul>
+<p>Run: <code>source /opt/ros/humble/setup.bash &amp;&amp; source /home/tokou/claude/ry_work/install/setup.bash &amp;&amp; source /home/tokou/claude/ry_work/.worktrees/monitor-ota-config/install/setup.bash &amp;&amp; colcon build --packages-select nav2_monitor --cmake-clean-first --event-handlers console_direct+ &amp;&amp; colcon test --packages-select nav2_monitor --event-handlers console_direct+</code></p>
+<p>Expected: PASS, including the new direction tests and all existing TTC tests.</p>
+<h2 id="task-3-apply-the-new-direction-fields-to-ota-and-mirrored-configs">Task 3: Apply the new direction fields to OTA and mirrored configs</h2>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Modify: <code>config/Monitor/nav2_monitor/fault_detector_config.yaml</code></li>
+</ul>
+<ul>
+<li>Modify: <code>config/Monitor/nav2_monitor/profiles/fault_detector_reverse.yaml</code></li>
+</ul>
+<ul>
+<li>Modify: <code>config/Monitor/nav2_monitor/profiles/fault_detector_todoor.yaml</code></li>
+</ul>
+<ul>
+<li>Modify: <code>config/Monitor/nav2_monitor/profiles/fault_detector_elevator.yaml</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/config/fault_detector_config.yaml</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/config/profiles/fault_detector_reverse.yaml</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/config/profiles/fault_detector_todoor.yaml</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/config/profiles/fault_detector_elevator.yaml</code></li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 1: Add <code>direction_speed_threshold</code> to collision_detection</strong></li>
+</ul>
+<pre><code class="language-yaml">
+direction_speed_threshold: 0.05
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 2: Add <code>motion_direction</code> to zone polygons</strong></li>
+</ul>
+<p>Examples:</p>
+<pre><code class="language-yaml">
+- name: &quot;front_slow&quot;
+  motion_direction: &quot;forward&quot;
+</code></pre>
+<pre><code class="language-yaml">
+- name: &quot;rear_stop&quot;
+  motion_direction: &quot;reverse&quot;
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 3: Mirror OTA config changes back into <code>src/nav2_monitor/config/</code></strong></li>
+</ul>
+<p>Use the same structure for the package-local copy to avoid drift between the two sources.</p>
+<ul>
+<li>[ ] <strong>Step 4: Run the bridge/nav2/safety verification suite</strong></li>
+</ul>
+<p>Run: <code>source /opt/ros/humble/setup.bash &amp;&amp; source /home/tokou/claude/ry_work/install/setup.bash &amp;&amp; source /home/tokou/claude/ry_work/.worktrees/monitor-ota-config/install/setup.bash &amp;&amp; colcon test --packages-select bridge nav2_monitor safety_emergency_executor --event-handlers console_direct+</code></p>
+<p>Expected: PASS.</p>
+<h2 id="task-4-update-docs-and-operator-guidance">Task 4: Update docs and operator guidance</h2>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Modify: <code>src/nav2_monitor/README.md</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/docs/architecture.html</code></li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 1: Document the new fields and behavior</strong></li>
+</ul>
+<p>Add notes for:</p>
+<ul>
+<li><code>collision_detection.direction_speed_threshold</code></li>
+</ul>
+<ul>
+<li><code>zones[*].motion_direction</code></li>
+</ul>
+<ul>
+<li><code>zone</code> mode is direction-filtered</li>
+</ul>
+<ul>
+<li><code>approach / TTC</code> remains independent</li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 2: Re-run a focused doc-sensitive verification</strong></li>
+</ul>
+<p>Run: <code>source /opt/ros/humble/setup.bash &amp;&amp; source /home/tokou/claude/ry_work/install/setup.bash &amp;&amp; source /home/tokou/claude/ry_work/.worktrees/monitor-ota-config/install/setup.bash &amp;&amp; colcon test --packages-select bridge nav2_monitor safety_emergency_executor --event-handlers console_direct+</code></p>
+<p>Expected: PASS with no lint regressions.</p>
+<p>Plan complete and saved to <code>docs/superpowers/plans/2026-04-01-collision-zone-direction.html</code>. Ready to execute?</p>
+      <div class="meta">本文档已统一为 HTML 形式，便于浏览、打印和后续可视化扩展。</div>
+    </article>
+  </div>
+</body>
+</html>

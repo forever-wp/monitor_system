@@ -1,0 +1,1407 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>事件仲裁器与事件执行层整合设计</title>
+  <style>
+    :root {
+      --bg: #f4efe5;
+      --paper: #fffaf0;
+      --paper-strong: #fff3d1;
+      --ink: #1e2522;
+      --muted: #60706a;
+      --line: #d6cbb7;
+      --green: #1f6f50;
+      --green-soft: #dceee4;
+      --blue: #315f8c;
+      --blue-soft: #dceaf5;
+      --red: #9c3b2f;
+      --red-soft: #f4dfd8;
+      --gold: #9b6b12;
+      --gold-soft: #f7e5b8;
+      --shadow: 0 18px 45px rgb(48 38 22 / 14%);
+      --radius: 20px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 12% 8%, rgb(247 229 184 / 75%), transparent 28%),
+        radial-gradient(circle at 90% 20%, rgb(220 234 245 / 85%), transparent 30%),
+        linear-gradient(135deg, #f4efe5 0%, #e9f0ea 100%);
+      font-family: "Noto Serif SC", "Source Han Serif SC", "LXGW WenKai", "Microsoft YaHei", serif;
+      line-height: 1.72;
+    }
+
+    a {
+      color: var(--green);
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    .page {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 36px 0 72px;
+    }
+
+    .hero {
+      position: relative;
+      overflow: hidden;
+      padding: 42px;
+      border: 1px solid rgb(214 203 183 / 85%);
+      border-radius: 30px;
+      background:
+        linear-gradient(135deg, rgb(255 250 240 / 96%), rgb(255 243 209 / 88%)),
+        var(--paper);
+      box-shadow: var(--shadow);
+    }
+
+    .hero::after {
+      content: "";
+      position: absolute;
+      right: -80px;
+      top: -90px;
+      width: 260px;
+      height: 260px;
+      border-radius: 50%;
+      background: rgb(31 111 80 / 13%);
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      gap: 8px;
+      align-items: center;
+      padding: 6px 12px;
+      border: 1px solid rgb(31 111 80 / 18%);
+      border-radius: 999px;
+      color: var(--green);
+      background: var(--green-soft);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    h1 {
+      max-width: 860px;
+      margin: 20px 0 12px;
+      font-size: clamp(34px, 5vw, 58px);
+      line-height: 1.08;
+      letter-spacing: -0.05em;
+    }
+
+    h2 {
+      margin: 0 0 16px;
+      font-size: clamp(24px, 3vw, 34px);
+      line-height: 1.2;
+      letter-spacing: -0.03em;
+    }
+
+    h3 {
+      margin: 0 0 8px;
+      font-size: 19px;
+    }
+
+    p {
+      margin: 0 0 14px;
+    }
+
+    .lead {
+      max-width: 850px;
+      color: var(--muted);
+      font-size: 19px;
+    }
+
+    .principle {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-top: 24px;
+    }
+
+    .principle-card {
+      padding: 18px;
+      border-radius: 18px;
+      background: rgb(255 255 255 / 55%);
+      border: 1px solid var(--line);
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 260px minmax(0, 1fr);
+      gap: 24px;
+      margin-top: 28px;
+    }
+
+    .toc {
+      position: sticky;
+      top: 18px;
+      align-self: start;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgb(255 250 240 / 88%);
+      box-shadow: 0 12px 28px rgb(48 38 22 / 8%);
+    }
+
+    .toc strong {
+      display: block;
+      margin-bottom: 10px;
+      font-size: 15px;
+    }
+
+    .toc a {
+      display: block;
+      padding: 7px 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .content {
+      display: grid;
+      gap: 24px;
+    }
+
+    .section {
+      padding: 28px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgb(255 250 240 / 92%);
+      box-shadow: 0 14px 34px rgb(48 38 22 / 8%);
+    }
+
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 18px;
+    }
+
+    .mini-card {
+      padding: 16px;
+      border-radius: 16px;
+      background: #fff;
+      border: 1px solid var(--line);
+    }
+
+    .mini-card b {
+      display: block;
+      margin-bottom: 6px;
+      color: var(--green);
+    }
+
+    .conflict-grid {
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 18px;
+      align-items: start;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      overflow: hidden;
+      border-radius: 16px;
+      background: #fff;
+    }
+
+    th,
+    td {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      color: var(--green);
+      background: var(--green-soft);
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .code {
+      margin-top: 16px;
+      padding: 18px;
+      border-radius: 18px;
+      color: #e8f3ee;
+      background: #17231f;
+      overflow-x: auto;
+      font-family: "JetBrains Mono", "Fira Code", Consolas, monospace;
+      font-size: 14px;
+      line-height: 1.6;
+      white-space: pre;
+    }
+
+    .callout {
+      margin-top: 16px;
+      padding: 16px 18px;
+      border-left: 5px solid var(--green);
+      border-radius: 14px;
+      background: var(--green-soft);
+    }
+
+    .footer {
+      margin-top: 24px;
+      padding: 22px;
+      text-align: center;
+      color: var(--muted);
+    }
+
+    @media (max-width: 900px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+
+      .toc {
+        position: static;
+      }
+
+      .principle,
+      .summary,
+      .conflict-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .hero,
+      .section {
+        padding: 24px;
+      }
+    }
+
+    @media print {
+      body {
+        background: #fff;
+      }
+
+      .page {
+        width: 100%;
+        padding: 0;
+      }
+
+      .toc {
+        display: none;
+      }
+
+      .layout {
+        display: block;
+      }
+
+      .hero,
+      .section {
+        box-shadow: none;
+        break-inside: avoid;
+      }
+    }
+  
+
+
+
+
+
+
+
+    /* SVG diagrams generated from Mermaid blocks. Offline, no CDN/runtime dependency. */
+    .svg-diagram {
+      margin: 20px 0;
+      padding: 20px;
+      border: 1px solid #cfe0d8;
+      border-radius: 22px;
+      background:
+        radial-gradient(circle at 10% 8%, rgb(255 255 255 / 92%), transparent 30%),
+        linear-gradient(135deg, #fbfefd 0%, #eef7f3 100%);
+      overflow-x: auto;
+      box-shadow: 0 14px 30px rgb(31 42 44 / 8%);
+    }
+    .svg-diagram-title {
+      display: inline-flex;
+      align-items: center;
+      margin-bottom: 14px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      background: #dff0e8;
+      color: #1f6f50;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+    .svg-diagram-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: -2px 0 14px;
+      color: #5b6c67;
+      font-size: 12px;
+    }
+    .svg-diagram-legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: rgb(255 255 255 / 68%);
+      border: 1px solid #d6e5df;
+    }
+    .svg-diagram-legend i {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .svg-diagram svg {
+      display: block;
+      max-width: 100%;
+      height: auto;
+      min-width: 720px;
+    }
+
+</style>
+</head>
+<body>
+  <div class="page">
+    <header class="hero">
+      <span class="eyebrow">monitor_system / 事件法典仲裁设计</span>
+      <h1>事件仲裁器与事件执行层</h1>
+      <p class="lead">
+        这页用前端 HTML 的方式说明：事件发现器只发现事实，事件仲裁器按法典生成统一执行计划，事件执行层独立完成软端 nodemanager 与硬件 safety 两类执行。
+      </p>
+      <div class="principle">
+        <div class="principle-card">
+          <h3>发现不执行</h3>
+          <p>事件发现器只发布事实 active / inactive，不再认定最终错误，也不直接触发恢复或执行。</p>
+        </div>
+        <div class="principle-card">
+          <h3>执行永远独立</h3>
+          <p>事件仲裁器只输出执行计划；事件执行层负责真实执行、执行反馈、锁存、幂等和软硬通道隔离。</p>
+        </div>
+      </div>
+    </header>
+
+    <div class="layout">
+      <nav class="toc">
+        <strong>页面导航</strong>
+        <a href="#why">1. 为什么需要</a>
+        <a href="#position">2. 总体位置</a>
+        <a href="#dataflow">3. 数据流</a>
+        <a href="#runtime">4. 运行流程</a>
+        <a href="#gradual">5. 逐步出现</a>
+        <a href="#same-time">6. 同时出现</a>
+        <a href="#conflict">7. 交叉策略</a>
+        <a href="#recover">8. 组合恢复</a>
+        <a href="#config">9. 配置样例</a>
+        <a href="#implementation">10. 实现计划</a>
+      </nav>
+
+      <main class="content">
+        <section id="why" class="section">
+          <h2>1. 为什么需要独立仲裁层</h2>
+          <p>事件发现器如果直接携带动作，多个事件一起出现时就会产生重复命令、软硬执行冲突、恢复顺序不清晰等问题。因此所有执行都必须由事件仲裁器统一计算执行计划，再交给事件执行层独立完成。</p>
+          <div class="summary">
+            <div class="mini-card">
+              <b>逐步出现</b>
+              <p>A 先出现，B 后出现。系统按当前事件事实集匹配法典，满足 A+B 后升级为组合执行计划。</p>
+            </div>
+            <div class="mini-card">
+              <b>同批出现</b>
+              <p>A 和 B 同一轮出现。高危组合应直接命中法典，而不是先发一堆分散执行命令。</p>
+            </div>
+            <div class="mini-card">
+              <b>交叉覆盖</b>
+              <p>A+B 和 B+C 同时命中时，要用稳定优先级选赢家，保证执行计划可复现。</p>
+            </div>
+          </div>
+          <div class="callout">
+            一句话：事件发现器回答“现在发生了什么”，事件仲裁器回答“法典要求做什么”，事件执行层回答“实际执行结果如何”。
+          </div>
+        </section>
+
+        <section id="position" class="section">
+          <h2>2. 总体位置流程图</h2>
+          <p>事件仲裁器放在事件发现器和事件执行层之间。它不接管执行细节，只生成统一执行计划和触犯法典信息。</p>
+          <div class="svg-diagram"><div class="svg-diagram-title">可视化流程图</div><div class="svg-diagram-legend"><span><i style="background:#6ba2d7"></i>输入 / 数据源</span><span><i style="background:#d2a235"></i>判断 / 策略</span><span><i style="background:#61a87d"></i>状态 / 输出</span><span><i style="background:#d26a56"></i>故障 / 风险</span><span><i style="background:#8d7ed3"></i>执行 / 安全动作</span></div><svg width="1045pt" height="158pt"
+ viewBox="0.00 0.00 1045.00 157.50" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<g id="graph0" class="graph" transform="scale(1 1) rotate(0) translate(18 139.5)">
+
+<!-- Detect&#45;&gt;Facts -->
+<g id="edge1" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M169.11,-63.5C169.11,-63.5 206.03,-63.5 206.03,-63.5"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="206.03,-66.23 213.83,-63.5 206.03,-60.77 206.03,-66.23"/>
+</g>
+<!-- Facts&#45;&gt;Arbiter -->
+<g id="edge2" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M374.11,-63.5C374.11,-63.5 410.95,-63.5 410.95,-63.5"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="410.95,-66.23 418.75,-63.5 410.95,-60.77 410.95,-66.23"/>
+</g>
+<!-- Arbiter&#45;&gt;Report -->
+<g id="edge3" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M495,-82.69C495,-91.92 495,-101 495,-101 495,-101 607.02,-101 607.02,-101"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="607.02,-103.73 614.82,-101 607.02,-98.27 607.02,-103.73"/>
+</g>
+<!-- Arbiter&#45;&gt;Plan -->
+<g id="edge4" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M570.1,-66.25C627.28,-66.25 696,-66.25 696,-66.25 696,-66.25 696,-55.62 696,-55.62"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="698.73,-55.62 696,-47.82 693.27,-55.62 698.73,-55.62"/>
+</g>
+<!-- Report&#45;&gt;Reporter -->
+<g id="edge5" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M776.3,-101.5C776.3,-101.5 812.83,-101.5 812.83,-101.5"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="812.83,-104.23 820.63,-101.5 812.83,-98.77 812.83,-104.23"/>
+</g>
+<!-- Plan&#45;&gt;Executor -->
+<g id="edge6" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M769.51,-28.5C769.51,-28.5 844.5,-28.5 844.5,-28.5"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="844.5,-31.23 852.3,-28.5 844.5,-25.77 844.5,-31.23"/>
+</g>
+<!-- Detect -->
+<g id="node1" class="node">
+
+<path fill="#ffffff" stroke="#86b6a3" stroke-width="1.45" d="M157,-82.5C157,-82.5 12,-82.5 12,-82.5 6,-82.5 0,-76.5 0,-70.5 0,-70.5 0,-56.5 0,-56.5 0,-50.5 6,-44.5 12,-44.5 12,-44.5 157,-44.5 157,-44.5 163,-44.5 169,-50.5 169,-56.5 169,-56.5 169,-70.5 169,-70.5 169,-76.5 163,-82.5 157,-82.5"/>
+<text text-anchor="middle" x="84.5" y="-66.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f2a2c">事件发现器</text>
+<text text-anchor="middle" x="84.5" y="-53.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f2a2c">只发布事实 active / inactive</text>
+</g>
+<!-- Facts -->
+<g id="node2" class="node">
+
+<path fill="#edf6ff" stroke="#6ba2d7" stroke-width="1.45" d="M362,-82.5C362,-82.5 226,-82.5 226,-82.5 220,-82.5 214,-76.5 214,-70.5 214,-70.5 214,-56.5 214,-56.5 214,-50.5 220,-44.5 226,-44.5 226,-44.5 362,-44.5 362,-44.5 368,-44.5 374,-50.5 374,-56.5 374,-56.5 374,-70.5 374,-70.5 374,-76.5 368,-82.5 362,-82.5"/>
+<text text-anchor="middle" x="294" y="-66.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#265b89">事件事实集</text>
+<text text-anchor="middle" x="294" y="-53.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#265b89">active_events / EventFact</text>
+</g>
+<!-- Arbiter -->
+<g id="node3" class="node">
+
+<path fill="#f1efff" stroke="#8d7ed3" stroke-width="1.45" d="M558,-82.5C558,-82.5 431,-82.5 431,-82.5 425,-82.5 419,-76.5 419,-70.5 419,-70.5 419,-56.5 419,-56.5 419,-50.5 425,-44.5 431,-44.5 431,-44.5 558,-44.5 558,-44.5 564,-44.5 570,-50.5 570,-56.5 570,-56.5 570,-70.5 570,-70.5 570,-76.5 564,-82.5 558,-82.5"/>
+<text text-anchor="middle" x="494.5" y="-66.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#463a88">事件仲裁器</text>
+<text text-anchor="middle" x="494.5" y="-53.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#463a88">法典规则 + 执行意图仲裁</text>
+</g>
+<!-- Report -->
+<g id="node4" class="node">
+
+<path fill="#eaf7ef" stroke="#61a87d" stroke-width="1.45" d="M764,-119.5C764,-119.5 627,-119.5 627,-119.5 621,-119.5 615,-113.5 615,-107.5 615,-107.5 615,-93.5 615,-93.5 615,-87.5 621,-81.5 627,-81.5 627,-81.5 764,-81.5 764,-81.5 770,-81.5 776,-87.5 776,-93.5 776,-93.5 776,-107.5 776,-107.5 776,-113.5 770,-119.5 764,-119.5"/>
+<text text-anchor="middle" x="695.5" y="-103.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">触犯法典信息</text>
+<text text-anchor="middle" x="695.5" y="-90.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">rule hit / reason / severity</text>
+</g>
+<!-- Plan -->
+<g id="node5" class="node">
+
+<path fill="#f1efff" stroke="#8d7ed3" stroke-width="1.45" d="M757.5,-47.5C757.5,-47.5 633.5,-47.5 633.5,-47.5 627.5,-47.5 621.5,-41.5 621.5,-35.5 621.5,-35.5 621.5,-21.5 621.5,-21.5 621.5,-15.5 627.5,-9.5 633.5,-9.5 633.5,-9.5 757.5,-9.5 757.5,-9.5 763.5,-9.5 769.5,-15.5 769.5,-21.5 769.5,-21.5 769.5,-35.5 769.5,-35.5 769.5,-41.5 763.5,-47.5 757.5,-47.5"/>
+<text text-anchor="middle" x="695.5" y="-31.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#463a88">执行计划</text>
+<text text-anchor="middle" x="695.5" y="-18.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#463a88">intent / target / priority</text>
+</g>
+<!-- Reporter -->
+<g id="node6" class="node">
+
+<path fill="#f1efff" stroke="#8d7ed3" stroke-width="1.45" d="M997,-121.5C997,-121.5 833,-121.5 833,-121.5 827,-121.5 821,-115.5 821,-109.5 821,-109.5 821,-95.5 821,-95.5 821,-89.5 827,-83.5 833,-83.5 833,-83.5 997,-83.5 997,-83.5 1003,-83.5 1009,-89.5 1009,-95.5 1009,-95.5 1009,-109.5 1009,-109.5 1009,-115.5 1003,-121.5 997,-121.5"/>
+<text text-anchor="middle" x="915" y="-105.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#463a88">上报器</text>
+<text text-anchor="middle" x="915" y="-92.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#463a88">法典触发 + 执行结果 + 人工接管</text>
+</g>
+<!-- Executor -->
+<g id="node7" class="node">
+
+<path fill="#f1efff" stroke="#8d7ed3" stroke-width="1.45" d="M965.5,-51C965.5,-51 864.5,-51 864.5,-51 858.5,-51 852.5,-45 852.5,-39 852.5,-39 852.5,-12 852.5,-12 852.5,-6 858.5,0 864.5,0 864.5,0 965.5,0 965.5,0 971.5,0 977.5,-6 977.5,-12 977.5,-12 977.5,-39 977.5,-39 977.5,-45 971.5,-51 965.5,-51"/>
+<text text-anchor="middle" x="915" y="-35.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#463a88">事件执行层</text>
+<text text-anchor="middle" x="915" y="-22.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#463a88">软端 nodemanager</text>
+<text text-anchor="middle" x="915" y="-9.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#463a88">硬件 safety</text>
+</g>
+</g>
+</svg>
+</div>
+        </section>
+
+        <section id="dataflow" class="section">
+          <h2>3. 数据流图</h2>
+          <p>仲裁层内部建议分成四个阶段：收集事实、匹配规则、维护状态、输出两本账。</p>
+          <div class="svg-diagram"><div class="svg-diagram-title">可视化流程图</div><div class="svg-diagram-legend"><span><i style="background:#6ba2d7"></i>输入 / 数据源</span><span><i style="background:#d2a235"></i>判断 / 策略</span><span><i style="background:#61a87d"></i>状态 / 输出</span><span><i style="background:#d26a56"></i>故障 / 风险</span><span><i style="background:#8d7ed3"></i>执行 / 安全动作</span></div><svg width="958pt" height="494pt"
+ viewBox="0.00 0.00 958.00 494.00" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<g id="graph0" class="graph" transform="scale(1 1) rotate(0) translate(18 476)">
+
+<g id="clust1" class="cluster">
+
+<path fill="#f7fbf9" stroke="#c8ded4" d="M31,-8C31,-8 124,-8 124,-8 130,-8 136,-14 136,-20 136,-20 136,-213 136,-213 136,-219 130,-225 124,-225 124,-225 31,-225 31,-225 25,-225 19,-219 19,-213 19,-213 19,-20 19,-20 19,-14 25,-8 31,-8"/>
+<text text-anchor="middle" x="77.5" y="-209.8" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="14.00" fill="#1f6f50">输入事实</text>
+</g>
+<g id="clust2" class="cluster">
+
+<path fill="#f7fbf9" stroke="#c8ded4" d="M20,-233C20,-233 135,-233 135,-233 141,-233 147,-239 147,-245 147,-245 147,-438 147,-438 147,-444 141,-450 135,-450 135,-450 20,-450 20,-450 14,-450 8,-444 8,-438 8,-438 8,-245 8,-245 8,-239 14,-233 20,-233"/>
+<text text-anchor="middle" x="77.5" y="-434.8" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="14.00" fill="#1f6f50">法典规则</text>
+</g>
+<g id="clust3" class="cluster">
+
+<path fill="#f7fbf9" stroke="#c8ded4" d="M188,-274C188,-274 719,-274 719,-274 725,-274 731,-280 731,-286 731,-286 731,-339 731,-339 731,-345 725,-351 719,-351 719,-351 188,-351 188,-351 182,-351 176,-345 176,-339 176,-339 176,-286 176,-286 176,-280 182,-274 188,-274"/>
+<text text-anchor="middle" x="453.5" y="-335.8" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="14.00" fill="#1f6f50">事件仲裁器</text>
+</g>
+<g id="clust4" class="cluster">
+
+<path fill="#f7fbf9" stroke="#c8ded4" d="M772,-140C772,-140 902,-140 902,-140 908,-140 914,-146 914,-152 914,-152 914,-275 914,-275 914,-281 908,-287 902,-287 902,-287 772,-287 772,-287 766,-287 760,-281 760,-275 760,-275 760,-152 760,-152 760,-146 766,-140 772,-140"/>
+<text text-anchor="middle" x="837" y="-271.8" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="14.00" fill="#1f6f50">输出</text>
+</g>
+<!-- A&#45;&gt;Match -->
+<g id="edge1" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M128.34,-41.33C182.34,-41.33 260,-41.33 260,-41.33 260,-41.33 260,-274.11 260,-274.11"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="257.27,-274.11 260,-281.91 262.73,-274.11 257.27,-274.11"/>
+</g>
+<!-- A&#45;&gt;Report -->
+<g id="edge12" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M128.22,-28.67C298.18,-28.67 837,-28.67 837,-28.67 837,-28.67 837,-139.97 837,-139.97"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="834.27,-139.97 837,-147.77 839.73,-139.97 834.27,-139.97"/>
+</g>
+<!-- B&#45;&gt;Match -->
+<g id="edge2" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M117.37,-190C160.14,-190 222,-190 222,-190 222,-190 222,-274.12 222,-274.12"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="219.27,-274.12 222,-281.92 224.73,-274.12 219.27,-274.12"/>
+</g>
+<!-- B&#45;&gt;Report -->
+<g id="edge13" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M117.26,-166C117.26,-166 776.17,-166 776.17,-166"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="776.17,-168.73 783.97,-166 776.17,-163.27 776.17,-168.73"/>
+</g>
+<!-- C&#45;&gt;Match -->
+<g id="edge3" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M123.04,-105C171.42,-105 241,-105 241,-105 241,-105 241,-274.05 241,-274.05"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="238.27,-274.05 241,-281.85 243.73,-274.05 238.27,-274.05"/>
+</g>
+<!-- C&#45;&gt;Report -->
+<g id="edge14" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M78,-124.12C78,-137.13 78,-152 78,-152 78,-152 776.13,-152 776.13,-152"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="776.13,-154.73 783.93,-152 776.13,-149.27 776.13,-154.73"/>
+</g>
+<!-- All&#45;&gt;Match -->
+<g id="edge4" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M135.09,-400C178.65,-400 231,-400 231,-400 231,-400 231,-327.89 231,-327.89"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="233.73,-327.89 231,-320.09 228.27,-327.89 233.73,-327.89"/>
+</g>
+<!-- Any&#45;&gt;Match -->
+<g id="edge5" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M135.09,-315.5C135.09,-315.5 175.8,-315.5 175.8,-315.5"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="175.8,-318.23 183.6,-315.5 175.8,-312.77 175.8,-318.23"/>
+</g>
+<!-- Count&#45;&gt;Match -->
+<g id="edge6" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M139.15,-267.5C170.89,-267.5 203,-267.5 203,-267.5 203,-267.5 203,-274.1 203,-274.1"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="200.27,-274.1 203,-281.9 205.73,-274.1 200.27,-274.1"/>
+</g>
+<!-- Match&#45;&gt;State -->
+<g id="edge7" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M278.24,-301C278.24,-301 315.11,-301 315.11,-301"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="315.11,-303.73 322.91,-301 315.11,-298.27 315.11,-303.73"/>
+</g>
+<!-- State&#45;&gt;Winner -->
+<g id="edge8" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M435.41,-301C435.41,-301 472.18,-301 472.18,-301"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="472.18,-303.73 479.98,-301 472.18,-298.27 472.18,-303.73"/>
+</g>
+<!-- Winner&#45;&gt;Plan -->
+<g id="edge9" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M572.36,-301C572.36,-301 609.17,-301 609.17,-301"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="609.17,-303.73 616.97,-301 609.17,-298.27 609.17,-303.73"/>
+</g>
+<!-- Winner&#45;&gt;Report -->
+<g id="edge11" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M526,-281.74C526,-246.68 526,-176 526,-176 526,-176 776.09,-176 776.09,-176"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="776.09,-178.73 783.89,-176 776.09,-173.27 776.09,-178.73"/>
+</g>
+<!-- Plan&#45;&gt;Execute -->
+<g id="edge10" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M670,-281.75C670,-266.77 670,-248.5 670,-248.5 670,-248.5 759.83,-248.5 759.83,-248.5"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="759.83,-251.23 767.63,-248.5 759.83,-245.77 759.83,-251.23"/>
+</g>
+<!-- A -->
+<g id="node1" class="node">
+
+<path fill="#edf6ff" stroke="#6ba2d7" stroke-width="1.45" d="M116,-54C116,-54 39,-54 39,-54 33,-54 27,-48 27,-42 27,-42 27,-28 27,-28 27,-22 33,-16 39,-16 39,-16 116,-16 116,-16 122,-16 128,-22 128,-28 128,-28 128,-42 128,-42 128,-48 122,-54 116,-54"/>
+<text text-anchor="middle" x="77.5" y="-38.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#265b89">事件 A</text>
+<text text-anchor="middle" x="77.5" y="-25.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#265b89">导航 topic 低频</text>
+</g>
+<!-- B -->
+<g id="node2" class="node">
+
+<path fill="#fff1ec" stroke="#d26a56" stroke-width="1.45" d="M105,-194C105,-194 50,-194 50,-194 44,-194 38,-188 38,-182 38,-182 38,-168 38,-168 38,-162 44,-156 50,-156 50,-156 105,-156 105,-156 111,-156 117,-162 117,-168 117,-168 117,-182 117,-182 117,-188 111,-194 105,-194"/>
+<text text-anchor="middle" x="77.5" y="-178.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#7c2f25">事件 B</text>
+<text text-anchor="middle" x="77.5" y="-165.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#7c2f25">碰撞区触发</text>
+</g>
+<!-- C -->
+<g id="node3" class="node">
+
+<path fill="#fff1ec" stroke="#d26a56" stroke-width="1.45" d="M111,-124C111,-124 44,-124 44,-124 38,-124 32,-118 32,-112 32,-112 32,-98 32,-98 32,-92 38,-86 44,-86 44,-86 111,-86 111,-86 117,-86 123,-92 123,-98 123,-98 123,-112 123,-112 123,-118 117,-124 111,-124"/>
+<text text-anchor="middle" x="77.5" y="-108.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#7c2f25">事件 C</text>
+<text text-anchor="middle" x="77.5" y="-95.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#7c2f25">底盘反馈异常</text>
+</g>
+<!-- All -->
+<g id="node4" class="node">
+
+<path fill="#ffffff" stroke="#86b6a3" stroke-width="1.45" d="M123,-419C123,-419 32,-419 32,-419 26,-419 20,-413 20,-407 20,-407 20,-393 20,-393 20,-387 26,-381 32,-381 32,-381 123,-381 123,-381 129,-381 135,-387 135,-393 135,-393 135,-407 135,-407 135,-413 129,-419 123,-419"/>
+<text text-anchor="middle" x="77.5" y="-403.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f2a2c">when_all</text>
+<text text-anchor="middle" x="77.5" y="-390.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f2a2c">全部条件必须命中</text>
+</g>
+<!-- Any -->
+<g id="node5" class="node">
+
+<path fill="#ffffff" stroke="#86b6a3" stroke-width="1.45" d="M123,-349C123,-349 32,-349 32,-349 26,-349 20,-343 20,-337 20,-337 20,-323 20,-323 20,-317 26,-311 32,-311 32,-311 123,-311 123,-311 129,-311 135,-317 135,-323 135,-323 135,-337 135,-337 135,-343 129,-349 123,-349"/>
+<text text-anchor="middle" x="77.5" y="-333.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f2a2c">when_any</text>
+<text text-anchor="middle" x="77.5" y="-320.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f2a2c">至少一个条件命中</text>
+</g>
+<!-- Count -->
+<g id="node6" class="node">
+
+<path fill="#fff6db" stroke="#d2a235" stroke-width="1.45" d="M127,-279C127,-279 28,-279 28,-279 22,-279 16,-273 16,-267 16,-267 16,-253 16,-253 16,-247 22,-241 28,-241 28,-241 127,-241 127,-241 133,-241 139,-247 139,-253 139,-253 139,-267 139,-267 139,-273 133,-279 127,-279"/>
+<text text-anchor="middle" x="77.5" y="-263.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#6c4d00">min_match_count</text>
+<text text-anchor="middle" x="77.5" y="-250.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#6c4d00">命中数量阈值</text>
+</g>
+<!-- Match -->
+<g id="node7" class="node">
+
+<path fill="#fff6db" stroke="#d2a235" stroke-width="1.45" d="M266,-320C266,-320 196,-320 196,-320 190,-320 184,-314 184,-308 184,-308 184,-294 184,-294 184,-288 190,-282 196,-282 196,-282 266,-282 266,-282 272,-282 278,-288 278,-294 278,-294 278,-308 278,-308 278,-314 272,-320 266,-320"/>
+<text text-anchor="middle" x="231" y="-304.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#6c4d00">match_result</text>
+<text text-anchor="middle" x="231" y="-291.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#6c4d00">规则匹配结果</text>
+</g>
+<!-- State -->
+<g id="node8" class="node">
+
+<path fill="#eaf7ef" stroke="#61a87d" stroke-width="1.45" d="M423,-320C423,-320 335,-320 335,-320 329,-320 323,-314 323,-308 323,-308 323,-294 323,-294 323,-288 329,-282 335,-282 335,-282 423,-282 423,-282 429,-282 435,-288 435,-294 435,-294 435,-308 435,-308 435,-314 429,-320 423,-320"/>
+<text text-anchor="middle" x="379" y="-304.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">runtime_state</text>
+<text text-anchor="middle" x="379" y="-291.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">进入 / 保持 / 恢复</text>
+</g>
+<!-- Winner -->
+<g id="node9" class="node">
+
+<path fill="#fff6db" stroke="#d2a235" stroke-width="1.45" d="M560,-320C560,-320 492,-320 492,-320 486,-320 480,-314 480,-308 480,-308 480,-294 480,-294 480,-288 486,-282 492,-282 492,-282 560,-282 560,-282 566,-282 572,-288 572,-294 572,-294 572,-308 572,-308 572,-314 566,-320 560,-320"/>
+<text text-anchor="middle" x="526" y="-304.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#6c4d00">winner_rules</text>
+<text text-anchor="middle" x="526" y="-291.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#6c4d00">交叉策略赢家</text>
+</g>
+<!-- Plan -->
+<g id="node10" class="node">
+
+<path fill="#f1efff" stroke="#8d7ed3" stroke-width="1.45" d="M711,-320C711,-320 629,-320 629,-320 623,-320 617,-314 617,-308 617,-308 617,-294 617,-294 617,-288 623,-282 629,-282 629,-282 711,-282 711,-282 717,-282 723,-288 723,-294 723,-294 723,-308 723,-308 723,-314 717,-320 711,-320"/>
+<text text-anchor="middle" x="670" y="-304.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#463a88">execution_plan</text>
+<text text-anchor="middle" x="670" y="-291.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#463a88">统一执行计划</text>
+</g>
+<!-- Report -->
+<g id="node11" class="node">
+
+<path fill="#eaf7ef" stroke="#61a87d" stroke-width="1.45" d="M878,-186C878,-186 796,-186 796,-186 790,-186 784,-180 784,-174 784,-174 784,-160 784,-160 784,-154 790,-148 796,-148 796,-148 878,-148 878,-148 884,-148 890,-154 890,-160 890,-160 890,-174 890,-174 890,-180 884,-186 878,-186"/>
+<text text-anchor="middle" x="837" y="-170.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">report_payload</text>
+<text text-anchor="middle" x="837" y="-157.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">法典触发信息</text>
+</g>
+<!-- Execute -->
+<g id="node12" class="node">
+
+<path fill="#f1efff" stroke="#8d7ed3" stroke-width="1.45" d="M894,-256C894,-256 780,-256 780,-256 774,-256 768,-250 768,-244 768,-244 768,-230 768,-230 768,-224 774,-218 780,-218 780,-218 894,-218 894,-218 900,-218 906,-224 906,-230 906,-230 906,-244 906,-244 906,-250 900,-256 894,-256"/>
+<text text-anchor="middle" x="837" y="-240.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#463a88">event_executor_cmd</text>
+<text text-anchor="middle" x="837" y="-227.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#463a88">软硬执行通道</text>
+</g>
+</g>
+</svg>
+</div>
+        </section>
+
+        <section id="runtime" class="section">
+          <h2>4. 运行流程图</h2>
+          <p>每个检测周期内，仲裁层先匹配规则，再经过进入/恢复状态机，最后处理交叉覆盖。</p>
+          <div class="svg-diagram"><div class="svg-diagram-title">可视化流程图</div><div class="svg-diagram-legend"><span><i style="background:#6ba2d7"></i>输入 / 数据源</span><span><i style="background:#d2a235"></i>判断 / 策略</span><span><i style="background:#61a87d"></i>状态 / 输出</span><span><i style="background:#d26a56"></i>故障 / 风险</span><span><i style="background:#8d7ed3"></i>执行 / 安全动作</span></div><svg width="388pt" height="778pt"
+ viewBox="0.00 0.00 387.50 778.00" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<g id="graph0" class="graph" transform="scale(1 1) rotate(0) translate(18 760)">
+
+<!-- Start&#45;&gt;Build -->
+<g id="edge1" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M155.5,-705.77C155.5,-705.77 155.5,-666.87 155.5,-666.87"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="158.23,-666.87 155.5,-659.07 152.77,-666.87 158.23,-666.87"/>
+</g>
+<!-- Build&#45;&gt;Match -->
+<g id="edge2" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M155.5,-620.71C155.5,-620.71 155.5,-582.01 155.5,-582.01"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="158.23,-582.01 155.5,-574.21 152.77,-582.01 158.23,-582.01"/>
+</g>
+<!-- Match&#45;&gt;Hit -->
+<g id="edge3" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M155.5,-535.73C155.5,-535.73 155.5,-496.8 155.5,-496.8"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="158.23,-496.8 155.5,-489 152.77,-496.8 158.23,-496.8"/>
+</g>
+<!-- Hit&#45;&gt;Enter -->
+<g id="edge4" class="edge">
+
+<path fill="none" stroke="#5b8f79" stroke-width="1.45" d="M86.75,-452.86C86.75,-452.86 86.75,-386.19 86.75,-386.19"/>
+<polygon fill="#5b8f79" stroke="#5b8f79" stroke-width="1.45" points="89.48,-386.19 86.75,-378.39 84.02,-386.19 89.48,-386.19"/>
+<text text-anchor="middle" x="137.5" y="-404" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="10.00">是</text>
+</g>
+<!-- Hit&#45;&gt;Clear -->
+<g id="edge6" class="edge">
+
+<path fill="none" stroke="#5b8f79" stroke-width="1.45" d="M206,-448.11C206,-448.11 206,-386.08 206,-386.08"/>
+<polygon fill="#5b8f79" stroke="#5b8f79" stroke-width="1.45" points="208.73,-386.08 206,-378.28 203.27,-386.08 208.73,-386.08"/>
+<text text-anchor="middle" x="220.5" y="-404" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="10.00">否</text>
+</g>
+<!-- Enter&#45;&gt;Active -->
+<g id="edge5" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M89,-339.71C89,-339.71 89,-301.01 89,-301.01"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="91.73,-301.01 89,-293.21 86.27,-301.01 91.73,-301.01"/>
+</g>
+<!-- Active&#45;&gt;Cross -->
+<g id="edge8" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M107.5,-254.71C107.5,-254.71 107.5,-216.01 107.5,-216.01"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="110.23,-216.01 107.5,-208.21 104.77,-216.01 110.23,-216.01"/>
+</g>
+<!-- Clear&#45;&gt;Recover -->
+<g id="edge7" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M244.5,-339.71C244.5,-339.71 244.5,-301.01 244.5,-301.01"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="247.23,-301.01 244.5,-293.21 241.77,-301.01 247.23,-301.01"/>
+</g>
+<!-- Recover&#45;&gt;Cross -->
+<g id="edge9" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M229.5,-254.71C229.5,-254.71 229.5,-216.01 229.5,-216.01"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="232.23,-216.01 229.5,-208.21 226.77,-216.01 232.23,-216.01"/>
+</g>
+<!-- Cross&#45;&gt;Plan -->
+<g id="edge10" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M169.5,-169.71C169.5,-169.71 169.5,-131.01 169.5,-131.01"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="172.23,-131.01 169.5,-123.21 166.77,-131.01 172.23,-131.01"/>
+</g>
+<!-- Plan&#45;&gt;Output -->
+<g id="edge11" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M169.5,-84.71C169.5,-84.71 169.5,-46.01 169.5,-46.01"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="172.23,-46.01 169.5,-38.21 166.77,-46.01 172.23,-46.01"/>
+</g>
+<!-- Start -->
+<g id="node1" class="node">
+
+<path fill="#eaf7ef" stroke="#61a87d" stroke-width="1.45" d="M216.5,-742C216.5,-742 94.5,-742 94.5,-742 88.5,-742 82.5,-736 82.5,-730 82.5,-730 82.5,-718 82.5,-718 82.5,-712 88.5,-706 94.5,-706 94.5,-706 216.5,-706 216.5,-706 222.5,-706 228.5,-712 228.5,-718 228.5,-718 228.5,-730 228.5,-730 228.5,-736 222.5,-742 216.5,-742"/>
+<text text-anchor="middle" x="155.5" y="-720.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">当前周期 active_events</text>
+</g>
+<!-- Build -->
+<g id="node2" class="node">
+
+<path fill="#eaf7ef" stroke="#61a87d" stroke-width="1.45" d="M202.5,-659C202.5,-659 108.5,-659 108.5,-659 102.5,-659 96.5,-653 96.5,-647 96.5,-647 96.5,-633 96.5,-633 96.5,-627 102.5,-621 108.5,-621 108.5,-621 202.5,-621 202.5,-621 208.5,-621 214.5,-627 214.5,-633 214.5,-633 214.5,-647 214.5,-647 214.5,-653 208.5,-659 202.5,-659"/>
+<text text-anchor="middle" x="155.5" y="-643.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">建立事件事实快照</text>
+<text text-anchor="middle" x="155.5" y="-630.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">按 event_key 去重</text>
+</g>
+<!-- Match -->
+<g id="node3" class="node">
+
+<path fill="#fff6db" stroke="#d2a235" stroke-width="1.45" d="M271,-574C271,-574 40,-574 40,-574 34,-574 28,-568 28,-562 28,-562 28,-548 28,-548 28,-542 34,-536 40,-536 40,-536 271,-536 271,-536 277,-536 283,-542 283,-548 283,-548 283,-562 283,-562 283,-568 277,-574 271,-574"/>
+<text text-anchor="middle" x="155.5" y="-558.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#6c4d00">匹配法典规则</text>
+<text text-anchor="middle" x="155.5" y="-545.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#6c4d00">when_all / when_any / min_match_count</text>
+</g>
+<!-- Hit -->
+<g id="node4" class="node">
+
+<polygon fill="#ffffff" stroke="#86b6a3" stroke-width="1.45" points="155.5,-489 52.5,-462 155.5,-435 258.5,-462 155.5,-489"/>
+<text text-anchor="middle" x="155.5" y="-458.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f2a2c">法典条件满足?</text>
+</g>
+<!-- Enter -->
+<g id="node5" class="node">
+
+<path fill="#fff6db" stroke="#d2a235" stroke-width="1.45" d="M109,-378C109,-378 12,-378 12,-378 6,-378 0,-372 0,-366 0,-366 0,-352 0,-352 0,-346 6,-340 12,-340 12,-340 109,-340 109,-340 115,-340 121,-346 121,-352 121,-352 121,-366 121,-366 121,-372 115,-378 109,-378"/>
+<text text-anchor="middle" x="60.5" y="-362.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#6c4d00">进入确认</text>
+<text text-anchor="middle" x="60.5" y="-349.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#6c4d00">等待 enter_hold_s</text>
+</g>
+<!-- Active -->
+<g id="node6" class="node">
+
+<path fill="#f1efff" stroke="#8d7ed3" stroke-width="1.45" d="M136,-293C136,-293 69,-293 69,-293 63,-293 57,-287 57,-281 57,-281 57,-267 57,-267 57,-261 63,-255 69,-255 69,-255 136,-255 136,-255 142,-255 148,-261 148,-267 148,-267 148,-281 148,-281 148,-287 142,-293 136,-293"/>
+<text text-anchor="middle" x="102.5" y="-277.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#463a88">规则 ACTIVE</text>
+<text text-anchor="middle" x="102.5" y="-264.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#463a88">生成执行候选</text>
+</g>
+<!-- Clear -->
+<g id="node7" class="node">
+
+<path fill="#fff6db" stroke="#d2a235" stroke-width="1.45" d="M339.5,-378C339.5,-378 165.5,-378 165.5,-378 159.5,-378 153.5,-372 153.5,-366 153.5,-366 153.5,-352 153.5,-352 153.5,-346 159.5,-340 165.5,-340 165.5,-340 339.5,-340 339.5,-340 345.5,-340 351.5,-346 351.5,-352 351.5,-352 351.5,-366 351.5,-366 351.5,-372 345.5,-378 339.5,-378"/>
+<text text-anchor="middle" x="252.5" y="-362.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#6c4d00">恢复确认</text>
+<text text-anchor="middle" x="252.5" y="-349.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#6c4d00">等待 clear_hold_s + min_hold_s</text>
+</g>
+<!-- Recover -->
+<g id="node8" class="node">
+
+<path fill="#fff6db" stroke="#d2a235" stroke-width="1.45" d="M290,-293C290,-293 199,-293 199,-293 193,-293 187,-287 187,-281 187,-281 187,-267 187,-267 187,-261 193,-255 199,-255 199,-255 290,-255 290,-255 296,-255 302,-261 302,-267 302,-267 302,-281 302,-281 302,-287 296,-293 290,-293"/>
+<text text-anchor="middle" x="244.5" y="-277.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#6c4d00">规则 RECOVER</text>
+<text text-anchor="middle" x="244.5" y="-264.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#6c4d00">重新计算剩余规则</text>
+</g>
+<!-- Cross -->
+<g id="node9" class="node">
+
+<path fill="#fff6db" stroke="#d2a235" stroke-width="1.45" d="M260,-208C260,-208 79,-208 79,-208 73,-208 67,-202 67,-196 67,-196 67,-182 67,-182 67,-176 73,-170 79,-170 79,-170 260,-170 260,-170 266,-170 272,-176 272,-182 272,-182 272,-196 272,-196 272,-202 266,-208 260,-208"/>
+<text text-anchor="middle" x="169.5" y="-192.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#6c4d00">交叉仲裁</text>
+<text text-anchor="middle" x="169.5" y="-179.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#6c4d00">priority / execution_level / 覆盖数</text>
+</g>
+<!-- Plan -->
+<g id="node10" class="node">
+
+<path fill="#f1efff" stroke="#8d7ed3" stroke-width="1.45" d="M221,-123C221,-123 118,-123 118,-123 112,-123 106,-117 106,-111 106,-111 106,-97 106,-97 106,-91 112,-85 118,-85 118,-85 221,-85 221,-85 227,-85 233,-91 233,-97 233,-97 233,-111 233,-111 233,-117 227,-123 221,-123"/>
+<text text-anchor="middle" x="169.5" y="-107.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#463a88">生成统一执行计划</text>
+<text text-anchor="middle" x="169.5" y="-94.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#463a88">不让发现器直接执行</text>
+</g>
+<!-- Output -->
+<g id="node11" class="node">
+
+<path fill="#f1efff" stroke="#8d7ed3" stroke-width="1.45" d="M276.5,-38C276.5,-38 62.5,-38 62.5,-38 56.5,-38 50.5,-32 50.5,-26 50.5,-26 50.5,-12 50.5,-12 50.5,-6 56.5,0 62.5,0 62.5,0 276.5,0 276.5,0 282.5,0 288.5,-6 288.5,-12 288.5,-12 288.5,-26 288.5,-26 288.5,-32 282.5,-38 276.5,-38"/>
+<text text-anchor="middle" x="169.5" y="-22.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#463a88">输出</text>
+<text text-anchor="middle" x="169.5" y="-9.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#463a88">report_payload + event_executor_cmd</text>
+</g>
+</g>
+</svg>
+</div>
+        </section>
+
+        <section id="gradual" class="section">
+          <h2>5. 多个错误逐步出现</h2>
+          <p>逐步出现时，不要等组合才处理。先按单项错误处理，满足组合后再升级。</p>
+          <div class="svg-diagram"><div class="svg-diagram-title">可视化时序图</div><div class="svg-diagram-legend"><span><i style="background:#6ba2d7"></i>输入 / 数据源</span><span><i style="background:#d2a235"></i>判断 / 策略</span><span><i style="background:#61a87d"></i>状态 / 输出</span><span><i style="background:#d26a56"></i>故障 / 风险</span><span><i style="background:#8d7ed3"></i>执行 / 安全动作</span></div><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 917" role="img">
+<defs>
+<marker id="arrow-seq" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#1f6f50"/></marker>
+</defs>
+<rect width="860" height="917" rx="18" fill="#fbfefd"/>
+<rect x="60" y="18" width="130" height="38" rx="10" fill="#ffffff" stroke="#86b6a3" stroke-width="1.3"/>
+<text x="125" y="42" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12" fill="#1f2a2c" font-weight="700">时间</text>
+<line x1="125" y1="58" x2="125" y2="885" stroke="#c7d8d0" stroke-width="1.2" stroke-dasharray="5 5"/>
+<rect x="230" y="18" width="130" height="38" rx="10" fill="#ffffff" stroke="#86b6a3" stroke-width="1.3"/>
+<text x="295" y="42" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12" fill="#1f2a2c" font-weight="700">事件事实集</text>
+<line x1="295" y1="58" x2="295" y2="885" stroke="#c7d8d0" stroke-width="1.2" stroke-dasharray="5 5"/>
+<rect x="400" y="18" width="130" height="38" rx="10" fill="#fff6db" stroke="#d2a235" stroke-width="1.3"/>
+<text x="465" y="42" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12" fill="#6c4d00" font-weight="700">事件仲裁器</text>
+<line x1="465" y1="58" x2="465" y2="885" stroke="#c7d8d0" stroke-width="1.2" stroke-dasharray="5 5"/>
+<rect x="570" y="18" width="130" height="38" rx="10" fill="#f1efff" stroke="#8d7ed3" stroke-width="1.3"/>
+<text x="635" y="42" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12" fill="#463a88" font-weight="700">事件执行层</text>
+<line x1="635" y1="58" x2="635" y2="885" stroke="#c7d8d0" stroke-width="1.2" stroke-dasharray="5 5"/>
+<line x1="133" y1="72" x2="287" y2="72" stroke="#86b6a3" stroke-width="1.7" marker-end="url(#arrow-seq)"/>
+<circle cx="125" cy="72" r="12" fill="#ffffff" stroke="#86b6a3"/>
+<text x="125" y="76" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="10" fill="#1f2a2c" font-weight="700">1</text>
+<text x="210.0" y="62" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12" fill="#1f2a2c">A 出现</text>
+<line x1="303" y1="148" x2="457" y2="148" stroke="#61a87d" stroke-width="1.7" marker-end="url(#arrow-seq)"/>
+<circle cx="295" cy="148" r="12" fill="#ffffff" stroke="#61a87d"/>
+<text x="295" y="152" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="10" fill="#1f6f50" font-weight="700">2</text>
+<text x="380.0" y="138" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12" fill="#1f6f50">active_events = A</text>
+<line x1="473" y1="224" x2="627" y2="224" stroke="#8d7ed3" stroke-width="1.7" marker-end="url(#arrow-seq)"/>
+<circle cx="465" cy="224" r="12" fill="#ffffff" stroke="#8d7ed3"/>
+<text x="465" y="228" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="10" fill="#463a88" font-weight="700">3</text>
+<text x="550.0" y="214" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12" fill="#463a88">匹配 A 的法典规则后输出执行计划</text>
+<line x1="133" y1="300" x2="287" y2="300" stroke="#86b6a3" stroke-width="1.7" marker-end="url(#arrow-seq)"/>
+<circle cx="125" cy="300" r="12" fill="#ffffff" stroke="#86b6a3"/>
+<text x="125" y="304" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="10" fill="#1f2a2c" font-weight="700">4</text>
+<text x="210.0" y="290" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12" fill="#1f2a2c">B 后续出现</text>
+<line x1="303" y1="376" x2="457" y2="376" stroke="#61a87d" stroke-width="1.7" marker-end="url(#arrow-seq)"/>
+<circle cx="295" cy="376" r="12" fill="#ffffff" stroke="#61a87d"/>
+<text x="295" y="380" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="10" fill="#1f6f50" font-weight="700">5</text>
+<text x="380.0" y="366" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12" fill="#1f6f50">active_events = A+</text>
+<text x="380.0" y="381" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12" fill="#1f6f50">B</text>
+<path d="M465,452 C537,452 537,484 465,484" fill="none" stroke="#d2a235" stroke-width="1.7" marker-end="url(#arrow-seq)"/>
+<circle cx="465" cy="452" r="12" fill="#ffffff" stroke="#d2a235"/>
+<text x="465" y="456" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="10" fill="#6c4d00" font-weight="700">6</text>
+<text x="545" y="442" text-anchor="start" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12" fill="#6c4d00">A+B 进入确认</text>
+<line x1="473" y1="528" x2="627" y2="528" stroke="#8d7ed3" stroke-width="1.7" marker-end="url(#arrow-seq)"/>
+<circle cx="465" cy="528" r="12" fill="#ffffff" stroke="#8d7ed3"/>
+<text x="465" y="532" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="10" fill="#463a88" font-weight="700">7</text>
+<text x="550.0" y="518" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12" fill="#463a88">enter_hold_s 未满足时保</text>
+<text x="550.0" y="533" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12" fill="#463a88">持上一轮执行计划</text>
+<line x1="473" y1="604" x2="627" y2="604" stroke="#8d7ed3" stroke-width="1.7" marker-end="url(#arrow-seq)"/>
+<circle cx="465" cy="604" r="12" fill="#ffffff" stroke="#8d7ed3"/>
+<text x="465" y="608" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="10" fill="#463a88" font-weight="700">8</text>
+<text x="550.0" y="594" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12" fill="#463a88">enter_hold_s 满足后输出</text>
+<text x="550.0" y="609" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12" fill="#463a88">组合执行计划</text>
+<line x1="133" y1="680" x2="287" y2="680" stroke="#61a87d" stroke-width="1.7" marker-end="url(#arrow-seq)"/>
+<circle cx="125" cy="680" r="12" fill="#ffffff" stroke="#61a87d"/>
+<text x="125" y="684" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="10" fill="#1f6f50" font-weight="700">9</text>
+<text x="210.0" y="670" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12" fill="#1f6f50">B 恢复但 A 还在</text>
+<line x1="473" y1="756" x2="627" y2="756" stroke="#61a87d" stroke-width="1.7" marker-end="url(#arrow-seq)"/>
+<circle cx="465" cy="756" r="12" fill="#ffffff" stroke="#61a87d"/>
+<text x="465" y="760" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="10" fill="#1f6f50" font-weight="700">10</text>
+<text x="550.0" y="746" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12" fill="#1f6f50">组合 clear 后按剩余事件重新生</text>
+<text x="550.0" y="761" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12" fill="#1f6f50">成计划</text>
+</svg></div>
+        </section>
+
+        <section id="same-time" class="section">
+          <h2>6. 多个错误同时出现</h2>
+          <p>同一轮检测里 A 和 B 同时出现时，高危组合可以直接激活，避免先发多个单项动作再升级。</p>
+          <div class="svg-diagram"><div class="svg-diagram-title">可视化流程图</div><div class="svg-diagram-legend"><span><i style="background:#6ba2d7"></i>输入 / 数据源</span><span><i style="background:#d2a235"></i>判断 / 策略</span><span><i style="background:#61a87d"></i>状态 / 输出</span><span><i style="background:#d26a56"></i>故障 / 风险</span><span><i style="background:#8d7ed3"></i>执行 / 安全动作</span></div><svg width="1642pt" height="199pt"
+ viewBox="0.00 0.00 1642.00 199.00" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<g id="graph0" class="graph" transform="scale(1 1) rotate(0) translate(18 181)">
+
+<!-- Same&#45;&gt;Facts -->
+<g id="edge1" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M104.34,-27C104.34,-27 143.12,-27 143.12,-27"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="143.12,-29.73 150.92,-27 143.12,-24.27 143.12,-29.73"/>
+</g>
+<!-- Facts&#45;&gt;Match -->
+<g id="edge2" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M281.31,-27C281.31,-27 319.94,-27 319.94,-27"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="319.94,-29.73 327.74,-27 319.94,-24.27 319.94,-29.73"/>
+</g>
+<!-- Match&#45;&gt;Hold -->
+<g id="edge3" class="edge">
+
+<path fill="none" stroke="#5b8f79" stroke-width="1.45" d="M510.06,-42.33C598.66,-42.33 763,-42.33 763,-42.33 763,-42.33 763,-42.98 763,-42.98"/>
+<polygon fill="#5b8f79" stroke="#5b8f79" stroke-width="1.45" points="760.27,-41.02 763,-48.82 765.73,-41.02 760.27,-41.02"/>
+<text text-anchor="middle" x="610" y="-68" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="10.00">是</text>
+</g>
+<!-- Match&#45;&gt;Single -->
+<g id="edge9" class="edge">
+
+<path fill="none" stroke="#5b8f79" stroke-width="1.45" d="M541.5,-35.67C541.5,-35.67 1303.11,-35.67 1303.11,-35.67"/>
+<polygon fill="#5b8f79" stroke="#5b8f79" stroke-width="1.45" points="1303.11,-38.4 1310.91,-35.67 1303.11,-32.94 1303.11,-38.4"/>
+<text text-anchor="middle" x="989.5" y="-3" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="10.00">否</text>
+</g>
+<!-- Hold&#45;&gt;Active -->
+<g id="edge4" class="edge">
+
+<path fill="none" stroke="#5b8f79" stroke-width="1.45" d="M763,-103.02C763,-117.34 763,-132 763,-132 763,-132 1297.15,-132 1297.15,-132"/>
+<polygon fill="#5b8f79" stroke="#5b8f79" stroke-width="1.45" points="1297.15,-134.73 1304.95,-132 1297.15,-129.27 1297.15,-134.73"/>
+<text text-anchor="middle" x="1063" y="-155" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="10.00">是</text>
+</g>
+<!-- Hold&#45;&gt;Confirm -->
+<g id="edge5" class="edge">
+
+<path fill="none" stroke="#5b8f79" stroke-width="1.45" d="M888.17,-76C888.17,-76 935.96,-76 935.96,-76"/>
+<polygon fill="#5b8f79" stroke="#5b8f79" stroke-width="1.45" points="935.96,-78.73 943.76,-76 935.96,-73.27 935.96,-78.73"/>
+<text text-anchor="middle" x="916" y="-79" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="10.00">否</text>
+</g>
+<!-- Active&#45;&gt;Execute -->
+<g id="edge10" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M1444.02,-132C1444.02,-132 1483.03,-132 1483.03,-132"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="1483.03,-134.73 1490.83,-132 1483.03,-129.27 1483.03,-134.73"/>
+</g>
+<!-- Confirm&#45;&gt;Pass -->
+<g id="edge6" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M1035.05,-76C1035.05,-76 1082.95,-76 1082.95,-76"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="1082.95,-78.73 1090.75,-76 1082.95,-73.27 1082.95,-78.73"/>
+</g>
+<!-- Pass&#45;&gt;Active -->
+<g id="edge7" class="edge">
+
+<path fill="none" stroke="#5b8f79" stroke-width="1.45" d="M1225.75,-84C1286.45,-84 1375,-84 1375,-84 1375,-84 1375,-106.05 1375,-106.05"/>
+<polygon fill="#5b8f79" stroke="#5b8f79" stroke-width="1.45" points="1372.27,-106.05 1375,-113.85 1377.73,-106.05 1372.27,-106.05"/>
+<text text-anchor="middle" x="1277" y="-117" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="10.00">是</text>
+</g>
+<!-- Pass&#45;&gt;Single -->
+<g id="edge8" class="edge">
+
+<path fill="none" stroke="#5b8f79" stroke-width="1.45" d="M1193.46,-57C1193.46,-57 1303.02,-57 1303.02,-57"/>
+<polygon fill="#5b8f79" stroke="#5b8f79" stroke-width="1.45" points="1303.02,-59.73 1310.82,-57 1303.02,-54.27 1303.02,-59.73"/>
+<text text-anchor="middle" x="1277" y="-65" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="10.00">否</text>
+</g>
+<!-- Same -->
+<g id="node1" class="node">
+
+<path fill="#ffffff" stroke="#86b6a3" stroke-width="1.45" d="M92,-45C92,-45 12,-45 12,-45 6,-45 0,-39 0,-33 0,-33 0,-21 0,-21 0,-15 6,-9 12,-9 12,-9 92,-9 92,-9 98,-9 104,-15 104,-21 104,-21 104,-33 104,-33 104,-39 98,-45 92,-45"/>
+<text text-anchor="middle" x="52" y="-23.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f2a2c">同周期收到 A+B</text>
+</g>
+<!-- Facts -->
+<g id="node2" class="node">
+
+<path fill="#eaf7ef" stroke="#61a87d" stroke-width="1.45" d="M269,-45C269,-45 163,-45 163,-45 157,-45 151,-39 151,-33 151,-33 151,-21 151,-21 151,-15 157,-9 163,-9 163,-9 269,-9 269,-9 275,-9 281,-15 281,-21 281,-21 281,-33 281,-33 281,-39 275,-45 269,-45"/>
+<text text-anchor="middle" x="216" y="-23.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">active_events = A+B</text>
+</g>
+<!-- Match -->
+<g id="node3" class="node">
+
+<polygon fill="#fff6db" stroke="#d2a235" stroke-width="1.45" points="455,-54 328,-27 455,0 582,-27 455,-54"/>
+<text text-anchor="middle" x="455" y="-23.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#6c4d00">法典组合规则匹配?</text>
+</g>
+<!-- Hold -->
+<g id="node4" class="node">
+
+<polygon fill="#ffffff" stroke="#86b6a3" stroke-width="1.45" points="763,-103 638,-76 763,-49 888,-76 763,-103"/>
+<text text-anchor="middle" x="763" y="-72.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f2a2c">enter_hold_s = 0?</text>
+</g>
+<!-- Active -->
+<g id="node5" class="node">
+
+<path fill="#f1efff" stroke="#8d7ed3" stroke-width="1.45" d="M1432,-150C1432,-150 1317,-150 1317,-150 1311,-150 1305,-144 1305,-138 1305,-138 1305,-126 1305,-126 1305,-120 1311,-114 1317,-114 1317,-114 1432,-114 1432,-114 1438,-114 1444,-120 1444,-126 1444,-126 1444,-138 1444,-138 1444,-144 1438,-150 1432,-150"/>
+<text text-anchor="middle" x="1374.5" y="-128.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#463a88">直接生成组合执行计划</text>
+</g>
+<!-- Confirm -->
+<g id="node6" class="node">
+
+<path fill="#fff6db" stroke="#d2a235" stroke-width="1.45" d="M1023,-95C1023,-95 956,-95 956,-95 950,-95 944,-89 944,-83 944,-83 944,-69 944,-69 944,-63 950,-57 956,-57 956,-57 1023,-57 1023,-57 1029,-57 1035,-63 1035,-69 1035,-69 1035,-83 1035,-83 1035,-89 1029,-95 1023,-95"/>
+<text text-anchor="middle" x="989.5" y="-79.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#6c4d00">短暂确认</text>
+<text text-anchor="middle" x="989.5" y="-66.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#6c4d00">过滤单帧噪声</text>
+</g>
+<!-- Pass -->
+<g id="node7" class="node">
+
+<polygon fill="#fff6db" stroke="#d2a235" stroke-width="1.45" points="1170,-103 1091,-76 1170,-49 1249,-76 1170,-103"/>
+<text text-anchor="middle" x="1170" y="-72.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#6c4d00">确认通过?</text>
+</g>
+<!-- Single -->
+<g id="node8" class="node">
+
+<path fill="#fff6db" stroke="#d2a235" stroke-width="1.45" d="M1426,-65C1426,-65 1323,-65 1323,-65 1317,-65 1311,-59 1311,-53 1311,-53 1311,-41 1311,-41 1311,-35 1317,-29 1323,-29 1323,-29 1426,-29 1426,-29 1432,-29 1438,-35 1438,-41 1438,-41 1438,-53 1438,-53 1438,-59 1432,-65 1426,-65"/>
+<text text-anchor="middle" x="1374.5" y="-43.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#6c4d00">重新匹配单事件规则</text>
+</g>
+<!-- Execute -->
+<g id="node9" class="node">
+
+<path fill="#f1efff" stroke="#8d7ed3" stroke-width="1.45" d="M1594,-151C1594,-151 1503,-151 1503,-151 1497,-151 1491,-145 1491,-139 1491,-139 1491,-125 1491,-125 1491,-119 1497,-113 1503,-113 1503,-113 1594,-113 1594,-113 1600,-113 1606,-119 1606,-125 1606,-125 1606,-139 1606,-139 1606,-145 1600,-151 1594,-151"/>
+<text text-anchor="middle" x="1548.5" y="-135.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#463a88">交给事件执行层</text>
+<text text-anchor="middle" x="1548.5" y="-122.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#463a88">软硬通道独立执行</text>
+</g>
+</g>
+</svg>
+</div>
+          <div class="callout">
+            建议：高危组合 `enter_hold_s` 取 0 到 0.05 秒；普通组合取 0.1 到 0.3 秒；容易抖动的组合加长 `clear_hold_s`。
+          </div>
+        </section>
+
+        <section id="conflict" class="section">
+          <h2>7. 组合策略交叉时谁优先</h2>
+          <p>如果多个组合策略共享同一个基础错误项，必须用稳定规则选赢家。</p>
+          <div class="conflict-grid">
+            <div class="svg-diagram"><div class="svg-diagram-title">可视化流程图</div><div class="svg-diagram-legend"><span><i style="background:#6ba2d7"></i>输入 / 数据源</span><span><i style="background:#d2a235"></i>判断 / 策略</span><span><i style="background:#61a87d"></i>状态 / 输出</span><span><i style="background:#d26a56"></i>故障 / 风险</span><span><i style="background:#8d7ed3"></i>执行 / 安全动作</span></div><svg width="844pt" height="214pt"
+ viewBox="0.00 0.00 844.00 214.00" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<g id="graph0" class="graph" transform="scale(1 1) rotate(0) translate(18 196)">
+
+<!-- A&#45;&gt;R1 -->
+<g id="edge1" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M67.01,-168.5C67.01,-168.5 135.47,-168.5 135.47,-168.5"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="135.47,-171.23 143.27,-168.5 135.47,-165.77 135.47,-171.23"/>
+</g>
+<!-- A&#45;&gt;R3 -->
+<g id="edge5" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M67.08,-159C94.25,-159 128,-159 128,-159 128,-159 128,-115.93 128,-115.93"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="130.73,-115.93 128,-108.13 125.27,-115.93 130.73,-115.93"/>
+</g>
+<!-- R1&#45;&gt;Judge -->
+<g id="edge8" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M225.72,-159C289.54,-159 405,-159 405,-159 405,-159 405,-115.93 405,-115.93"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="407.73,-115.93 405,-108.13 402.27,-115.93 407.73,-115.93"/>
+</g>
+<!-- B&#45;&gt;R1 -->
+<g id="edge2" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M67.11,-98.5C82.34,-98.5 97,-98.5 97,-98.5 97,-98.5 97,-149.5 97,-149.5 97,-149.5 135.51,-149.5 135.51,-149.5"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="135.51,-152.23 143.31,-149.5 135.51,-146.77 135.51,-152.23"/>
+</g>
+<!-- B&#45;&gt;R2 -->
+<g id="edge3" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M67.18,-79.5C75.46,-79.5 82,-79.5 82,-79.5 82,-79.5 82,-28.5 82,-28.5 82,-28.5 135.6,-28.5 135.6,-28.5"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="135.6,-31.23 143.4,-28.5 135.6,-25.77 135.6,-31.23"/>
+</g>
+<!-- B&#45;&gt;R3 -->
+<g id="edge6" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M67.01,-89C67.01,-89 104.02,-89 104.02,-89"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="104.02,-91.73 111.82,-89 104.02,-86.27 104.02,-91.73"/>
+</g>
+<!-- R2&#45;&gt;Judge -->
+<g id="edge9" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M225.72,-19C289.54,-19 405,-19 405,-19 405,-19 405,-62.07 405,-62.07"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="402.27,-62.07 405,-69.87 407.73,-62.07 402.27,-62.07"/>
+</g>
+<!-- C&#45;&gt;R2 -->
+<g id="edge4" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M67.01,-9.5C67.01,-9.5 135.47,-9.5 135.47,-9.5"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="135.47,-12.23 143.27,-9.5 135.47,-6.77 135.47,-12.23"/>
+</g>
+<!-- C&#45;&gt;R3 -->
+<g id="edge7" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M67.08,-19C94.25,-19 128,-19 128,-19 128,-19 128,-62.07 128,-62.07"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="125.27,-62.07 128,-69.87 130.73,-62.07 125.27,-62.07"/>
+</g>
+<!-- R3&#45;&gt;Judge -->
+<g id="edge10" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M257.15,-89C257.15,-89 293.87,-89 293.87,-89"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="293.87,-91.73 301.67,-89 293.87,-86.27 293.87,-91.73"/>
+</g>
+<!-- Judge&#45;&gt;Winner -->
+<g id="edge11" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M507.16,-89C507.16,-89 544.05,-89 544.05,-89"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="544.05,-91.73 551.85,-89 544.05,-86.27 544.05,-91.73"/>
+</g>
+<!-- Winner&#45;&gt;Executor -->
+<g id="edge12" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M619.28,-89C619.28,-89 656.07,-89 656.07,-89"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="656.07,-91.73 663.87,-89 656.07,-86.27 656.07,-91.73"/>
+</g>
+<!-- A -->
+<g id="node1" class="node">
+
+<path fill="#fff1ec" stroke="#d26a56" stroke-width="1.45" d="M55,-178C55,-178 12,-178 12,-178 6,-178 0,-172 0,-166 0,-166 0,-152 0,-152 0,-146 6,-140 12,-140 12,-140 55,-140 55,-140 61,-140 67,-146 67,-152 67,-152 67,-166 67,-166 67,-172 61,-178 55,-178"/>
+<text text-anchor="middle" x="33.5" y="-162.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#7c2f25">A</text>
+<text text-anchor="middle" x="33.5" y="-149.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#7c2f25">导航异常</text>
+</g>
+<!-- R1 -->
+<g id="node2" class="node">
+
+<path fill="#fff6db" stroke="#d2a235" stroke-width="1.45" d="M213.5,-178C213.5,-178 155.5,-178 155.5,-178 149.5,-178 143.5,-172 143.5,-166 143.5,-166 143.5,-152 143.5,-152 143.5,-146 149.5,-140 155.5,-140 155.5,-140 213.5,-140 213.5,-140 219.5,-140 225.5,-146 225.5,-152 225.5,-152 225.5,-166 225.5,-166 225.5,-172 219.5,-178 213.5,-178"/>
+<text text-anchor="middle" x="184.5" y="-162.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#6c4d00">规则1</text>
+<text text-anchor="middle" x="184.5" y="-149.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#6c4d00">A+B &#45;&gt; 软停</text>
+</g>
+<!-- B -->
+<g id="node3" class="node">
+
+<path fill="#fff1ec" stroke="#d26a56" stroke-width="1.45" d="M55,-108C55,-108 12,-108 12,-108 6,-108 0,-102 0,-96 0,-96 0,-82 0,-82 0,-76 6,-70 12,-70 12,-70 55,-70 55,-70 61,-70 67,-76 67,-82 67,-82 67,-96 67,-96 67,-102 61,-108 55,-108"/>
+<text text-anchor="middle" x="33.5" y="-92.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#7c2f25">B</text>
+<text text-anchor="middle" x="33.5" y="-79.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#7c2f25">碰撞风险</text>
+</g>
+<!-- R2 -->
+<g id="node4" class="node">
+
+<path fill="#fff1ec" stroke="#d26a56" stroke-width="1.45" d="M213.5,-38C213.5,-38 155.5,-38 155.5,-38 149.5,-38 143.5,-32 143.5,-26 143.5,-26 143.5,-12 143.5,-12 143.5,-6 149.5,0 155.5,0 155.5,0 213.5,0 213.5,0 219.5,0 225.5,-6 225.5,-12 225.5,-12 225.5,-26 225.5,-26 225.5,-32 219.5,-38 213.5,-38"/>
+<text text-anchor="middle" x="184.5" y="-22.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#7c2f25">规则2</text>
+<text text-anchor="middle" x="184.5" y="-9.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#7c2f25">B+C &#45;&gt; 急停</text>
+</g>
+<!-- C -->
+<g id="node5" class="node">
+
+<path fill="#fff1ec" stroke="#d26a56" stroke-width="1.45" d="M55,-38C55,-38 12,-38 12,-38 6,-38 0,-32 0,-26 0,-26 0,-12 0,-12 0,-6 6,0 12,0 12,0 55,0 55,0 61,0 67,-6 67,-12 67,-12 67,-26 67,-26 67,-32 61,-38 55,-38"/>
+<text text-anchor="middle" x="33.5" y="-22.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#7c2f25">C</text>
+<text text-anchor="middle" x="33.5" y="-9.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#7c2f25">底盘异常</text>
+</g>
+<!-- R3 -->
+<g id="node6" class="node">
+
+<path fill="#f1efff" stroke="#8d7ed3" stroke-width="1.45" d="M245,-108C245,-108 124,-108 124,-108 118,-108 112,-102 112,-96 112,-96 112,-82 112,-82 112,-76 118,-70 124,-70 124,-70 245,-70 245,-70 251,-70 257,-76 257,-82 257,-82 257,-96 257,-96 257,-102 251,-108 245,-108"/>
+<text text-anchor="middle" x="184.5" y="-92.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#463a88">规则3</text>
+<text text-anchor="middle" x="184.5" y="-79.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#463a88">A+B+C &#45;&gt; 事件执行计划</text>
+</g>
+<!-- Judge -->
+<g id="node7" class="node">
+
+<path fill="#fff6db" stroke="#d2a235" stroke-width="1.45" d="M495,-108C495,-108 314,-108 314,-108 308,-108 302,-102 302,-96 302,-96 302,-82 302,-82 302,-76 308,-70 314,-70 314,-70 495,-70 495,-70 501,-70 507,-76 507,-82 507,-82 507,-96 507,-96 507,-102 501,-108 495,-108"/>
+<text text-anchor="middle" x="404.5" y="-92.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#6c4d00">优先级仲裁</text>
+<text text-anchor="middle" x="404.5" y="-79.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#6c4d00">priority / execution_level / 覆盖数</text>
+</g>
+<!-- Winner -->
+<g id="node8" class="node">
+
+<path fill="#fff6db" stroke="#d2a235" stroke-width="1.45" d="M607,-107C607,-107 564,-107 564,-107 558,-107 552,-101 552,-95 552,-95 552,-83 552,-83 552,-77 558,-71 564,-71 564,-71 607,-71 607,-71 613,-71 619,-77 619,-83 619,-83 619,-95 619,-95 619,-101 613,-107 607,-107"/>
+<text text-anchor="middle" x="585.5" y="-85.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#6c4d00">赢家组合</text>
+</g>
+<!-- Executor -->
+<g id="node9" class="node">
+
+<path fill="#f1efff" stroke="#8d7ed3" stroke-width="1.45" d="M796,-108C796,-108 676,-108 676,-108 670,-108 664,-102 664,-96 664,-96 664,-82 664,-82 664,-76 670,-70 676,-70 676,-70 796,-70 796,-70 802,-70 808,-76 808,-82 808,-82 808,-96 808,-96 808,-102 802,-108 796,-108"/>
+<text text-anchor="middle" x="736" y="-92.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#463a88">事件执行层</text>
+<text text-anchor="middle" x="736" y="-79.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#463a88">nodemanager + safety</text>
+</g>
+</g>
+</svg>
+</div>
+            <table>
+              <thead>
+                <tr>
+                  <th>顺序</th>
+                  <th>判断项</th>
+                  <th>说明</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td>1</td><td>priority</td><td>显式优先级，高的优先。</td></tr>
+                <tr><td>2</td><td>safety_system</td><td>EMERGENCY_STOP > SOFT_STOP > SLOW_DOWN > NONE。</td></tr>
+                <tr><td>3</td><td>level</td><td>CRITICAL > ERROR > WARNING > NORMAL。</td></tr>
+                <tr><td>4</td><td>matched_count</td><td>覆盖基础错误更多的优先。</td></tr>
+                <tr><td>5</td><td>已激活规则</td><td>当前已激活的优先，避免边缘跳变。</td></tr>
+                <tr><td>6</td><td>rule.name</td><td>字典序兜底，保证结果稳定可复现。</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="recover" class="section">
+          <h2>8. 组合恢复状态机</h2>
+          <p>组合恢复必须有状态机。否则在障碍边缘、topic 抖动、反馈恢复瞬间会反复跳变。</p>
+          <div class="svg-diagram"><div class="svg-diagram-title">可视化状态机</div><div class="svg-diagram-legend"><span><i style="background:#6ba2d7"></i>输入 / 数据源</span><span><i style="background:#d2a235"></i>判断 / 策略</span><span><i style="background:#61a87d"></i>状态 / 输出</span><span><i style="background:#d26a56"></i>故障 / 风险</span><span><i style="background:#8d7ed3"></i>执行 / 安全动作</span></div><svg width="797pt" height="146pt"
+ viewBox="0.00 0.00 797.00 145.62" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<g id="graph0" class="graph" transform="scale(1 1) rotate(0) translate(18 127.62)">
+
+<!-- ACTIVE -->
+<g id="node1" class="node">
+
+<path fill="#ffffff" stroke="#86b6a3" stroke-width="1.45" d="M46,-38.62C46,-38.62 12,-38.62 12,-38.62 6,-38.62 0,-32.62 0,-26.62 0,-26.62 0,-14.62 0,-14.62 0,-8.62 6,-2.62 12,-2.62 12,-2.62 46,-2.62 46,-2.62 52,-2.62 58,-8.62 58,-14.62 58,-14.62 58,-26.62 58,-26.62 58,-32.62 52,-38.62 46,-38.62"/>
+<text text-anchor="middle" x="29" y="-17.52" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f2a2c">ACTIVE</text>
+</g>
+<!-- PENDING_CLEAR -->
+<g id="node4" class="node">
+
+<path fill="#eaf7ef" stroke="#61a87d" stroke-width="1.45" d="M271,-57.62C271,-57.62 181,-57.62 181,-57.62 175,-57.62 169,-51.62 169,-45.62 169,-45.62 169,-33.62 169,-33.62 169,-27.62 175,-21.62 181,-21.62 181,-21.62 271,-21.62 271,-21.62 277,-21.62 283,-27.62 283,-33.62 283,-33.62 283,-45.62 283,-45.62 283,-51.62 277,-57.62 271,-57.62"/>
+<text text-anchor="middle" x="226" y="-36.52" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">PENDING_CLEAR</text>
+</g>
+<!-- ACTIVE&#45;&gt;PENDING_CLEAR -->
+<g id="edge5" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M58.03,-20C66.38,-19.84 75.56,-19.7 84,-19.62 110.22,-19.38 116.97,-16.49 143,-19.62 148.93,-20.33 155.06,-21.32 161.16,-22.49"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="160.68,-25.18 168.86,-24.05 161.76,-19.83 160.68,-25.18"/>
+<text text-anchor="middle" x="113.5" y="-22.62" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="10.00">条件不满足</text>
+</g>
+<!-- INACTIVE -->
+<g id="node2" class="node">
+
+<path fill="#ffffff" stroke="#86b6a3" stroke-width="1.45" d="M539,-74.62C539,-74.62 492,-74.62 492,-74.62 486,-74.62 480,-68.62 480,-62.62 480,-62.62 480,-50.62 480,-50.62 480,-44.62 486,-38.62 492,-38.62 492,-38.62 539,-38.62 539,-38.62 545,-38.62 551,-44.62 551,-50.62 551,-50.62 551,-62.62 551,-62.62 551,-68.62 545,-74.62 539,-74.62"/>
+<text text-anchor="middle" x="515.5" y="-53.52" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f2a2c">INACTIVE</text>
+</g>
+<!-- PENDING_ACTIVE -->
+<g id="node3" class="node">
+
+<path fill="#ffffff" stroke="#86b6a3" stroke-width="1.45" d="M749,-38.62C749,-38.62 655,-38.62 655,-38.62 649,-38.62 643,-32.62 643,-26.62 643,-26.62 643,-14.62 643,-14.62 643,-8.62 649,-2.62 655,-2.62 655,-2.62 749,-2.62 749,-2.62 755,-2.62 761,-8.62 761,-14.62 761,-14.62 761,-26.62 761,-26.62 761,-32.62 755,-38.62 749,-38.62"/>
+<text text-anchor="middle" x="702" y="-17.52" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f2a2c">PENDING_ACTIVE</text>
+</g>
+<!-- INACTIVE&#45;&gt;PENDING_ACTIVE -->
+<g id="edge2" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M539.22,-38.61C550.01,-31.18 563.49,-23.42 577,-19.62 595.31,-14.46 615.76,-12.99 634.69,-13.26"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="634.82,-16 642.69,-13.48 634.97,-10.54 634.82,-16"/>
+<text text-anchor="middle" x="597" y="-22.62" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="10.00">条件满足</text>
+</g>
+<!-- PENDING_ACTIVE&#45;&gt;ACTIVE -->
+<g id="edge3" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M642.91,-8.11C634.26,-6.67 625.42,-5.43 617,-4.62 538.72,2.89 273.44,-0.55 169,-3.62 131.17,-4.73 121.48,-3.39 84,-8.62 78.18,-9.43 72.06,-10.54 66.11,-11.76"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="65.2,-9.16 58.15,-13.47 66.35,-14.5 65.2,-9.16"/>
+<text text-anchor="middle" x="381.5" y="-3.62" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="10.00">满足 enter_hold_s</text>
+</g>
+<!-- PENDING_ACTIVE&#45;&gt;INACTIVE -->
+<g id="edge4" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M642.87,-31.96C615.7,-37.26 583.92,-43.46 559.03,-48.32"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="558.34,-45.67 551.2,-49.85 559.38,-51.03 558.34,-45.67"/>
+<text text-anchor="middle" x="597" y="-46.62" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="10.00">条件消失</text>
+</g>
+<!-- PENDING_CLEAR&#45;&gt;ACTIVE -->
+<g id="edge6" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M168.88,-39.01C142.95,-38.17 111.81,-36.37 84,-32.62 78.18,-31.83 72.05,-30.74 66.1,-29.52"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="66.34,-26.78 58.14,-27.82 65.2,-32.12 66.34,-26.78"/>
+<text text-anchor="middle" x="113.5" y="-40.62" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="10.00">条件重新满足</text>
+</g>
+<!-- PENDING_CLEAR&#45;&gt;INACTIVE -->
+<g id="edge7" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M283.12,-42.94C338.38,-46.2 421.58,-51.12 471.71,-54.09"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="471.81,-56.83 479.76,-54.56 472.14,-51.38 471.81,-56.83"/>
+<text text-anchor="middle" x="381.5" y="-55.62" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="10.00">满足 clear_hold_s + min_hold_s</text>
+</g>
+<!-- [*] -->
+<g id="node5" class="node">
+
+<ellipse fill="#1f6f50" stroke="#1f6f50" stroke-width="1.35" cx="226" cy="-101.62" rx="8" ry="8"/>
+</g>
+<!-- [*]&#45;&gt;INACTIVE -->
+<g id="edge1" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M234.12,-101.05C262.23,-98.75 368.21,-89.37 454,-72.62 459.92,-71.46 466.12,-70.05 472.2,-68.56"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="472.92,-71.19 479.81,-66.63 471.58,-65.9 472.92,-71.19"/>
+</g>
+</g>
+</svg>
+</div>
+        </section>
+
+        <section id="config" class="section">
+          <h2>9. 推荐配置样例</h2>
+          <p>配置既要能表达组合关系，也要能控制触发和恢复节奏。</p>
+          <pre class="code">combined_fault_rules:
+  - name: "collision_and_navigation_unhealthy"
+    priority: 90
+    when_all:
+      - module: "collision_detection"
+        fault_type: "collision"
+      - module: "navigation"
+        fault_type: "topic"
+    min_match_count: 2
+    enter_hold_s: 0.1
+    clear_hold_s: 0.5
+    min_hold_s: 1.0
+    suppress_base_actions: true
+    level: "CRITICAL"
+    actions: ["safety_system", "nodemanager"]
+    safety_system: 2
+    reason: "Collision risk and navigation degraded"</pre>
+          <table>
+            <thead>
+              <tr>
+                <th>字段</th>
+                <th>作用</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>when_all</td><td>所有条件都要命中。</td></tr>
+              <tr><td>when_any</td><td>至少一个条件命中。</td></tr>
+              <tr><td>min_match_count</td><td>至少命中多少个不同基础错误。</td></tr>
+              <tr><td>enter_hold_s</td><td>进入组合前的确认时间。</td></tr>
+              <tr><td>clear_hold_s</td><td>解除组合前的确认时间。</td></tr>
+              <tr><td>min_hold_s</td><td>组合激活后的最小保持时间。</td></tr>
+              <tr><td>suppress_base_actions</td><td>组合命中后是否抑制覆盖范围内的基础错误动作。</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section id="implementation" class="section">
+          <h2>10. 实现计划细化</h2>
+          <p>建议把组合策略仲裁做成独立类，不继续堆在 `FaultDetector::append_combined_faults` 里。</p>
+          <div class="summary">
+            <div class="mini-card">
+              <b>第一步</b>
+              <p>新增 `CombinedFaultPolicyArbiter`，先兼容现有 `when_all fault_key`。</p>
+            </div>
+            <div class="mini-card">
+              <b>第二步</b>
+              <p>支持条件匹配：module、fault_type、fault_name、prefix、contains、action。</p>
+            </div>
+            <div class="mini-card">
+              <b>第三步</b>
+              <p>加入状态机、组合恢复、动作抑制和交叉策略优先级。</p>
+            </div>
+          </div>
+          <pre class="code">src/nav2_monitor/include/nav2_monitor/combined_fault_policy_arbiter.hpp
+src/nav2_monitor/src/combined_fault_policy_arbiter.cpp
+src/nav2_monitor/test/test_combined_fault_policy_arbiter.cpp</pre>
+        </section>
+      </main>
+    </div>
+
+    <footer class="footer">
+      目标效果：状态里看得到所有真实错误，动作里只保留当前最合适、最安全、最稳定的措施。
+    </footer>
+  </div>
+</body>
+</html>

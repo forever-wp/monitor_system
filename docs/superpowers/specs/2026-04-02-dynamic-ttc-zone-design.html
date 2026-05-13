@@ -1,0 +1,511 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>2026-04-02-dynamic-ttc-zone-design</title>
+  <style>
+    :root {
+      --bg: #f6f7f8;
+      --paper: #ffffff;
+      --ink: #1f2a2c;
+      --muted: #5f6f73;
+      --line: #dbe3e6;
+      --brand: #1f6f50;
+      --brand-soft: #e7f3ee;
+      --shadow: 0 10px 28px rgb(31 42 44 / 8%);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: linear-gradient(160deg, #f6f7f8 0%, #edf3f5 100%);
+      font-family: "Noto Sans SC", "Microsoft YaHei", Arial, sans-serif;
+      line-height: 1.72;
+    }
+    .page {
+      width: min(1100px, calc(100% - 28px));
+      margin: 0 auto;
+      padding: 28px 0 48px;
+    }
+    .card {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+      padding: 28px;
+    }
+    h1, h2, h3, h4, h5, h6 { line-height: 1.28; margin: 22px 0 10px; }
+    h1 { margin-top: 6px; font-size: clamp(28px, 4vw, 44px); }
+    h2 { font-size: clamp(21px, 2.7vw, 31px); }
+    h3 { font-size: clamp(18px, 2.1vw, 24px); }
+    p { margin: 10px 0; }
+    code {
+      padding: 2px 6px;
+      border-radius: 6px;
+      background: var(--brand-soft);
+      color: #154933;
+      font-family: "JetBrains Mono", Consolas, monospace;
+      font-size: 0.93em;
+    }
+    pre {
+      margin: 14px 0;
+      padding: 14px;
+      border-radius: 12px;
+      background: #152124;
+      color: #e6f0f2;
+      overflow-x: auto;
+      border: 1px solid #26363a;
+    }
+    pre code {
+      padding: 0;
+      background: transparent;
+      color: inherit;
+      font-size: 0.9em;
+    }
+    ul, ol { padding-left: 22px; margin: 8px 0 14px; }
+    li { margin: 4px 0; }
+    blockquote {
+      margin: 14px 0;
+      padding: 10px 14px;
+      border-left: 4px solid var(--brand);
+      background: var(--brand-soft);
+      color: #1f4f3c;
+    }
+    a { color: #1f5f8c; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .toc {
+      margin-bottom: 18px;
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #f9fcfd;
+    }
+    .toc strong { display: block; margin-bottom: 8px; color: var(--brand); }
+    .toc ul { margin: 0; padding-left: 18px; }
+    .table-wrap {
+      overflow-x: auto;
+      margin: 12px 0;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+    }
+    table { border-collapse: collapse; width: 100%; min-width: 520px; }
+    th, td {
+      border-bottom: 1px solid var(--line);
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+    thead th {
+      color: var(--brand);
+      background: var(--brand-soft);
+    }
+    tbody tr:last-child td { border-bottom: none; }
+    .meta {
+      margin-top: 20px;
+      color: var(--muted);
+      font-size: 13px;
+      border-top: 1px dashed var(--line);
+      padding-top: 12px;
+    }
+    @media (max-width: 720px) {
+      .card { padding: 20px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <article class="card">
+      <aside class="toc"><strong>目录</strong><ul><li><a href="#dynamic-ttc-zone-design">Dynamic TTC Zone Design</a></li><li><a href="#background">Background</a></li><li><a href="#goal">Goal</a></li><li><a href="#scope">Scope</a></li><li><a href="#chosen-design">Chosen Design</a></li><li><a href="#configuration-changes">Configuration Changes</a></li><li><a href="#1-canonical-ttc-model">1. Canonical TTC model</a></li><li><a href="#2-new-ttc-specific-fields">2. New TTC-specific fields</a></li><li><a href="#3-legacy-approach-handling">3. Legacy `approach` handling</a></li><li><a href="#4-footprint-requirement">4. Footprint requirement</a></li><li><a href="#runtime-behavior">Runtime Behavior</a></li><li><a href="#lightweight-strategy">Lightweight Strategy</a></li><li><a href="#1-dynamic-corridor-coarse-filter">1. Dynamic corridor coarse filter</a></li><li><a href="#2-candidate-downsampling">2. Candidate downsampling</a></li><li><a href="#3-early-exit">3. Early exit</a></li><li><a href="#visualization-changes">Visualization Changes</a></li><li><a href="#configuration-migration">Configuration Migration</a></li><li><a href="#affected-files">Affected Files</a></li><li><a href="#testing-strategy">Testing Strategy</a></li><li><a href="#risks-and-mitigations">Risks And Mitigations</a></li><li><a href="#verification-criteria">Verification Criteria</a></li></ul></aside>
+<h1 id="dynamic-ttc-zone-design">Dynamic TTC Zone Design</h1>
+<h2 id="background">Background</h2>
+<p>当前 <code>nav2_monitor</code> 的 <code>approach / TTC</code> 是“静态 polygon 粗筛 + 预测 footprint 精算”的混合模式：</p>
+<ul>
+<li>外层先用固定 <code>approach.points</code> 过滤候选点</li>
+</ul>
+<ul>
+<li>内层再用 <code>footprint_points + prediction_motion</code> 估算轨迹碰撞时间</li>
+</ul>
+<p>这套实现已经能工作，但固定 <code>approach</code> 框带来两个问题：</p>
+<ul>
+<li>它把 TTC 的业务语义绑死在静态区域上，不适合后续把 TTC 区域直接作为减速、控制器切换、全局规划降速避障的入口</li>
+</ul>
+<ul>
+<li>它让后续开发者误以为“碰撞提前区”是人工画出来的静态区域，而不是由车辆实际预测运动生成的动态区域</li>
+</ul>
+<p>用户希望直接替换 <code>approach</code>，不再让静态框影响 TTC 主逻辑，同时要求实现保持轻量。</p>
+<h2 id="goal">Goal</h2>
+<p>用轻量的动态 TTC corridor 直接替换当前的 <code>approach</code> 主逻辑，并让该区域直接承担安全动作触发职责。</p>
+<h2 id="scope">Scope</h2>
+<p>In scope:</p>
+<ul>
+<li>用动态 TTC corridor 替换 <code>approach</code> 的主判定逻辑</li>
+</ul>
+<ul>
+<li>将 TTC 规则直接作为安全动作触发入口</li>
+</ul>
+<ul>
+<li>保留 <code>front_slow/front_stop/rear_slow/rear_stop</code> 作为近场硬防线</li>
+</ul>
+<ul>
+<li>为动态 TTC 增加轻量候选筛选和降采样策略</li>
+</ul>
+<ul>
+<li>更新 RViz2 可视化，使其展示动态 TTC 区域而不是静态 <code>approach</code> 框</li>
+</ul>
+<ul>
+<li>更新配置、测试、文档</li>
+</ul>
+<p>Out of scope:</p>
+<ul>
+<li>暂不输出单独的 TTC 状态信号给外部模块</li>
+</ul>
+<ul>
+<li>暂不实现控制器切换或全局规划降速逻辑</li>
+</ul>
+<ul>
+<li>不修改近场 <code>zone</code> 模式的硬防线语义</li>
+</ul>
+<h2 id="chosen-design">Chosen Design</h2>
+<p>采用“双层碰撞链路”：</p>
+<ul>
+<li><code>dynamic ttc</code></li>
+</ul>
+<ul>
+<li>负责提前介入</li>
+</ul>
+<ul>
+<li>运行时根据 <code>footprint_points + prediction_motion + ttc_horizon</code> 生成动态 corridor</li>
+</ul>
+<ul>
+<li>直接触发减速或软停等安全动作</li>
+</ul>
+<ul>
+<li>未来可自然扩展为控制器切换、全局规划降速入口</li>
+</ul>
+<ul>
+<li><code>near-field hard zone</code></li>
+</ul>
+<ul>
+<li>继续保留现有 <code>front_slow/front_stop/rear_slow/rear_stop</code></li>
+</ul>
+<ul>
+<li>只负责近场硬防线和最终兜底</li>
+</ul>
+<p>这意味着当前 <code>approach</code> 不再作为 TTC 主逻辑存在。</p>
+<h2 id="configuration-changes">Configuration Changes</h2>
+<h3 id="1-canonical-ttc-model">1. Canonical TTC model</h3>
+<p>TTC 规则的规范写法改为：</p>
+<pre><code class="language-yaml">
+zones:
+  - name: &quot;front_ttc&quot;
+    enabled: 1
+    model: &quot;ttc&quot;
+    motion_direction: &quot;forward&quot;
+    level: &quot;WARNING&quot;
+    safety_system: 1
+    safety_slow_down_percentage: 50.0
+    time_before_collision: 3.0
+    recover_time_before_collision: 3.5
+    min_hold_time_s: 0.2
+    ttc_horizon_s: 3.5
+    simulation_time_step: 0.1
+    corridor_margin: 0.10
+    candidate_downsample_resolution: 0.08
+    actions: [&quot;safety_system&quot;]
+</code></pre>
+<p>设计原则：</p>
+<ul>
+<li><code>ttc</code> 规则不再依赖静态 <code>points</code></li>
+</ul>
+<ul>
+<li>TTC 区域由运行时动态生成</li>
+</ul>
+<ul>
+<li><code>motion_direction</code> 保留，用于前进/倒车 TTC 分流</li>
+</ul>
+<ul>
+<li><code>time_before_collision</code> 继续作为触发阈值</li>
+</ul>
+<ul>
+<li><code>recover_time_before_collision</code>、<code>min_hold_time_s</code> 继续保留现有滞回/保持机制</li>
+</ul>
+<h3 id="2-new-ttc-specific-fields">2. New TTC-specific fields</h3>
+<p>为 <code>model: "ttc"</code> 新增字段：</p>
+<ul>
+<li><code>ttc_horizon_s</code></li>
+</ul>
+<ul>
+<li>TTC 预测时域</li>
+</ul>
+<ul>
+<li>默认取 <code>max(time_before_collision, recover_time_before_collision)</code></li>
+</ul>
+<ul>
+<li><code>corridor_margin</code></li>
+</ul>
+<ul>
+<li>在车辆外接半径之外额外扩出的 corridor 余量</li>
+</ul>
+<ul>
+<li>用于候选点粗筛</li>
+</ul>
+<ul>
+<li><code>candidate_downsample_resolution</code></li>
+</ul>
+<ul>
+<li>候选点降采样分辨率</li>
+</ul>
+<ul>
+<li>用于降低 TTC 精算点数</li>
+</ul>
+<h3 id="3-legacy-approach-handling">3. Legacy <code>approach</code> handling</h3>
+<p>仓库内配置、文档、命名全部切换到 <code>ttc</code>。</p>
+<p>运行时对旧写法采用短期兼容策略：</p>
+<ul>
+<li>允许解析 <code>model: "approach"</code></li>
+</ul>
+<ul>
+<li>但其语义直接等价为 <code>model: "ttc"</code></li>
+</ul>
+<ul>
+<li>原有 <code>points</code> 不再参与 TTC 主判定</li>
+</ul>
+<ul>
+<li>启动时打印明确 warning，提示迁移到 <code>model: "ttc"</code></li>
+</ul>
+<p>这样可避免 OTA 切换瞬间因历史配置而直接启动失败，但未来主语义只有 <code>ttc</code>。</p>
+<h3 id="4-footprint-requirement">4. Footprint requirement</h3>
+<p><code>ttc</code> 规则要求存在 <code>collision_detection.footprint_points</code>。</p>
+<p>若未配置 footprint：</p>
+<ul>
+<li>该 <code>ttc</code> 规则跳过并打印错误</li>
+</ul>
+<ul>
+<li>不回退到旧的静态 <code>approach</code> polygon TTC 模式</li>
+</ul>
+<p>这样可以确保 TTC 的业务语义始终基于真实车体，而不是退化回“点到原点”的逻辑。</p>
+<h2 id="runtime-behavior">Runtime Behavior</h2>
+<p><code>CollisionEvaluator::evaluate()</code> 中 <code>ttc</code> 分支改为以下流程：</p>
+<ol>
+<li>根据 <code>prediction_linear_x</code> 和 <code>motion_direction</code> 判断该 TTC 规则是否参与本周期计算</li>
+</ol>
+<ol>
+<li>计算本周期有效预测时域：</li>
+</ol>
+<ul>
+<li><code>active_horizon = max(ttc_horizon_s, time_before_collision, recover_time_before_collision)</code></li>
+</ul>
+<ol>
+<li>基于 <code>prediction_motion</code> 采样未来若干个中心位姿</li>
+</ol>
+<ol>
+<li>用“中心轨迹 + 外接半径 + corridor_margin”构造轻量 corridor 粗筛</li>
+</ol>
+<ol>
+<li>仅保留落入 corridor 的碰撞点作为 TTC 候选点</li>
+</ol>
+<ol>
+<li>对候选点按 <code>candidate_downsample_resolution</code> 做空间降采样</li>
+</ol>
+<ol>
+<li>对降采样后的候选点，继续沿用现有 footprint trajectory TTC 精算</li>
+</ol>
+<ol>
+<li>若最小 TTC 小于等于阈值，则触发该 TTC 规则的安全动作</li>
+</ol>
+<p>这样实现后：</p>
+<ul>
+<li>TTC 的业务区域是动态生成的</li>
+</ul>
+<ul>
+<li>精算仍使用现有可靠的 footprint trajectory 逻辑</li>
+</ul>
+<ul>
+<li>开销控制在“动态粗筛 + 少量候选点精算”</li>
+</ul>
+<h2 id="lightweight-strategy">Lightweight Strategy</h2>
+<p>为了满足“更轻量”，采用三级控制：</p>
+<h3 id="1-dynamic-corridor-coarse-filter">1. Dynamic corridor coarse filter</h3>
+<p>不对全量点直接跑 footprint TTC。</p>
+<p>先使用未来轨迹中心线构造 corridor：</p>
+<ul>
+<li>corridor radius = 车体外接半径 + <code>corridor_margin</code></li>
+</ul>
+<ul>
+<li>只有进入 corridor 的点才进入下一阶段</li>
+</ul>
+<p>这一层比静态 <code>approach</code> 更贴近真实运动，但仍明显轻于“对所有点精算 TTC”。</p>
+<h3 id="2-candidate-downsampling">2. Candidate downsampling</h3>
+<p>对进入 corridor 的候选点做空间降采样：</p>
+<ul>
+<li>同一小网格只保留一个代表点</li>
+</ul>
+<ul>
+<li>优先保留更接近当前轨迹或更小 clearance 的点</li>
+</ul>
+<p>这一步减少点云密集时的重复计算。</p>
+<h3 id="3-early-exit">3. Early exit</h3>
+<p>在 TTC 精算阶段加入早停条件：</p>
+<ul>
+<li>一旦找到 <code>ttc &lt;= time_before_collision</code> 且 <code>clearance</code> 已接近碰撞，可提前停止后续无意义精算</li>
+</ul>
+<ul>
+<li>至少保留“最坏 TTC”搜索的正确性</li>
+</ul>
+<h2 id="visualization-changes">Visualization Changes</h2>
+<p>当前 RViz2 的 TTC 可视化要跟随设计一起调整：</p>
+<ul>
+<li>不再把静态 <code>approach</code> polygon 作为 TTC 主可视化</li>
+</ul>
+<ul>
+<li><code>ttc_visualization_enabled = 1</code> 时，优先显示：</li>
+</ul>
+<ul>
+<li>动态 trajectory</li>
+</ul>
+<ul>
+<li>预测 footprint</li>
+</ul>
+<ul>
+<li>动态 corridor 边界</li>
+</ul>
+<ul>
+<li>命中点与 TTC 文本</li>
+</ul>
+<p>近场 <code>front_slow/front_stop/rear_slow/rear_stop</code> 的 polygon 可视化继续保留， 因为它们仍然是静态硬防线区。</p>
+<h2 id="configuration-migration">Configuration Migration</h2>
+<p>仓库内默认配置直接迁移：</p>
+<ul>
+<li><code>front_approach</code> 重命名为 <code>front_ttc</code></li>
+</ul>
+<ul>
+<li><code>rear_approach</code> 重命名为 <code>rear_ttc</code></li>
+</ul>
+<ul>
+<li>删除 TTC 规则中的静态 <code>points</code></li>
+</ul>
+<ul>
+<li>补充 <code>ttc_horizon_s</code></li>
+</ul>
+<ul>
+<li>补充 <code>corridor_margin</code></li>
+</ul>
+<ul>
+<li>补充 <code>candidate_downsample_resolution</code></li>
+</ul>
+<p><code>front_slow/front_stop/rear_slow/rear_stop</code> 保持不变。</p>
+<h2 id="affected-files">Affected Files</h2>
+<ul>
+<li><code>src/nav2_monitor/include/nav2_monitor/fault_detector.hpp</code></li>
+</ul>
+<ul>
+<li><code>src/nav2_monitor/src/fault_detector.cpp</code></li>
+</ul>
+<ul>
+<li><code>src/nav2_monitor/include/nav2_monitor/collision_evaluator.hpp</code></li>
+</ul>
+<ul>
+<li><code>src/nav2_monitor/src/collision_evaluator.cpp</code></li>
+</ul>
+<ul>
+<li><code>src/nav2_monitor/include/nav2_monitor/nav2_monitor_node.hpp</code></li>
+</ul>
+<ul>
+<li><code>src/nav2_monitor/src/nav2_monitor_node.cpp</code></li>
+</ul>
+<ul>
+<li><code>src/nav2_monitor/test/test_fault_detector.cpp</code></li>
+</ul>
+<ul>
+<li><code>config/Monitor/nav2_monitor/fault_detector_config.yaml</code></li>
+</ul>
+<ul>
+<li><code>config/Monitor/nav2_monitor/profiles/*.yaml</code></li>
+</ul>
+<ul>
+<li><code>src/nav2_monitor/config/*.yaml</code></li>
+</ul>
+<ul>
+<li><code>src/nav2_monitor/README.md</code></li>
+</ul>
+<ul>
+<li><code>src/nav2_monitor/docs/architecture.html</code></li>
+</ul>
+<h2 id="testing-strategy">Testing Strategy</h2>
+<p>新增或调整测试覆盖：</p>
+<ul>
+<li><code>ttc</code> 规则在无 <code>points</code> 配置下仍能正常计算并触发</li>
+</ul>
+<ul>
+<li>前进时仅前向 <code>ttc</code> 规则参与</li>
+</ul>
+<ul>
+<li>倒车时仅后向 <code>ttc</code> 规则参与</li>
+</ul>
+<ul>
+<li>无 <code>footprint_points</code> 时，<code>ttc</code> 规则被安全跳过并记录错误</li>
+</ul>
+<ul>
+<li>corridor 粗筛后仍能命中真正的碰撞点</li>
+</ul>
+<ul>
+<li>候选点降采样不会破坏已有 TTC 触发结果</li>
+</ul>
+<ul>
+<li>近场 <code>front_slow/front_stop/rear_slow/rear_stop</code> 行为不回归</li>
+</ul>
+<ul>
+<li>RViz2 TTC 可视化能展示动态 corridor，而不是静态 <code>approach</code> polygon</li>
+</ul>
+<h2 id="risks-and-mitigations">Risks And Mitigations</h2>
+<ul>
+<li>风险：完全移除静态 <code>approach</code> 主逻辑后，旧配置理解会发生变化</li>
+</ul>
+<ul>
+<li>缓解：仓库配置全部迁移到 <code>ttc</code>，运行时对旧 <code>approach</code> 给出强 warning</li>
+</ul>
+<ul>
+<li>风险：动态 corridor 若做得过宽，会重新变成“另一个隐形静态框”</li>
+</ul>
+<ul>
+<li>缓解：corridor 由预测轨迹实时生成，宽度只由车体外接半径和小余量决定</li>
+</ul>
+<ul>
+<li>风险：去掉静态框后点数过多，CPU 升高</li>
+</ul>
+<ul>
+<li>缓解：引入 corridor 粗筛、候选点降采样和早停</li>
+</ul>
+<ul>
+<li>风险：调试时用户看不到 TTC 区域范围</li>
+</ul>
+<ul>
+<li>缓解：TTC 可视化中新增动态 corridor 显示</li>
+</ul>
+<h2 id="verification-criteria">Verification Criteria</h2>
+<p>满足以下条件即视为设计落地成功：</p>
+<ol>
+<li>TTC 主逻辑不再依赖静态 <code>approach.points</code></li>
+</ol>
+<ol>
+<li>TTC 规则可直接触发安全动作</li>
+</ol>
+<ol>
+<li>近场硬防线区保持独立存在</li>
+</ol>
+<ol>
+<li>运行时开销不明显高于当前实现</li>
+</ol>
+<ol>
+<li>RViz2 能看到动态 TTC corridor 与预测轨迹</li>
+</ol>
+<ol>
+<li>仓库默认配置中不再使用静态 <code>approach</code> 业务语义</li>
+</ol>
+      <div class="meta">本文档已统一为 HTML 形式，便于浏览、打印和后续可视化扩展。</div>
+    </article>
+  </div>
+</body>
+</html>

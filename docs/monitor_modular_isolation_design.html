@@ -1,0 +1,2868 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>monitor modular isolation design</title>
+  <style>
+    :root {
+      --bg: #f6f7f8;
+      --paper: #ffffff;
+      --ink: #1f2a2c;
+      --muted: #5f6f73;
+      --line: #dbe3e6;
+      --brand: #1f6f50;
+      --brand-soft: #e7f3ee;
+      --shadow: 0 10px 28px rgb(31 42 44 / 8%);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: linear-gradient(160deg, #f6f7f8 0%, #edf3f5 100%);
+      font-family: "Noto Sans SC", "Microsoft YaHei", Arial, sans-serif;
+      line-height: 1.72;
+    }
+    .page {
+      width: min(1100px, calc(100% - 28px));
+      margin: 0 auto;
+      padding: 28px 0 48px;
+    }
+    .card {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+      padding: 28px;
+    }
+    h1, h2, h3, h4, h5, h6 { line-height: 1.28; margin: 22px 0 10px; }
+    h1 { margin-top: 6px; font-size: clamp(28px, 4vw, 44px); }
+    h2 { font-size: clamp(21px, 2.7vw, 31px); }
+    h3 { font-size: clamp(18px, 2.1vw, 24px); }
+    p { margin: 10px 0; }
+    code {
+      padding: 2px 6px;
+      border-radius: 6px;
+      background: var(--brand-soft);
+      color: #154933;
+      font-family: "JetBrains Mono", Consolas, monospace;
+      font-size: 0.93em;
+    }
+    pre {
+      margin: 14px 0;
+      padding: 14px;
+      border-radius: 12px;
+      background: #152124;
+      color: #e6f0f2;
+      overflow-x: auto;
+      border: 1px solid #26363a;
+    }
+    pre code {
+      padding: 0;
+      background: transparent;
+      color: inherit;
+      font-size: 0.9em;
+    }
+    ul, ol { padding-left: 22px; margin: 8px 0 14px; }
+    li { margin: 4px 0; }
+    blockquote {
+      margin: 14px 0;
+      padding: 10px 14px;
+      border-left: 4px solid var(--brand);
+      background: var(--brand-soft);
+      color: #1f4f3c;
+    }
+    a { color: #1f5f8c; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .toc {
+      margin-bottom: 18px;
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #f9fcfd;
+    }
+    .toc strong { display: block; margin-bottom: 8px; color: var(--brand); }
+    .toc ul { margin: 0; padding-left: 18px; }
+    .table-wrap {
+      overflow-x: auto;
+      margin: 12px 0;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+    }
+    table { border-collapse: collapse; width: 100%; min-width: 520px; }
+    th, td {
+      border-bottom: 1px solid var(--line);
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+    thead th {
+      color: var(--brand);
+      background: var(--brand-soft);
+    }
+    tbody tr:last-child td { border-bottom: none; }
+    .meta {
+      margin-top: 20px;
+      color: var(--muted);
+      font-size: 13px;
+      border-top: 1px dashed var(--line);
+      padding-top: 12px;
+    }
+    @media (max-width: 720px) {
+      .card { padding: 20px; }
+    }
+  
+
+    /* SVG diagrams generated from Mermaid blocks. Offline, no CDN/runtime dependency. */
+    .svg-diagram {
+      margin: 20px 0;
+      padding: 20px;
+      border: 1px solid #cfe0d8;
+      border-radius: 22px;
+      background:
+        radial-gradient(circle at 10% 8%, rgb(255 255 255 / 92%), transparent 30%),
+        linear-gradient(135deg, #fbfefd 0%, #eef7f3 100%);
+      overflow-x: auto;
+      box-shadow: 0 14px 30px rgb(31 42 44 / 8%);
+    }
+    .svg-diagram-title {
+      display: inline-flex;
+      align-items: center;
+      margin-bottom: 14px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      background: #dff0e8;
+      color: #1f6f50;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+    .svg-diagram-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: -2px 0 14px;
+      color: #5b6c67;
+      font-size: 12px;
+    }
+    .svg-diagram-legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: rgb(255 255 255 / 68%);
+      border: 1px solid #d6e5df;
+    }
+    .svg-diagram-legend i {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .svg-diagram svg {
+      display: block;
+      max-width: 100%;
+      height: auto;
+      min-width: 720px;
+    }
+
+  </style>
+</head>
+<body>
+  <div class="page">
+    <article class="card">
+      <aside class="toc"><strong>目录</strong><ul><li><a href="#监控系统模块独立化与可靠数据联通设计方案">监控系统模块独立化与可靠数据联通设计方案</a></li><li><a href="#0-文档范围与设计结论">0. 文档范围与设计结论</a></li><li><a href="#01-适用范围">0.1 适用范围</a></li><li><a href="#02-核心结论">0.2 核心结论</a></li><li><a href="#03-关键设计约束">0.3 关键设计约束</a></li><li><a href="#04-设计验收指标">0.4 设计验收指标</a></li><li><a href="#1-背景与问题定义">1. 背景与问题定义</a></li><li><a href="#11-现状能力与不足">1.1 现状能力与不足</a></li><li><a href="#2-设计目标">2. 设计目标</a></li><li><a href="#21-独立性目标">2.1 独立性目标</a></li><li><a href="#22-数据联通目标">2.2 数据联通目标</a></li><li><a href="#23-可靠性目标">2.3 可靠性目标</a></li><li><a href="#24-本系统边界">2.4 本系统边界</a></li><li><a href="#3-理论依据">3. 理论依据</a></li><li><a href="#31-故障隔离原则">3.1 故障隔离原则</a></li><li><a href="#32-背压与队列理论">3.2 背压与队列理论</a></li><li><a href="#33-状态与事件分离">3.3 状态与事件分离</a></li><li><a href="#34-端到端可靠性原则">3.4 端到端可靠性原则</a></li><li><a href="#35-实时系统中的新鲜度原则">3.5 实时系统中的“新鲜度”原则</a></li><li><a href="#36-频率统计理论">3.6 频率统计理论</a></li><li><a href="#37-控制器切换的滞回理论">3.7 控制器切换的滞回理论</a></li><li><a href="#38-缩小急停区的安全依据">3.8 “缩小急停区”的安全依据</a></li><li><a href="#4-总体架构">4. 总体架构</a></li><li><a href="#5-模块职责设计">5. 模块职责设计</a></li><li><a href="#51-topicfrequencymonitornode">5.1 `topic_frequency_monitor_node`</a></li><li><a href="#52-vehiclestatejudgenode">5.2 `vehicle_state_judge_node`</a></li><li><a href="#53-collisionmonitornode">5.3 `collision_monitor_node`</a></li><li><a href="#54-algorithmfeedbackmonitornode">5.4 `algorithm_feedback_monitor_node`</a></li><li><a href="#55-nodetfmonitornode">5.5 `node_tf_monitor_node`</a></li><li><a href="#56-batterymonitornode">5.6 `battery_monitor_node`</a></li><li><a href="#57-nav2monitoraggregatornode">5.7 `nav2_monitor_aggregator_node`</a></li><li><a href="#6-数据类型分层与-qos-策略">6. 数据类型分层与 QoS 策略</a></li><li><a href="#61-高频原始数据">6.1 高频原始数据</a></li><li><a href="#62-标准状态-topic">6.2 标准状态 topic</a></li><li><a href="#63-事件-topic">6.3 事件 topic</a></li><li><a href="#64-控制类-topic">6.4 控制类 topic</a></li><li><a href="#7-标准消息字段建议">7. 标准消息字段建议</a></li><li><a href="#71-统一事件字段">7.1 统一事件字段</a></li><li><a href="#72-标准状态字段">7.2 标准状态字段</a></li><li><a href="#73-推荐-topic-契约">7.3 推荐 topic 契约</a></li><li><a href="#74-故障-key-设计">7.4 故障 key 设计</a></li><li><a href="#75-状态枚举建议">7.5 状态枚举建议</a></li><li><a href="#8-上层确认边界">8. 上层确认边界</a></li><li><a href="#9-cpu-满载情况下的策略">9. CPU 满载情况下的策略</a></li><li><a href="#91-关键链路优先级">9.1 关键链路优先级</a></li><li><a href="#92-cpu调度隔离建议">9.2 CPU/调度隔离建议</a></li><li><a href="#93-降级策略">9.3 降级策略</a></li><li><a href="#10-数据链路详图">10. 数据链路详图</a></li><li><a href="#101-频率检测链路">10.1 频率检测链路</a></li><li><a href="#102-小车状态链路">10.2 小车状态链路</a></li><li><a href="#103-碰撞ttc-链路">10.3 碰撞/TTC 链路</a></li><li><a href="#11-nodemanager-节点管理器与模块重启">11. Nodemanager 节点管理器与模块重启</a></li><li><a href="#12-与现有系统的兼容迁移">12. 与现有系统的兼容迁移</a></li><li><a href="#阶段-0命名迁移supervisor-更名为-nodemanager">阶段 0：命名迁移，`supervisor` 更名为 `nodemanager`</a></li><li><a href="#阶段-1抽出频率模块并固定状态总线">阶段 1：抽出频率模块并固定状态总线</a></li><li><a href="#阶段-2抽出小车状态判断">阶段 2：抽出小车状态判断</a></li><li><a href="#阶段-3抽出碰撞ttc-判断">阶段 3：抽出碰撞/TTC 判断</a></li><li><a href="#阶段-4形成-aggregator">阶段 4：形成 aggregator</a></li><li><a href="#13-配置建议">13. 配置建议</a></li><li><a href="#131-配置分层原则">13.1 配置分层原则</a></li><li><a href="#1311-总入口-monitorsystemyaml">13.1.1 总入口 `monitor_system.yaml`</a></li><li><a href="#1312-当前-profile-monitorprofileyaml">13.1.2 当前 profile `monitor_profile.yaml`</a></li><li><a href="#1313-模块默认配置-modulesyaml">13.1.3 模块默认配置 `modules/*.yaml`</a></li><li><a href="#1314-profile-覆盖配置-profilesyaml">13.1.4 Profile 覆盖配置 `profiles/*.yaml`</a></li><li><a href="#1315-有效配置输出">13.1.5 有效配置输出</a></li><li><a href="#1316-迭代与回滚策略">13.1.6 迭代与回滚策略</a></li><li><a href="#132-参数命名规范">13.2 参数命名规范</a></li><li><a href="#133-配置校验">13.3 配置校验</a></li><li><a href="#134-配置发布与回滚">13.4 配置发布与回滚</a></li><li><a href="#14-运行部署设计">14. 运行部署设计</a></li><li><a href="#141-launch-拆分">14.1 Launch 拆分</a></li><li><a href="#142-进程命名">14.2 进程命名</a></li><li><a href="#143-日志策略">14.3 日志策略</a></li><li><a href="#144-观测命令">14.4 观测命令</a></li><li><a href="#15-风险与权衡">15. 风险与权衡</a></li><li><a href="#151-多进程带来的开销">15.1 多进程带来的开销</a></li><li><a href="#152-topic-通信仍可能丢数据">15.2 topic 通信仍可能丢数据</a></li><li><a href="#153-状态延迟">15.3 状态延迟</a></li><li><a href="#154-配置复杂度上升">15.4 配置复杂度上升</a></li><li><a href="#155-过度拆分">15.5 过度拆分</a></li><li><a href="#16-验证方案">16. 验证方案</a></li><li><a href="#161-功能验证">16.1 功能验证</a></li><li><a href="#162-压力验证">16.2 压力验证</a></li><li><a href="#163-故障注入">16.3 故障注入</a></li><li><a href="#164-qos-验证">16.4 QoS 验证</a></li><li><a href="#165-频率验证">16.5 频率验证</a></li><li><a href="#166-验收矩阵">16.6 验收矩阵</a></li><li><a href="#17-推荐落地顺序">17. 推荐落地顺序</a></li><li><a href="#171-当前实现状态">17.1 当前实现状态</a></li><li><a href="#18-结论">18. 结论</a></li></ul></aside>
+<h1 id="监控系统模块独立化与可靠数据联通设计方案">监控系统模块独立化与可靠数据联通设计方案</h1>
+<p>本文档描述 <code>monitor_system</code> 后续从“单节点多职责”演进为“多进程独立监控模块 + 标准化 topic 数据联通 + 上层确认闭环”的设计方案。</p>
+<p>设计重点不是简单拆 topic，而是在 CPU 满载、部分模块异常、DDS 队列拥塞、节点重启等真实运行条件下，尽量做到：</p>
+<ul>
+<li>一个模块异常不拖垮其他模块。</li>
+</ul>
+<ul>
+<li>高频数据处理不阻塞低频状态、故障事件和人工介入提醒。</li>
+</ul>
+<ul>
+<li>模块之间通过清晰的数据契约互通。</li>
+</ul>
+<ul>
+<li>本系统只负责标准化发布事件与状态，ACK、重发、落盘、云端确认由上层模块负责。</li>
+</ul>
+<h2 id="0-文档范围与设计结论">0. 文档范围与设计结论</h2>
+<h3 id="01-适用范围">0.1 适用范围</h3>
+<p>本文档面向 <code>monitor_system</code> 的后续架构升级，覆盖：</p>
+<ul>
+<li><code>nav2_monitor</code> 内部监控职责拆分。</li>
+</ul>
+<ul>
+<li>频率检测、小车状态判断、碰撞/TTC 判断、算法反馈判断、节点/TF 判断、电池判断的模块边界。</li>
+</ul>
+<ul>
+<li>模块之间的数据链路、topic 契约、QoS 策略。</li>
+</ul>
+<ul>
+<li>CPU 满载、数据源丢失、模块崩溃、DDS 队列拥塞下的降级行为。</li>
+</ul>
+<ul>
+<li>与 <code>nodemanager</code> 节点管理器、外部 MQTT/云端上报模块的职责边界。</li>
+</ul>
+<p>本文档不覆盖：</p>
+<ul>
+<li>MQTT 协议字段设计。</li>
+</ul>
+<ul>
+<li>云端 ACK 协议。</li>
+</ul>
+<ul>
+<li>上层事件中心落盘格式。</li>
+</ul>
+<ul>
+<li>具体底盘私有协议改造。</li>
+</ul>
+<ul>
+<li>Nav2 控制器内部算法实现。</li>
+</ul>
+<h3 id="02-核心结论">0.2 核心结论</h3>
+<p>如果目标是“精确、稳定、响应快，并且所有模块尽量互不影响”，单纯增加线程不足以解决根因。推荐架构是：</p>
+<pre><code class="language-text">
+关键判断器多进程隔离
++ 低频标准状态总线
++ 高频原始数据小队列保最新
++ 状态与事件分离
++ 上层负责 ACK/重发/落盘/云端确认
++ nodemanager 节点管理器按模块重启
++ 关键安全进程调度优先级保障
+</code></pre>
+<h3 id="03-关键设计约束">0.3 关键设计约束</h3>
+<ul>
+<li>实机运行配置统一以 <code>/opt/ry/config/Monitor/</code> 为准，仓库 <code>config/Monitor/</code> 只作为版本化镜像。</li>
+</ul>
+<ul>
+<li>ROS 相关调试命令必须显式声明 <code>ROS_DOMAIN_ID=66</code>，避免误连其他机器人或测试网络。</li>
+</ul>
+<ul>
+<li>本仓库模块不直接做 MQTT 上报，外部上报模块订阅本仓库输出 topic 后处理。</li>
+</ul>
+<ul>
+<li>任何需要数据源的判断都必须先做数据源存在性、新鲜度和频率判断，再做业务判断。</li>
+</ul>
+<ul>
+<li>单个数据源丢失不能阻塞其他有效数据源继续输出状态或体素结果。</li>
+</ul>
+<ul>
+<li><code>nodemanager</code> 节点管理器当前按模块重启，因此模块拆分必须保留清晰模块名和可合并 fault key。</li>
+</ul>
+<ul>
+<li>命名迁移统一采用 <code>nodemanager</code> / “节点管理器”，迁移期保留旧 <code>supervisor</code> 参数、动作和 topic 作为兼容别名。</li>
+</ul>
+<h3 id="04-设计验收指标">0.4 设计验收指标</h3>
+<p>建议用以下指标判断方案是否真正达成目标：</p>
+<div class="table-wrap"><table>
+<thead><tr><th>指标</th><th>目标值</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td>高频 topic 统计回调耗时</td><td>P99 &lt; 1ms</td><td>watch topic 只计数，不反序列化大消息</td></tr>
+<tr><td><code>/livox/imu</code> 频率统计误差</td><td>稳态误差 &lt; 10%</td><td>与 <code>ros2 topic hz</code> 或硬件标称频率对比</td></tr>
+<tr><td>小车状态异常响应时间</td><td>0.3s-1.0s 可配置</td><td>不含 <code>coast_grace_s</code> 惯性宽限</td></tr>
+<tr><td>碰撞/TTC 控制器切换进入延迟</td><td>0.2s-0.5s 可配置</td><td>需兼顾抗抖和响应速度</td></tr>
+<tr><td>控制器切换抖动</td><td>不允许边界高频反复跳变</td><td>依赖滞回、最小保持时间、退出确认</td></tr>
+<tr><td>单模块崩溃影响范围</td><td>只影响该模块状态</td><td>其他模块继续发布状态</td></tr>
+<tr><td>aggregator 重启恢复</td><td>&lt; 1s 获取最后状态</td><td>状态 topic 使用 <code>transient_local + keep_last 1</code></td></tr>
+<tr><td>事件发布完整性</td><td>必须包含稳定 key 和 sequence</td><td>上层据此做 ACK、去重和重发</td></tr>
+</tbody></table></div>
+<h2 id="1-背景与问题定义">1. 背景与问题定义</h2>
+<p>当前 <code>nav2_monitor</code> 已经通过 <code>MultiThreadedExecutor</code>、callback group、轻量 watch topic 计数等方式降低了模块间阻塞。但它仍然是同一进程内的多职责节点，天然存在以下限制：</p>
+<ul>
+<li>进程级故障隔离不足：任一严重 bug、非法内存访问、未捕获异常、死锁都可能影响整个 <code>nav2_monitor</code>。</li>
+</ul>
+<ul>
+<li>CPU 调度仍共享：多线程可以并发执行 callback，但所有职责仍共享同一进程、同一 executor、同一 CPU 配额。</li>
+</ul>
+<ul>
+<li>高频与低频职责混杂：IMU、点云、scan 等高频输入的回调压力可能影响状态聚合、故障发布、节点管理器指令等低频关键链路。</li>
+</ul>
+<ul>
+<li>节点管理器粒度受限：如果所有功能都在一个进程内，<code>nodemanager</code> 只能重启整个 monitor，而不能只重启异常子功能。</li>
+</ul>
+<ul>
+<li>可靠性职责边界不清：如果在 monitor 内同时做检测、确认、重发、落盘、MQTT 上报，会形成新的强耦合中心节点。</li>
+</ul>
+<p>因此更合理的方向是将监控能力拆成若干独立进程，各模块只发布自身职责范围内的标准化状态或事件，聚合模块只消费低频标准状态，不直接处理所有高频原始数据。</p>
+<h3 id="11-现状能力与不足">1.1 现状能力与不足</h3>
+<p>当前系统已经具备较好的工程基础：</p>
+<ul>
+<li><code>nav2_monitor</code> 已支持 <code>MultiThreadedExecutor</code> 和 callback group，能降低同进程内 callback 阻塞。</li>
+</ul>
+<ul>
+<li>watch topic 已改为轻量统计，避免高频 topic 反序列化带来的额外开销。</li>
+</ul>
+<ul>
+<li>频率计算已使用滚动窗口，避免单次周期抖动导致误报。</li>
+</ul>
+<ul>
+<li><code>vehicle_state_judge</code> 已能对比“期望速度指令”和“实际运动反馈”。</li>
+</ul>
+<ul>
+<li><code>collision_voxel_layer</code> 已支持至少一个数据源可用时继续发布体素，避免单源缺失导致整条体素链路断流。</li>
+</ul>
+<ul>
+<li><code>nav2_monitor</code> 已新增 <code>/nav2_monitor/human_intervention</code>，供外部上报模块订阅。</li>
+</ul>
+<p>但从安全运行角度看，仍有几个结构性问题：</p>
+<ul>
+<li>频率检测、运动状态判断、碰撞判断、状态聚合仍在同一进程或强耦合链路中。</li>
+</ul>
+<ul>
+<li>高频输入的 CPU 压力仍可能影响低频故障事件发布。</li>
+</ul>
+<ul>
+<li>同一节点崩溃后，<code>nodemanager</code> 只能重启整体，无法只恢复某个判断器。</li>
+</ul>
+<ul>
+<li>topic 通信可靠性与业务确认可靠性容易混淆。</li>
+</ul>
+<ul>
+<li>运行配置和模块职责继续扩大后，单一配置文件会越来越难维护。</li>
+</ul>
+<p>本方案的核心就是把这些结构性问题前移解决，而不是等故障发生后再通过日志定位。</p>
+<h2 id="2-设计目标">2. 设计目标</h2>
+<h3 id="21-独立性目标">2.1 独立性目标</h3>
+<p>每个核心判断器独立进程运行：</p>
+<ul>
+<li>高频频率检测模块独立。</li>
+</ul>
+<ul>
+<li>小车状态判断模块独立。</li>
+</ul>
+<ul>
+<li>碰撞/TTC 判断模块独立。</li>
+</ul>
+<ul>
+<li>节点/TF/电池/反馈规则模块可独立。</li>
+</ul>
+<ul>
+<li>聚合与输出模块独立。</li>
+</ul>
+<p>任一模块崩溃或卡死时，其他模块仍能继续发布自己的状态。<code>nodemanager</code> 可以按模块重启，而不是整体重启。</p>
+<h3 id="22-数据联通目标">2.2 数据联通目标</h3>
+<p>模块之间只通过 ROS topic 传递标准化状态和事件：</p>
+<ul>
+<li>不共享内存对象。</li>
+</ul>
+<ul>
+<li>不互相调用内部函数。</li>
+</ul>
+<ul>
+<li>不依赖同一锁。</li>
+</ul>
+<ul>
+<li>不要求同进程生命周期一致。</li>
+</ul>
+<h3 id="23-可靠性目标">2.3 可靠性目标</h3>
+<p>需要区分不同数据类型的可靠性诉求：</p>
+<ul>
+<li>高频原始传感器数据：允许丢旧帧，优先处理最新数据，避免积压过期数据。</li>
+</ul>
+<ul>
+<li>监控状态数据：需要可靠传输最后状态，允许低频更新。</li>
+</ul>
+<ul>
+<li>故障事件、人工介入、节点管理器指令：需要可靠发布给上层，由上层做 ACK、重发、落盘和云端确认。</li>
+</ul>
+<h3 id="24-本系统边界">2.4 本系统边界</h3>
+<p>本系统负责：</p>
+<ul>
+<li>订阅必要数据源。</li>
+</ul>
+<ul>
+<li>判断数据源是否存在、是否新鲜、频率是否正常。</li>
+</ul>
+<ul>
+<li>生成标准化状态、故障事件、人工介入提醒、节点管理器请求。</li>
+</ul>
+<ul>
+<li>通过 ROS topic 发布出去。</li>
+</ul>
+<p>本系统不负责：</p>
+<ul>
+<li>MQTT 上报。</li>
+</ul>
+<ul>
+<li>云端 ACK。</li>
+</ul>
+<ul>
+<li>事件持久化重放。</li>
+</ul>
+<ul>
+<li>跨机器最终确认。</li>
+</ul>
+<ul>
+<li>事件重发闭环。</li>
+</ul>
+<p>这些由上层事件中心、云端桥或 MQTT 模块实现。</p>
+<h2 id="3-理论依据">3. 理论依据</h2>
+<h3 id="31-故障隔离原则">3.1 故障隔离原则</h3>
+<p>多线程只能改善并发，不等于故障隔离。同一进程内的多个线程共享地址空间、堆、全局对象和 executor 生命周期。任一线程触发进程级异常时，整个进程退出。</p>
+<p>多进程隔离的优势：</p>
+<ul>
+<li>崩溃隔离：一个进程崩溃不会直接杀死其他进程。</li>
+</ul>
+<ul>
+<li>重启隔离：<code>nodemanager</code> 可按模块重启。</li>
+</ul>
+<ul>
+<li>资源隔离：可对关键进程设置独立 CPU affinity、nice、实时优先级或 cgroup 限额。</li>
+</ul>
+<ul>
+<li>升级隔离：可逐步替换某个监控模块，不影响其他模块。</li>
+</ul>
+<p>因此，“模块之间互不影响”的核心手段应是多进程，而不是仅靠 callback group。</p>
+<h3 id="32-背压与队列理论">3.2 背压与队列理论</h3>
+<p>当生产速度高于消费速度时，队列会增长。对于机器人实时感知系统，如果高频传感器数据积压，处理过期数据往往比丢帧更危险。</p>
+<p>例如 IMU 和点云：</p>
+<ul>
+<li>处理 1 秒前的 IMU 对当前状态判断意义有限。</li>
+</ul>
+<ul>
+<li>点云过期会造成虚假障碍、体素残影或错误 TTC。</li>
+</ul>
+<ul>
+<li>高频队列过深会进一步放大 CPU 压力。</li>
+</ul>
+<p>所以高频原始数据应采用“小队列 + 保最新”的策略。丢旧帧是可接受的，关键是不要阻塞关键控制与告警链路。</p>
+<h3 id="33-状态与事件分离">3.3 状态与事件分离</h3>
+<p>状态是“当前是什么”，事件是“发生了什么变化”。</p>
+<p>状态 topic 适合：</p>
+<ul>
+<li>周期发布。</li>
+</ul>
+<ul>
+<li>后加入订阅者能拿到最后值。</li>
+</ul>
+<ul>
+<li>使用 <code>transient_local + keep_last 1</code>。</li>
+</ul>
+<p>事件 topic 适合：</p>
+<ul>
+<li>触发/恢复边沿。</li>
+</ul>
+<ul>
+<li>按序列号去重。</li>
+</ul>
+<ul>
+<li>上层做 ACK、落盘和重发。</li>
+</ul>
+<ul>
+<li>使用 <code>reliable + keep_last 50/100</code>。</li>
+</ul>
+<p>将状态和事件分离，可以避免状态频繁刷新淹没关键事件，也能让上层更容易实现确认闭环。</p>
+<h3 id="34-端到端可靠性原则">3.4 端到端可靠性原则</h3>
+<p>本节只用于说明系统边界，不表示 <code>monitor_system</code> 当前要实现端到端确认闭环。当前 monitor 层不实现 ACK、重发、落盘、MQTT 或云端确认。</p>
+<p>DDS reliable 只能保证 ROS 通信层在一定条件下重传，不等于业务层“已处理成功”。</p>
+<p>真正的端到端可靠需要：</p>
+<ul>
+<li>事件唯一 ID。</li>
+</ul>
+<ul>
+<li>接收方 ACK。</li>
+</ul>
+<ul>
+<li>发送方超时重发。</li>
+</ul>
+<ul>
+<li>去重处理。</li>
+</ul>
+<ul>
+<li>本地持久化。</li>
+</ul>
+<ul>
+<li>云端确认。</li>
+</ul>
+<p>这些属于上层事件中心或云端桥职责。monitor 侧如果自己实现 ACK/retry，会和 MQTT、云端上报形成重复逻辑，并增加本地安全链路复杂度。</p>
+<p>因此本方案明确：</p>
+<ul>
+<li>monitor 侧当前只负责发布结构化状态、故障事件、人工介入提醒和节点管理器请求。</li>
+</ul>
+<ul>
+<li>monitor 侧不等待上层 ACK，也不因为云端或 MQTT 异常阻塞本机安全判断。</li>
+</ul>
+<ul>
+<li>事件中建议保留稳定 key、sequence、stamp 等字段，是为了方便上层实现去重和确认，不代表本层负责确认闭环。</li>
+</ul>
+<ul>
+<li>ACK、重发、落盘、云端确认由上层事件中心或云端桥实现。</li>
+</ul>
+<h3 id="35-实时系统中的新鲜度原则">3.5 实时系统中的“新鲜度”原则</h3>
+<p>机器人运行监控里，数据是否“新鲜”往往比数据是否“完整”更重要。原因是监控判断最终作用在当前机器人状态上，如果使用过期数据，可能出现以下风险：</p>
+<ul>
+<li>旧点云继续参与体素融合，形成障碍残影。</li>
+</ul>
+<ul>
+<li>旧速度反馈继续参与小车状态判断，误判底盘仍在运动。</li>
+</ul>
+<ul>
+<li>旧 TTC 障碍结果继续维持 SAFE 或急停，导致恢复迟缓。</li>
+</ul>
+<ul>
+<li>旧控制源状态导致 TTC 使用错误预测速度。</li>
+</ul>
+<p>因此每个输入源都应维护独立的 <code>last_received_time</code> 和 <code>fresh_timeout_s</code>。业务判断只能使用新鲜数据，过期数据必须从当前判断集合中剔除。</p>
+<p>推荐判断逻辑：</p>
+<pre><code class="language-text">
+has_publisher 只代表 ROS graph 上有发布者
+has_recent_data 代表本节点近期确实收到过数据
+is_fresh 代表 last_received_time 未超过业务 timeout
+is_valid 代表数据格式、数值范围、语义校验通过
+</code></pre>
+<p>四者不能混用。例如 topic 有发布者但本节点 QoS 不匹配时，<code>has_publisher=true</code>，但 <code>has_recent_data=false</code>；这时不能认为数据源可用。</p>
+<h3 id="36-频率统计理论">3.6 频率统计理论</h3>
+<p>频率统计不应直接使用“相邻两帧间隔的倒数”作为最终显示值。单帧间隔法响应快，但对调度抖动极其敏感，容易出现频率大幅跳变。</p>
+<p>更稳定的方式是滚动时间窗：</p>
+<pre><code class="language-text">
+frequency_hz = window_message_count / window_duration_s
+</code></pre>
+<p>其中窗口建议取 <code>0.5s-2.0s</code>：</p>
+<ul>
+<li>窗口越短，响应越快，但抖动越大。</li>
+</ul>
+<ul>
+<li>窗口越长，显示越稳，但掉线归零变慢。</li>
+</ul>
+<ul>
+<li>对 <code>/livox/imu</code> 这类约 200Hz 高频 topic，1 秒窗口通常能兼顾稳定和响应。</li>
+</ul>
+<ul>
+<li>对 5Hz 左右的点云 topic，可适当使用 2 秒窗口，避免低频采样天然抖动。</li>
+</ul>
+<p>掉线检测不能只等窗口自然变空，还应根据 <code>min_hz</code> 推导 idle timeout：</p>
+<pre><code class="language-text">
+idle_timeout_s = clamp(3.0 / min_hz, 0.3, 2.0)
+</code></pre>
+<p>含义是：如果一个 topic 已经超过约 3 个理论周期没有新数据，就可以认为它进入 idle/stale。这样对高频 topic 响应快，对低频 topic 不会过早误报。</p>
+<h3 id="37-控制器切换的滞回理论">3.7 控制器切换的滞回理论</h3>
+<p>TTC 触发导航控制器切换时，最大风险不是“切换慢一点”，而是在障碍边界附近反复 FAST/SAFE 跳变。反复跳变会导致：</p>
+<ul>
+<li>Nav2 controller server 频繁切换控制器，内部状态难以稳定。</li>
+</ul>
+<ul>
+<li>局部路径输出抖动。</li>
+</ul>
+<ul>
+<li>安全执行器同时收到减速、恢复、再减速，形成控制震荡。</li>
+</ul>
+<ul>
+<li>用户体感为车在障碍物附近抽动。</li>
+</ul>
+<p>因此控制器切换必须使用滞回状态机，而不是单阈值判断。</p>
+<p>推荐状态机：</p>
+<pre><code class="language-text">
+FAST
+  -&gt; SAFE_PENDING: TTC/zone 连续命中 enter_confirm_time_s
+  -&gt; SAFE: 命中保持成立
+
+SAFE
+  -&gt; FAST_PENDING: 障碍连续消失 exit_confirm_time_s，且已满足 min_safe_hold_time_s
+  -&gt; FAST: 退出保持成立
+</code></pre>
+<p>推荐参数关系：</p>
+<pre><code class="language-text">
+enter_confirm_time_s &lt; exit_confirm_time_s
+min_safe_hold_time_s &gt;= exit_confirm_time_s
+recover_ttc_threshold &gt; enter_ttc_threshold
+</code></pre>
+<p>也就是进入要快，退出要更保守；进入阈值和恢复阈值分离，形成滞回带，避免边界抖动。</p>
+<h3 id="38-缩小急停区的安全依据">3.8 “缩小急停区”的安全依据</h3>
+<p>切换到 SAFE 控制器后，车辆的局部避障能力更强。如果仍沿用 FAST 模式下的宽急停区，SAFE 控制器在绕障过程中可能因为障碍进入宽急停框而被误急停，导致“刚切到避障控制器就被监控系统打断”。</p>
+<p>因此 SAFE 模式下可以缩小缓停/急停触发范围，但必须满足两个原则：</p>
+<ul>
+<li>缩小的是 zone 的触发几何范围，不是取消最终安全保护。</li>
+</ul>
+<ul>
+<li>急停范围应和车体 footprint 绑定，避免纯经验框体漂移。</li>
+</ul>
+<p>推荐几何定义：</p>
+<pre><code class="language-text">
+缓停区：车体 footprint 沿行驶方向外扩 1 个车体长度
+急停区：车体 footprint 沿行驶方向外扩 0.5 个车体长度
+</code></pre>
+<p>这样参数与车辆自身尺寸绑定，比手写固定框更容易迁移到不同车型，也更容易解释安全边界。</p>
+<h2 id="4-总体架构">4. 总体架构</h2>
+<div class="svg-diagram"><div class="svg-diagram-title">可视化流程图</div><div class="svg-diagram-legend"><span><i style="background:#6ba2d7"></i>输入 / 数据源</span><span><i style="background:#d2a235"></i>判断 / 策略</span><span><i style="background:#61a87d"></i>状态 / 输出</span><span><i style="background:#d26a56"></i>故障 / 风险</span><span><i style="background:#8d7ed3"></i>执行 / 安全动作</span></div><svg width="1344pt" height="704pt"
+ viewBox="0.00 0.00 1344.00 704.00" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<g id="graph0" class="graph" transform="scale(1 1) rotate(0) translate(18 686)">
+
+<g id="clust1" class="cluster">
+
+<path fill="#f7fbf9" stroke="#c8ded4" d="M174,-585C174,-585 1221,-585 1221,-585 1227,-585 1233,-591 1233,-597 1233,-597 1233,-648 1233,-648 1233,-654 1227,-660 1221,-660 1221,-660 174,-660 174,-660 168,-660 162,-654 162,-648 162,-648 162,-597 162,-597 162,-591 168,-585 174,-585"/>
+<text text-anchor="middle" x="697.5" y="-644.8" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="14.00" fill="#1f6f50">原始数据源</text>
+</g>
+<g id="clust2" class="cluster">
+
+<path fill="#f7fbf9" stroke="#c8ded4" d="M20,-502C20,-502 1214,-502 1214,-502 1220,-502 1226,-508 1226,-514 1226,-514 1226,-565 1226,-565 1226,-571 1220,-577 1214,-577 1214,-577 20,-577 20,-577 14,-577 8,-571 8,-565 8,-565 8,-514 8,-514 8,-508 14,-502 20,-502"/>
+<text text-anchor="middle" x="617" y="-561.8" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="14.00" fill="#1f6f50">独立监控模块进程</text>
+</g>
+<g id="clust3" class="cluster">
+
+<path fill="#f7fbf9" stroke="#c8ded4" d="M90,-419C90,-419 1150,-419 1150,-419 1156,-419 1162,-425 1162,-431 1162,-431 1162,-482 1162,-482 1162,-488 1156,-494 1150,-494 1150,-494 90,-494 90,-494 84,-494 78,-488 78,-482 78,-482 78,-431 78,-431 78,-425 84,-419 90,-419"/>
+<text text-anchor="middle" x="620" y="-478.8" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="14.00" fill="#1f6f50">标准化状态总线</text>
+</g>
+<g id="clust4" class="cluster">
+
+<path fill="#f7fbf9" stroke="#c8ded4" d="M439,-255C439,-255 633,-255 633,-255 639,-255 645,-261 645,-267 645,-267 645,-399 645,-399 645,-405 639,-411 633,-411 633,-411 439,-411 439,-411 433,-411 427,-405 427,-399 427,-399 427,-267 427,-267 427,-261 433,-255 439,-255"/>
+<text text-anchor="middle" x="536" y="-395.8" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="14.00" fill="#1f6f50">聚合与本机输出</text>
+</g>
+<g id="clust5" class="cluster">
+
+<path fill="#f7fbf9" stroke="#c8ded4" d="M212,-172C212,-172 1288,-172 1288,-172 1294,-172 1300,-178 1300,-184 1300,-184 1300,-235 1300,-235 1300,-241 1294,-247 1288,-247 1288,-247 212,-247 212,-247 206,-247 200,-241 200,-235 200,-235 200,-184 200,-184 200,-178 206,-172 212,-172"/>
+<text text-anchor="middle" x="750" y="-231.8" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="14.00" fill="#1f6f50">本机输出</text>
+</g>
+<g id="clust6" class="cluster">
+
+<path fill="#f7fbf9" stroke="#c8ded4" d="M698,-8C698,-8 858,-8 858,-8 864,-8 870,-14 870,-20 870,-20 870,-152 870,-152 870,-158 864,-164 858,-164 858,-164 698,-164 698,-164 692,-164 686,-158 686,-152 686,-152 686,-20 686,-20 686,-14 692,-8 698,-8"/>
+<text text-anchor="middle" x="778" y="-148.8" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="14.00" fill="#1f6f50">上层确认与云端链路</text>
+</g>
+<!-- IMU&#45;&gt;Freq -->
+<g id="edge1" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M825.12,-611C838.95,-611 851.25,-611 851.25,-611 851.25,-611 851.25,-553.81 851.25,-553.81"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="853.98,-553.81 851.25,-546.01 848.52,-553.81 853.98,-553.81"/>
+</g>
+<!-- IMU&#45;&gt;Vehicle -->
+<g id="edge7" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M774.5,-592.94C774.5,-581.56 774.5,-569 774.5,-569 774.5,-569 611.25,-569 611.25,-569 611.25,-569 611.25,-553.9 611.25,-553.9"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="613.98,-553.9 611.25,-546.1 608.52,-553.9 613.98,-553.9"/>
+</g>
+<!-- Cloud&#45;&gt;Freq -->
+<g id="edge2" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M1060.5,-592.75C1060.5,-569.98 1060.5,-534 1060.5,-534 1060.5,-534 1039.46,-534 1039.46,-534"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="1039.46,-531.27 1031.66,-534 1039.46,-536.73 1039.46,-531.27"/>
+</g>
+<!-- Cloud&#45;&gt;Collision -->
+<g id="edge11" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M1166.67,-592.99C1166.67,-592.99 1166.67,-554.06 1166.67,-554.06"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="1169.4,-554.06 1166.67,-546.26 1163.94,-554.06 1169.4,-554.06"/>
+</g>
+<!-- Scan&#45;&gt;Freq -->
+<g id="edge3" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M998,-592.99C998,-592.99 998,-554.06 998,-554.06"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="1000.73,-554.06 998,-546.26 995.27,-554.06 1000.73,-554.06"/>
+</g>
+<!-- Scan&#45;&gt;Collision -->
+<g id="edge12" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M1025.17,-611C1035.24,-611 1044.25,-611 1044.25,-611 1044.25,-611 1044.25,-522 1044.25,-522 1044.25,-522 1056.03,-522 1056.03,-522"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="1056.03,-524.73 1063.83,-522 1056.03,-519.27 1056.03,-524.73"/>
+</g>
+<!-- Cmd&#45;&gt;Freq -->
+<g id="edge4" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M898,-592.99C898,-592.99 898,-554.06 898,-554.06"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="900.73,-554.06 898,-546.26 895.27,-554.06 900.73,-554.06"/>
+</g>
+<!-- Cmd&#45;&gt;Vehicle -->
+<g id="edge8" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M877.75,-592.95C877.75,-578.63 877.75,-561 877.75,-561 877.75,-561 615.38,-561 615.38,-561 615.38,-561 615.38,-553.84 615.38,-553.84"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="618.11,-553.84 615.38,-546.04 612.65,-553.84 618.11,-553.84"/>
+</g>
+<!-- Cmd&#45;&gt;Collision -->
+<g id="edge13" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M918.25,-592.97C918.25,-575.94 918.25,-553 918.25,-553 918.25,-553 1115.33,-553 1115.33,-553 1115.33,-553 1115.33,-552.32 1115.33,-552.32"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="1118.06,-553.97 1115.33,-546.17 1112.6,-553.97 1118.06,-553.97"/>
+</g>
+<!-- Moto&#45;&gt;Freq -->
+<g id="edge6" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M684.5,-592.94C684.5,-588.51 684.5,-585 684.5,-585 684.5,-585 845,-585 845,-585 845,-585 845,-553.84 845,-553.84"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="847.73,-553.84 845,-546.04 842.27,-553.84 847.73,-553.84"/>
+</g>
+<!-- Moto&#45;&gt;Vehicle -->
+<g id="edge9" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M634.74,-611C620.07,-611 607.12,-611 607.12,-611 607.12,-611 607.12,-553.81 607.12,-553.81"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="609.86,-553.81 607.12,-546.01 604.4,-553.81 609.86,-553.81"/>
+</g>
+<!-- Odom&#45;&gt;Freq -->
+<g id="edge5" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M552.83,-592.81C552.83,-584.72 552.83,-577 552.83,-577 552.83,-577 838.75,-577 838.75,-577 838.75,-577 838.75,-554.05 838.75,-554.05"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="841.48,-554.05 838.75,-546.25 836.02,-554.05 841.48,-554.05"/>
+</g>
+<!-- Odom&#45;&gt;Vehicle -->
+<g id="edge10" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M502.67,-592.99C502.67,-592.99 502.67,-554.06 502.67,-554.06"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="505.4,-554.06 502.67,-546.26 499.94,-554.06 505.4,-554.06"/>
+</g>
+<!-- Algo&#45;&gt;Feedback -->
+<g id="edge14" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M345,-592.99C345,-592.99 345,-554.06 345,-554.06"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="347.73,-554.06 345,-546.26 342.27,-554.06 347.73,-554.06"/>
+</g>
+<!-- TF&#45;&gt;NodeTF -->
+<g id="edge15" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M185,-592.99C185,-568.58 185,-528 185,-528 185,-528 175.31,-528 175.31,-528"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="175.31,-525.27 167.51,-528 175.31,-530.73 175.31,-525.27"/>
+</g>
+<!-- Freq&#45;&gt;TopicStates -->
+<g id="edge16" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M899.25,-509.99C899.25,-509.99 899.25,-471.06 899.25,-471.06"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="901.98,-471.06 899.25,-463.26 896.52,-471.06 901.98,-471.06"/>
+</g>
+<!-- Vehicle&#45;&gt;VehicleState -->
+<g id="edge17" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M536,-509.99C536,-509.99 536,-471.06 536,-471.06"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="538.73,-471.06 536,-463.26 533.27,-471.06 538.73,-471.06"/>
+</g>
+<!-- Collision&#45;&gt;CollisionState -->
+<g id="edge18" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M1108.75,-509.99C1108.75,-509.99 1108.75,-471.06 1108.75,-471.06"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="1111.48,-471.06 1108.75,-463.26 1106.02,-471.06 1111.48,-471.06"/>
+</g>
+<!-- Collision&#45;&gt;NavMode -->
+<g id="edge34" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M1194,-509.79C1194,-509.79 1194,-223.96 1194,-223.96"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="1196.73,-223.96 1194,-216.16 1191.27,-223.96 1196.73,-223.96"/>
+</g>
+<!-- Feedback&#45;&gt;FeedbackState -->
+<g id="edge19" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M345.25,-509.99C345.25,-509.99 345.25,-471.06 345.25,-471.06"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="347.98,-471.06 345.25,-463.26 342.52,-471.06 347.98,-471.06"/>
+</g>
+<!-- NodeTF&#45;&gt;NodeState -->
+<g id="edge20" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M126.75,-509.99C126.75,-509.99 126.75,-471.06 126.75,-471.06"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="129.48,-471.06 126.75,-463.26 124.02,-471.06 129.48,-471.06"/>
+</g>
+<!-- Battery&#45;&gt;BatteryState -->
+<g id="edge21" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M721.75,-509.99C721.75,-509.99 721.75,-471.06 721.75,-471.06"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="724.48,-471.06 721.75,-463.26 719.02,-471.06 724.48,-471.06"/>
+</g>
+<!-- TopicStates&#45;&gt;Agg -->
+<g id="edge22" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M878.75,-426.96C878.75,-405.34 878.75,-372 878.75,-372 878.75,-372 645.25,-372 645.25,-372"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="645.25,-369.27 637.45,-372 645.25,-374.73 645.25,-369.27"/>
+</g>
+<!-- VehicleState&#45;&gt;Agg -->
+<g id="edge23" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M536,-426.99C536,-426.99 536,-388.06 536,-388.06"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="538.73,-388.06 536,-380.26 533.27,-388.06 538.73,-388.06"/>
+</g>
+<!-- CollisionState&#45;&gt;Agg -->
+<g id="edge24" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M1068.25,-426.85C1068.25,-403.24 1068.25,-365 1068.25,-365 1068.25,-365 644.85,-365 644.85,-365"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="644.85,-362.27 637.05,-365 644.85,-367.73 644.85,-362.27"/>
+</g>
+<!-- FeedbackState&#45;&gt;Agg -->
+<g id="edge25" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M430.32,-445C438.43,-445 443.75,-445 443.75,-445 443.75,-445 443.75,-387.81 443.75,-387.81"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="446.48,-387.81 443.75,-380.01 441.02,-387.81 446.48,-387.81"/>
+</g>
+<!-- NodeState&#45;&gt;Agg -->
+<g id="edge26" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M223.25,-426.99C223.25,-402.58 223.25,-362 223.25,-362 223.25,-362 427.09,-362 427.09,-362"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="427.09,-364.73 434.89,-362 427.09,-359.27 427.09,-364.73"/>
+</g>
+<!-- BatteryState&#45;&gt;Agg -->
+<g id="edge27" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M642.47,-445C633.4,-445 627.25,-445 627.25,-445 627.25,-445 627.25,-387.81 627.25,-387.81"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="629.98,-387.81 627.25,-380.01 624.52,-387.81 629.98,-387.81"/>
+</g>
+<!-- Agg&#45;&gt;Coordinator -->
+<g id="edge28" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M512,-343.62C512,-343.62 512,-306.83 512,-306.83"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="514.73,-306.83 512,-299.03 509.27,-306.83 514.73,-306.83"/>
+</g>
+<!-- Agg&#45;&gt;Status -->
+<g id="edge29" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M637.36,-351C710.44,-351 796.25,-351 796.25,-351 796.25,-351 796.25,-223.95 796.25,-223.95"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="798.98,-223.95 796.25,-216.15 793.52,-223.95 798.98,-223.95"/>
+</g>
+<!-- Agg&#45;&gt;FaultEvent -->
+<g id="edge30" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M637.26,-358C768.92,-358 982.25,-358 982.25,-358 982.25,-358 982.25,-223.84 982.25,-223.84"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="984.98,-223.84 982.25,-216.04 979.52,-223.84 984.98,-223.84"/>
+</g>
+<!-- Agg&#45;&gt;Human -->
+<g id="edge31" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M592.25,-343.82C592.25,-343.82 592.25,-224.06 592.25,-224.06"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="594.98,-224.06 592.25,-216.26 589.52,-224.06 594.98,-224.06"/>
+</g>
+<!-- Agg&#45;&gt;NodeManager -->
+<g id="edge32" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M632.5,-343.82C632.5,-343.82 632.5,-224.06 632.5,-224.06"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="635.23,-224.06 632.5,-216.26 629.77,-224.06 635.23,-224.06"/>
+</g>
+<!-- Coordinator&#45;&gt;Safety -->
+<g id="edge33" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M435.42,-281C376.38,-281 304.75,-281 304.75,-281 304.75,-281 304.75,-223.81 304.75,-223.81"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="307.48,-223.81 304.75,-216.01 302.02,-223.81 307.48,-223.81"/>
+</g>
+<!-- Status&#45;&gt;EventCenter -->
+<g id="edge38" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M821.75,-179.99C821.75,-179.99 821.75,-141.06 821.75,-141.06"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="824.48,-141.06 821.75,-133.26 819.02,-141.06 824.48,-141.06"/>
+</g>
+<!-- FaultEvent&#45;&gt;EventCenter -->
+<g id="edge35" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M1052,-179.99C1052,-155.58 1052,-115 1052,-115 1052,-115 858.87,-115 858.87,-115"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="858.87,-112.27 851.07,-115 858.87,-117.73 858.87,-112.27"/>
+</g>
+<!-- Human&#45;&gt;EventCenter -->
+<g id="edge36" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M484,-179.99C484,-155.58 484,-115 484,-115 484,-115 697.15,-115 697.15,-115"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="697.15,-117.73 704.95,-115 697.15,-112.27 697.15,-117.73"/>
+</g>
+<!-- NodeManager&#45;&gt;EventCenter -->
+<g id="edge37" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M732.5,-179.99C732.5,-179.99 732.5,-141.06 732.5,-141.06"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="735.23,-141.06 732.5,-133.26 729.77,-141.06 735.23,-141.06"/>
+</g>
+<!-- EventCenter&#45;&gt;Ack -->
+<g id="edge39" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M778,-96.62C778,-96.62 778,-59.83 778,-59.83"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="780.73,-59.83 778,-52.03 775.27,-59.83 780.73,-59.83"/>
+</g>
+<!-- IMU -->
+<g id="node1" class="node">
+
+<path fill="#ffffff" stroke="#86b6a3" stroke-width="1.45" d="M813,-629C813,-629 761,-629 761,-629 755,-629 749,-623 749,-617 749,-617 749,-605 749,-605 749,-599 755,-593 761,-593 761,-593 813,-593 813,-593 819,-593 825,-599 825,-605 825,-605 825,-617 825,-617 825,-623 819,-629 813,-629"/>
+<text text-anchor="middle" x="787" y="-607.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f2a2c">/livox/imu</text>
+</g>
+<!-- Cloud -->
+<g id="node2" class="node">
+
+<path fill="#ffffff" stroke="#86b6a3" stroke-width="1.45" d="M1213,-629C1213,-629 1069,-629 1069,-629 1063,-629 1057,-623 1057,-617 1057,-617 1057,-605 1057,-605 1057,-599 1063,-593 1069,-593 1069,-593 1213,-593 1213,-593 1219,-593 1225,-599 1225,-605 1225,-605 1225,-617 1225,-617 1225,-623 1219,-629 1213,-629"/>
+<text text-anchor="middle" x="1141" y="-607.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f2a2c">/livox/points / depth cloud</text>
+</g>
+<!-- Scan -->
+<g id="node3" class="node">
+
+<path fill="#edf6ff" stroke="#6ba2d7" stroke-width="1.45" d="M1013,-629C1013,-629 983,-629 983,-629 977,-629 971,-623 971,-617 971,-617 971,-605 971,-605 971,-599 977,-593 983,-593 983,-593 1013,-593 1013,-593 1019,-593 1025,-599 1025,-605 1025,-605 1025,-617 1025,-617 1025,-623 1019,-629 1013,-629"/>
+<text text-anchor="middle" x="998" y="-607.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#265b89">/scan</text>
+</g>
+<!-- Cmd -->
+<g id="node4" class="node">
+
+<path fill="#f1efff" stroke="#8d7ed3" stroke-width="1.45" d="M926.5,-629C926.5,-629 869.5,-629 869.5,-629 863.5,-629 857.5,-623 857.5,-617 857.5,-617 857.5,-605 857.5,-605 857.5,-599 863.5,-593 869.5,-593 869.5,-593 926.5,-593 926.5,-593 932.5,-593 938.5,-599 938.5,-605 938.5,-605 938.5,-617 938.5,-617 938.5,-623 932.5,-629 926.5,-629"/>
+<text text-anchor="middle" x="898" y="-607.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#463a88">/command</text>
+</g>
+<!-- Moto -->
+<g id="node5" class="node">
+
+<path fill="#ffffff" stroke="#86b6a3" stroke-width="1.45" d="M705,-629C705,-629 647,-629 647,-629 641,-629 635,-623 635,-617 635,-617 635,-605 635,-605 635,-599 641,-593 647,-593 647,-593 705,-593 705,-593 711,-593 717,-599 717,-605 717,-605 717,-617 717,-617 717,-623 711,-629 705,-629"/>
+<text text-anchor="middle" x="676" y="-607.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f2a2c">/moto_info</text>
+</g>
+<!-- Odom -->
+<g id="node6" class="node">
+
+<path fill="#edf6ff" stroke="#6ba2d7" stroke-width="1.45" d="M591,-629C591,-629 441,-629 441,-629 435,-629 429,-623 429,-617 429,-617 429,-605 429,-605 429,-599 435,-593 441,-593 441,-593 591,-593 591,-593 597,-593 603,-599 603,-605 603,-605 603,-617 603,-617 603,-623 597,-629 591,-629"/>
+<text text-anchor="middle" x="516" y="-607.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#265b89">/odom / /odometry/filtered</text>
+</g>
+<!-- Algo -->
+<g id="node7" class="node">
+
+<path fill="#edf6ff" stroke="#6ba2d7" stroke-width="1.45" d="M384.5,-629C384.5,-629 305.5,-629 305.5,-629 299.5,-629 293.5,-623 293.5,-617 293.5,-617 293.5,-605 293.5,-605 293.5,-599 299.5,-593 305.5,-593 305.5,-593 384.5,-593 384.5,-593 390.5,-593 396.5,-599 396.5,-605 396.5,-605 396.5,-617 396.5,-617 396.5,-623 390.5,-629 384.5,-629"/>
+<text text-anchor="middle" x="345" y="-607.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#265b89">算法/业务 topic</text>
+</g>
+<!-- TF -->
+<g id="node8" class="node">
+
+<path fill="#edf6ff" stroke="#6ba2d7" stroke-width="1.45" d="M249.5,-629C249.5,-629 182.5,-629 182.5,-629 176.5,-629 170.5,-623 170.5,-617 170.5,-617 170.5,-605 170.5,-605 170.5,-599 176.5,-593 182.5,-593 182.5,-593 249.5,-593 249.5,-593 255.5,-593 261.5,-599 261.5,-605 261.5,-605 261.5,-617 261.5,-617 261.5,-623 255.5,-629 249.5,-629"/>
+<text text-anchor="middle" x="216" y="-607.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#265b89">/tf / /tf_static</text>
+</g>
+<!-- Freq -->
+<g id="node9" class="node">
+
+<path fill="#edf6ff" stroke="#6ba2d7" stroke-width="1.45" d="M1019.5,-546C1019.5,-546 844.5,-546 844.5,-546 838.5,-546 832.5,-540 832.5,-534 832.5,-534 832.5,-522 832.5,-522 832.5,-516 838.5,-510 844.5,-510 844.5,-510 1019.5,-510 1019.5,-510 1025.5,-510 1031.5,-516 1031.5,-522 1031.5,-522 1031.5,-534 1031.5,-534 1031.5,-540 1025.5,-546 1019.5,-546"/>
+<text text-anchor="middle" x="932" y="-524.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#265b89">topic_frequency_monitor_node</text>
+</g>
+<!-- Vehicle -->
+<g id="node10" class="node">
+
+<path fill="#fff6db" stroke="#d2a235" stroke-width="1.45" d="M607.5,-546C607.5,-546 464.5,-546 464.5,-546 458.5,-546 452.5,-540 452.5,-534 452.5,-534 452.5,-522 452.5,-522 452.5,-516 458.5,-510 464.5,-510 464.5,-510 607.5,-510 607.5,-510 613.5,-510 619.5,-516 619.5,-522 619.5,-522 619.5,-534 619.5,-534 619.5,-540 613.5,-546 607.5,-546"/>
+<text text-anchor="middle" x="536" y="-524.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#6c4d00">vehicle_state_judge_node</text>
+</g>
+<!-- Collision -->
+<g id="node11" class="node">
+
+<path fill="#fff1ec" stroke="#d26a56" stroke-width="1.45" d="M1206,-546C1206,-546 1076,-546 1076,-546 1070,-546 1064,-540 1064,-534 1064,-534 1064,-522 1064,-522 1064,-516 1070,-510 1076,-510 1076,-510 1206,-510 1206,-510 1212,-510 1218,-516 1218,-522 1218,-522 1218,-534 1218,-534 1218,-540 1212,-546 1206,-546"/>
+<text text-anchor="middle" x="1141" y="-524.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#7c2f25">collision_monitor_node</text>
+</g>
+<!-- Feedback -->
+<g id="node12" class="node">
+
+<path fill="#eaf7ef" stroke="#61a87d" stroke-width="1.45" d="M408.5,-546C408.5,-546 211.5,-546 211.5,-546 205.5,-546 199.5,-540 199.5,-534 199.5,-534 199.5,-522 199.5,-522 199.5,-516 205.5,-510 211.5,-510 211.5,-510 408.5,-510 408.5,-510 414.5,-510 420.5,-516 420.5,-522 420.5,-522 420.5,-534 420.5,-534 420.5,-540 414.5,-546 408.5,-546"/>
+<text text-anchor="middle" x="310" y="-524.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">algorithm_feedback_monitor_node</text>
+</g>
+<!-- NodeTF -->
+<g id="node13" class="node">
+
+<path fill="#edf6ff" stroke="#6ba2d7" stroke-width="1.45" d="M155.5,-546C155.5,-546 28.5,-546 28.5,-546 22.5,-546 16.5,-540 16.5,-534 16.5,-534 16.5,-522 16.5,-522 16.5,-516 22.5,-510 28.5,-510 28.5,-510 155.5,-510 155.5,-510 161.5,-510 167.5,-516 167.5,-522 167.5,-522 167.5,-534 167.5,-534 167.5,-540 161.5,-546 155.5,-546"/>
+<text text-anchor="middle" x="92" y="-524.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#265b89">node_tf_monitor_node</text>
+</g>
+<!-- Battery -->
+<g id="node14" class="node">
+
+<path fill="#eaf7ef" stroke="#61a87d" stroke-width="1.45" d="M788,-546C788,-546 664,-546 664,-546 658,-546 652,-540 652,-534 652,-534 652,-522 652,-522 652,-516 658,-510 664,-510 664,-510 788,-510 788,-510 794,-510 800,-516 800,-522 800,-522 800,-534 800,-534 800,-540 794,-546 788,-546"/>
+<text text-anchor="middle" x="726" y="-524.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">battery_monitor_node</text>
+</g>
+<!-- TopicStates -->
+<g id="node15" class="node">
+
+<path fill="#edf6ff" stroke="#6ba2d7" stroke-width="1.45" d="M954,-463C954,-463 836,-463 836,-463 830,-463 824,-457 824,-451 824,-451 824,-439 824,-439 824,-433 830,-427 836,-427 836,-427 954,-427 954,-427 960,-427 966,-433 966,-439 966,-439 966,-451 966,-451 966,-457 960,-463 954,-463"/>
+<text text-anchor="middle" x="895" y="-441.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#265b89">/monitor/topic_states</text>
+</g>
+<!-- VehicleState -->
+<g id="node16" class="node">
+
+<path fill="#eaf7ef" stroke="#61a87d" stroke-width="1.45" d="M598,-463C598,-463 474,-463 474,-463 468,-463 462,-457 462,-451 462,-451 462,-439 462,-439 462,-433 468,-427 474,-427 474,-427 598,-427 598,-427 604,-427 610,-433 610,-439 610,-439 610,-451 610,-451 610,-457 604,-463 598,-463"/>
+<text text-anchor="middle" x="536" y="-441.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">/monitor/vehicle_state</text>
+</g>
+<!-- CollisionState -->
+<g id="node17" class="node">
+
+<path fill="#fff1ec" stroke="#d26a56" stroke-width="1.45" d="M1141.5,-463C1141.5,-463 1010.5,-463 1010.5,-463 1004.5,-463 998.5,-457 998.5,-451 998.5,-451 998.5,-439 998.5,-439 998.5,-433 1004.5,-427 1010.5,-427 1010.5,-427 1141.5,-427 1141.5,-427 1147.5,-427 1153.5,-433 1153.5,-439 1153.5,-439 1153.5,-451 1153.5,-451 1153.5,-457 1147.5,-463 1141.5,-463"/>
+<text text-anchor="middle" x="1076" y="-441.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#7c2f25">/monitor/collision_state</text>
+</g>
+<!-- FeedbackState -->
+<g id="node18" class="node">
+
+<path fill="#eaf7ef" stroke="#61a87d" stroke-width="1.45" d="M418,-463C418,-463 282,-463 282,-463 276,-463 270,-457 270,-451 270,-451 270,-439 270,-439 270,-433 276,-427 282,-427 282,-427 418,-427 418,-427 424,-427 430,-433 430,-439 430,-439 430,-451 430,-451 430,-457 424,-463 418,-463"/>
+<text text-anchor="middle" x="350" y="-441.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">/monitor/feedback_state</text>
+</g>
+<!-- NodeState -->
+<g id="node19" class="node">
+
+<path fill="#edf6ff" stroke="#6ba2d7" stroke-width="1.45" d="M226,-463C226,-463 98,-463 98,-463 92,-463 86,-457 86,-451 86,-451 86,-439 86,-439 86,-433 92,-427 98,-427 98,-427 226,-427 226,-427 232,-427 238,-433 238,-439 238,-439 238,-451 238,-451 238,-457 232,-463 226,-463"/>
+<text text-anchor="middle" x="162" y="-441.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#265b89">/monitor/node_tf_state</text>
+</g>
+<!-- BatteryState -->
+<g id="node20" class="node">
+
+<path fill="#eaf7ef" stroke="#61a87d" stroke-width="1.45" d="M779.5,-463C779.5,-463 654.5,-463 654.5,-463 648.5,-463 642.5,-457 642.5,-451 642.5,-451 642.5,-439 642.5,-439 642.5,-433 648.5,-427 654.5,-427 654.5,-427 779.5,-427 779.5,-427 785.5,-427 791.5,-433 791.5,-439 791.5,-439 791.5,-451 791.5,-451 791.5,-457 785.5,-463 779.5,-463"/>
+<text text-anchor="middle" x="717" y="-441.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">/monitor/battery_state</text>
+</g>
+<!-- Agg -->
+<g id="node21" class="node">
+
+<path fill="#eaf7ef" stroke="#61a87d" stroke-width="1.45" d="M625,-380C625,-380 447,-380 447,-380 441,-380 435,-374 435,-368 435,-368 435,-356 435,-356 435,-350 441,-344 447,-344 447,-344 625,-344 625,-344 631,-344 637,-350 637,-356 637,-356 637,-368 637,-368 637,-374 631,-380 625,-380"/>
+<text text-anchor="middle" x="536" y="-358.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">nav2_monitor_aggregator_node</text>
+</g>
+<!-- Coordinator -->
+<g id="node22" class="node">
+
+<path fill="#fff1ec" stroke="#d26a56" stroke-width="1.45" d="M576.5,-299C576.5,-299 447.5,-299 447.5,-299 441.5,-299 435.5,-293 435.5,-287 435.5,-287 435.5,-275 435.5,-275 435.5,-269 441.5,-263 447.5,-263 447.5,-263 576.5,-263 576.5,-263 582.5,-263 588.5,-269 588.5,-275 588.5,-275 588.5,-287 588.5,-287 588.5,-293 582.5,-299 576.5,-299"/>
+<text text-anchor="middle" x="512" y="-277.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#7c2f25">fault_state_coordinator</text>
+</g>
+<!-- Status -->
+<g id="node23" class="node">
+
+<path fill="#eaf7ef" stroke="#61a87d" stroke-width="1.45" d="M921.5,-216C921.5,-216 804.5,-216 804.5,-216 798.5,-216 792.5,-210 792.5,-204 792.5,-204 792.5,-192 792.5,-192 792.5,-186 798.5,-180 804.5,-180 804.5,-180 921.5,-180 921.5,-180 927.5,-180 933.5,-186 933.5,-192 933.5,-192 933.5,-204 933.5,-204 933.5,-210 927.5,-216 921.5,-216"/>
+<text text-anchor="middle" x="863" y="-194.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">/nav2_monitor/status</text>
+</g>
+<!-- FaultEvent -->
+<g id="node24" class="node">
+
+<path fill="#fff1ec" stroke="#d26a56" stroke-width="1.45" d="M1126,-216C1126,-216 978,-216 978,-216 972,-216 966,-210 966,-204 966,-204 966,-192 966,-192 966,-186 972,-180 978,-180 978,-180 1126,-180 1126,-180 1132,-180 1138,-186 1138,-192 1138,-192 1138,-204 1138,-204 1138,-210 1132,-216 1126,-216"/>
+<text text-anchor="middle" x="1052" y="-194.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#7c2f25">/nav2_monitor/fault_event</text>
+</g>
+<!-- Human -->
+<g id="node25" class="node">
+
+<path fill="#eaf7ef" stroke="#61a87d" stroke-width="1.45" d="M584,-216C584,-216 384,-216 384,-216 378,-216 372,-210 372,-204 372,-204 372,-192 372,-192 372,-186 378,-180 384,-180 384,-180 584,-180 584,-180 590,-180 596,-186 596,-192 596,-192 596,-204 596,-204 596,-210 590,-216 584,-216"/>
+<text text-anchor="middle" x="484" y="-194.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">/nav2_monitor/human_intervention</text>
+</g>
+<!-- NodeManager -->
+<g id="node26" class="node">
+
+<path fill="#f1efff" stroke="#8d7ed3" stroke-width="1.45" d="M748,-216C748,-216 640,-216 640,-216 634,-216 628,-210 628,-204 628,-204 628,-192 628,-192 628,-186 634,-180 640,-180 640,-180 748,-180 748,-180 754,-180 760,-186 760,-192 760,-192 760,-204 760,-204 760,-210 754,-216 748,-216"/>
+<text text-anchor="middle" x="694" y="-194.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#463a88">/nodemanager/cmd</text>
+</g>
+<!-- Safety -->
+<g id="node27" class="node">
+
+<path fill="#f1efff" stroke="#8d7ed3" stroke-width="1.45" d="M327.5,-216C327.5,-216 220.5,-216 220.5,-216 214.5,-216 208.5,-210 208.5,-204 208.5,-204 208.5,-192 208.5,-192 208.5,-186 214.5,-180 220.5,-180 220.5,-180 327.5,-180 327.5,-180 333.5,-180 339.5,-186 339.5,-192 339.5,-192 339.5,-204 339.5,-204 339.5,-210 333.5,-216 327.5,-216"/>
+<text text-anchor="middle" x="274" y="-194.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#463a88">/safety_system/cmd</text>
+</g>
+<!-- NavMode -->
+<g id="node28" class="node">
+
+<path fill="#ffffff" stroke="#86b6a3" stroke-width="1.45" d="M1280,-216C1280,-216 1182,-216 1182,-216 1176,-216 1170,-210 1170,-204 1170,-204 1170,-192 1170,-192 1170,-186 1176,-180 1182,-180 1182,-180 1280,-180 1280,-180 1286,-180 1292,-186 1292,-192 1292,-192 1292,-204 1292,-204 1292,-210 1286,-216 1280,-216"/>
+<text text-anchor="middle" x="1231" y="-194.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f2a2c">/navigation_mode</text>
+</g>
+<!-- EventCenter -->
+<g id="node29" class="node">
+
+<path fill="#eaf7ef" stroke="#61a87d" stroke-width="1.45" d="M839,-133C839,-133 717,-133 717,-133 711,-133 705,-127 705,-121 705,-121 705,-109 705,-109 705,-103 711,-97 717,-97 717,-97 839,-97 839,-97 845,-97 851,-103 851,-109 851,-109 851,-121 851,-121 851,-127 845,-133 839,-133"/>
+<text text-anchor="middle" x="778" y="-111.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">上层事件中心 / MQTT桥</text>
+</g>
+<!-- Ack -->
+<g id="node30" class="node">
+
+<path fill="#fff6db" stroke="#d2a235" stroke-width="1.45" d="M850.5,-52C850.5,-52 705.5,-52 705.5,-52 699.5,-52 693.5,-46 693.5,-40 693.5,-40 693.5,-28 693.5,-28 693.5,-22 699.5,-16 705.5,-16 705.5,-16 850.5,-16 850.5,-16 856.5,-16 862.5,-22 862.5,-28 862.5,-28 862.5,-40 862.5,-40 862.5,-46 856.5,-52 850.5,-52"/>
+<text text-anchor="middle" x="778" y="-30.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#6c4d00">ACK / 重发 / 落盘 / 云端确认</text>
+</g>
+</g>
+</svg>
+</div>
+<h2 id="5-模块职责设计">5. 模块职责设计</h2>
+<h3 id="51-topicfrequencymonitornode">5.1 <code>topic_frequency_monitor_node</code></h3>
+<p>职责：</p>
+<ul>
+<li>订阅配置中的 <code>watch_topics</code>。</li>
+</ul>
+<ul>
+<li>使用轻量 generic subscription 统计接收频率。</li>
+</ul>
+<ul>
+<li>不反序列化高频大消息，除非该 topic 的业务确实需要解析。</li>
+</ul>
+<ul>
+<li>输出每个 topic 的发布者状态、接收频率、最后接收时间、是否有效。</li>
+</ul>
+<ul>
+<li>当前落地版本输出 <code>std_msgs/String</code> JSON，后续可平滑升级为专用 <code>MonitorTopicStates</code> 消息。</li>
+</ul>
+<p>输入：</p>
+<ul>
+<li><code>/livox/imu</code></li>
+</ul>
+<ul>
+<li><code>/livox/points</code></li>
+</ul>
+<ul>
+<li><code>/scan</code></li>
+</ul>
+<ul>
+<li><code>/moto_info</code></li>
+</ul>
+<ul>
+<li><code>/odom_base</code></li>
+</ul>
+<ul>
+<li><code>/camera/*</code></li>
+</ul>
+<ul>
+<li>其他配置中的 watch topic</li>
+</ul>
+<p>输出：</p>
+<ul>
+<li><code>/monitor/topic_states</code></li>
+</ul>
+<p>当前 JSON 字段：</p>
+<ul>
+<li><code>stamp</code>：状态发布时间，单位秒。</li>
+</ul>
+<ul>
+<li><code>source_module</code>：固定为 <code>topic_frequency_monitor</code>。</li>
+</ul>
+<ul>
+<li><code>items[].topic</code>、<code>items[].type</code>：被监测 topic 和类型。</li>
+</ul>
+<ul>
+<li><code>items[].has_publisher</code>、<code>items[].has_data</code>、<code>items[].stale</code>、<code>items[].low_frequency</code>：发布者、数据有效性、新鲜度和低频状态。</li>
+</ul>
+<ul>
+<li><code>items[].frequency_hz</code>、<code>items[].min_hz</code>、<code>items[].age_s</code>、<code>items[].idle_timeout_s</code>：频率与超时量化字段。</li>
+</ul>
+<p>设计要点：</p>
+<ul>
+<li>高频回调只做计数和最后接收时间更新。</li>
+</ul>
+<ul>
+<li>频率计算使用滚动窗口，例如 1 秒窗口。</li>
+</ul>
+<ul>
+<li>数据中断时按 <code>min_hz</code> 推导 idle timeout，例如 <code>clamp(3 / min_hz, 0.3, 2.0)</code>。</li>
+</ul>
+<ul>
+<li>使用小队列，避免 CPU 满载时积压旧消息。</li>
+</ul>
+<ul>
+<li>该模块异常只影响频率判断，不影响小车状态判断和碰撞判断。</li>
+</ul>
+<h3 id="52-vehiclestatejudgenode">5.2 <code>vehicle_state_judge_node</code></h3>
+<p>职责：</p>
+<ul>
+<li>判断小车运营阶段运动状态是否符合预期。</li>
+</ul>
+<ul>
+<li>输出人工介入所需状态。</li>
+</ul>
+<ul>
+<li>不负责 MQTT 或云端上报。</li>
+</ul>
+<p>输入：</p>
+<ul>
+<li><code>/command</code></li>
+</ul>
+<ul>
+<li><code>/livox/imu</code></li>
+</ul>
+<ul>
+<li><code>/odom</code> 或 <code>/odometry/filtered</code></li>
+</ul>
+<ul>
+<li><code>/moto_info</code></li>
+</ul>
+<p>输出：</p>
+<ul>
+<li><code>/monitor/vehicle_state</code></li>
+</ul>
+<ul>
+<li><code>/nav2_monitor/human_intervention</code></li>
+</ul>
+<ul>
+<li>必要时输出 <code>/nav2_monitor/fault_event</code></li>
+</ul>
+<p>判断场景：</p>
+<ul>
+<li>有速度指令但小车不动：可能急停、底盘异常、控制链路异常。</li>
+</ul>
+<ul>
+<li>无速度指令但小车移动：需要考虑刹车惯性，超过 <code>coast_grace_s</code> 后才报异常。</li>
+</ul>
+<ul>
+<li>数据源缺失：先报 source fault，不做误判。</li>
+</ul>
+<ul>
+<li>长时间运营阶段停留原地：按低优先级提示或人工介入策略处理。</li>
+</ul>
+<p>设计要点：</p>
+<ul>
+<li>IMU 可高频订阅，但状态估算限频，例如 50Hz。</li>
+</ul>
+<ul>
+<li>优先使用多个运动源交叉确认，避免单一传感器误判。</li>
+</ul>
+<ul>
+<li>与频率模块独立订阅 IMU，互不共享锁。</li>
+</ul>
+<h3 id="53-collisionmonitornode">5.3 <code>collision_monitor_node</code></h3>
+<p>职责：</p>
+<ul>
+<li>聚合碰撞输入。</li>
+</ul>
+<ul>
+<li>执行 zone、TTC、方向判定。</li>
+</ul>
+<ul>
+<li>输出碰撞状态和导航控制器切换请求。</li>
+</ul>
+<p>输入：</p>
+<ul>
+<li><code>/collision_voxel_layer/voxels</code></li>
+</ul>
+<ul>
+<li><code>/scan</code></li>
+</ul>
+<ul>
+<li><code>/livox/points</code></li>
+</ul>
+<ul>
+<li><code>/ultrasonic_eight_distance</code></li>
+</ul>
+<ul>
+<li><code>/cmd_vel*</code></li>
+</ul>
+<ul>
+<li><code>/control_source_state</code></li>
+</ul>
+<p>输出：</p>
+<ul>
+<li><code>/monitor/collision_state</code></li>
+</ul>
+<ul>
+<li><code>/navigation_mode</code></li>
+</ul>
+<ul>
+<li><code>/nav2_monitor/collision_ttc_markers</code></li>
+</ul>
+<ul>
+<li>必要时输出 <code>/nav2_monitor/fault_event</code></li>
+</ul>
+<p>设计要点：</p>
+<ul>
+<li>数据源缺失不能阻塞其他有效数据源继续参与判断。</li>
+</ul>
+<ul>
+<li>fresh empty source 表示当前无障碍，不等于数据源故障。</li>
+</ul>
+<ul>
+<li>TTC 进入/退出必须有滞回、最小保持时间和方向稳定机制。</li>
+</ul>
+<ul>
+<li>切换到 SAFE 控制器后，可按车体框缩小缓停/急停触发范围，避免避障时误触发急停。</li>
+</ul>
+<h3 id="54-algorithmfeedbackmonitornode">5.4 <code>algorithm_feedback_monitor_node</code></h3>
+<p>职责：</p>
+<ul>
+<li>消费 <code>algorithm_feedback_adapter</code> 输出。</li>
+</ul>
+<ul>
+<li>根据配置做 missing、stale、invalid、range、frequency 判断。</li>
+</ul>
+<ul>
+<li>输出算法反馈状态。</li>
+</ul>
+<p>输入：</p>
+<ul>
+<li><code>/nav2_monitor/algorithm_feedback</code></li>
+</ul>
+<p>输出：</p>
+<ul>
+<li><code>/monitor/feedback_state</code></li>
+</ul>
+<ul>
+<li>必要时输出 <code>/nav2_monitor/fault_event</code></li>
+</ul>
+<p>设计要点：</p>
+<ul>
+<li>adapter 只负责拆字段，monitor 负责规则判断。</li>
+</ul>
+<ul>
+<li>规则以 <code>source_topic + metric_name</code> 作为稳定 key。</li>
+</ul>
+<ul>
+<li>多 key 合并策略继续支持 <code>nodemanager</code> 按模块重启。</li>
+</ul>
+<h3 id="55-nodetfmonitornode">5.5 <code>node_tf_monitor_node</code></h3>
+<p>职责：</p>
+<ul>
+<li>检查节点是否存在。</li>
+</ul>
+<ul>
+<li>检查 TF 是否可用和延迟。</li>
+</ul>
+<ul>
+<li>输出节点/TF 运行状态。</li>
+</ul>
+<p>输入：</p>
+<ul>
+<li>ROS graph</li>
+</ul>
+<ul>
+<li><code>/tf</code></li>
+</ul>
+<ul>
+<li><code>/tf_static</code></li>
+</ul>
+<p>输出：</p>
+<ul>
+<li><code>/monitor/node_tf_state</code></li>
+</ul>
+<p>设计要点：</p>
+<ul>
+<li>ROS graph 扫描频率不宜过高，例如 1-5Hz。</li>
+</ul>
+<ul>
+<li>与高频传感器订阅进程隔离，避免 graph 查询影响高频统计。</li>
+</ul>
+<h3 id="56-batterymonitornode">5.6 <code>battery_monitor_node</code></h3>
+<p>职责：</p>
+<ul>
+<li>订阅电池状态。</li>
+</ul>
+<ul>
+<li>判断电池数据是否新鲜。</li>
+</ul>
+<ul>
+<li>输出电池状态。</li>
+</ul>
+<p>输入：</p>
+<ul>
+<li><code>/battery_state</code></li>
+</ul>
+<p>输出：</p>
+<ul>
+<li><code>/monitor/battery_state</code></li>
+</ul>
+<p>设计要点：</p>
+<ul>
+<li>电池状态通常低频，应使用可靠 QoS。</li>
+</ul>
+<ul>
+<li>电池 topic 缺失不应影响其他监控模块运行。</li>
+</ul>
+<h3 id="57-nav2monitoraggregatornode">5.7 <code>nav2_monitor_aggregator_node</code></h3>
+<p>职责：</p>
+<ul>
+<li>只消费各独立模块的低频标准状态。</li>
+</ul>
+<ul>
+<li>汇总 <code>/nav2_monitor/status</code>。</li>
+</ul>
+<ul>
+<li>发布统一故障边沿事件。</li>
+</ul>
+<ul>
+<li>触发节点管理器请求。</li>
+</ul>
+<ul>
+<li>将安全故障交给 <code>FaultStateCoordinator</code> 仲裁。</li>
+</ul>
+<p>输入：</p>
+<ul>
+<li><code>/monitor/topic_states</code></li>
+</ul>
+<ul>
+<li><code>/monitor/vehicle_state</code></li>
+</ul>
+<ul>
+<li><code>/monitor/collision_state</code></li>
+</ul>
+<ul>
+<li><code>/monitor/feedback_state</code></li>
+</ul>
+<ul>
+<li><code>/monitor/node_tf_state</code></li>
+</ul>
+<ul>
+<li><code>/monitor/battery_state</code></li>
+</ul>
+<p>输出：</p>
+<ul>
+<li><code>/nav2_monitor/status</code></li>
+</ul>
+<ul>
+<li><code>/nav2_monitor/fault_event</code></li>
+</ul>
+<ul>
+<li><code>/nav2_monitor/human_intervention</code></li>
+</ul>
+<ul>
+<li><code>/nodemanager/cmd</code></li>
+</ul>
+<ul>
+<li><code>/safety_system/cmd</code></li>
+</ul>
+<p>设计要点：</p>
+<ul>
+<li>aggregator 不直接订阅高频原始传感器。</li>
+</ul>
+<ul>
+<li>aggregator 卡顿不影响各独立监控模块继续生成状态。</li>
+</ul>
+<ul>
+<li>aggregator 重启后可通过 <code>transient_local</code> 状态 topic 快速恢复最后状态。</li>
+</ul>
+<h2 id="6-数据类型分层与-qos-策略">6. 数据类型分层与 QoS 策略</h2>
+<h3 id="61-高频原始数据">6.1 高频原始数据</h3>
+<p>适用：</p>
+<ul>
+<li><code>/livox/imu</code></li>
+</ul>
+<ul>
+<li><code>/livox/points</code></li>
+</ul>
+<ul>
+<li><code>/scan</code></li>
+</ul>
+<ul>
+<li>depth cloud</li>
+</ul>
+<ul>
+<li>image</li>
+</ul>
+<p>推荐 QoS：</p>
+<pre><code class="language-text">
+best_effort
+volatile
+keep_last 1~5
+</code></pre>
+<p>理由：</p>
+<ul>
+<li>高频原始数据更重视实时性。</li>
+</ul>
+<ul>
+<li>CPU 满载时丢旧帧优于处理过期帧。</li>
+</ul>
+<ul>
+<li>队列过深会造成延迟放大和体素残影。</li>
+</ul>
+<p>例外：</p>
+<ul>
+<li>如果某数据源上游只提供 reliable，则订阅端可自动匹配发布端 QoS，避免无法订阅。</li>
+</ul>
+<ul>
+<li>不应为了“理论可靠”把所有高频传感器强制 reliable + 大队列。</li>
+</ul>
+<h3 id="62-标准状态-topic">6.2 标准状态 topic</h3>
+<p>适用：</p>
+<ul>
+<li><code>/monitor/topic_states</code></li>
+</ul>
+<ul>
+<li><code>/monitor/vehicle_state</code></li>
+</ul>
+<ul>
+<li><code>/monitor/collision_state</code></li>
+</ul>
+<ul>
+<li><code>/monitor/feedback_state</code></li>
+</ul>
+<ul>
+<li><code>/monitor/node_tf_state</code></li>
+</ul>
+<ul>
+<li><code>/monitor/battery_state</code></li>
+</ul>
+<p>推荐 QoS：</p>
+<pre><code class="language-text">
+reliable
+transient_local
+keep_last 1
+</code></pre>
+<p>理由：</p>
+<ul>
+<li>状态只需要最后值。</li>
+</ul>
+<ul>
+<li>aggregator 或上层模块重启后应立即拿到最后状态。</li>
+</ul>
+<ul>
+<li>状态频率低，reliable 成本可接受。</li>
+</ul>
+<h3 id="63-事件-topic">6.3 事件 topic</h3>
+<p>适用：</p>
+<ul>
+<li><code>/nav2_monitor/fault_event</code></li>
+</ul>
+<ul>
+<li><code>/nav2_monitor/human_intervention</code></li>
+</ul>
+<ul>
+<li><code>/nodemanager/cmd</code></li>
+</ul>
+<p>推荐 QoS：</p>
+<pre><code class="language-text">
+reliable
+volatile
+keep_last 50~100
+</code></pre>
+<p>理由：</p>
+<ul>
+<li>事件不能只保留最后一个，否则可能丢失多个连续故障。</li>
+</ul>
+<ul>
+<li>事件最终确认由上层做，ROS 层只负责尽量可靠发布。</li>
+</ul>
+<ul>
+<li>不建议事件 topic 使用 <code>transient_local + keep_last 1</code>，否则新订阅者只能看到最后事件，不能恢复完整事件序列。</li>
+</ul>
+<h3 id="64-控制类-topic">6.4 控制类 topic</h3>
+<p>适用：</p>
+<ul>
+<li><code>/safety_system/cmd</code></li>
+</ul>
+<ul>
+<li><code>/navigation_mode</code></li>
+</ul>
+<p>推荐 QoS：</p>
+<pre><code class="language-text">
+reliable
+transient_local
+keep_last 1
+</code></pre>
+<p>理由：</p>
+<ul>
+<li>控制状态通常是当前模式或当前安全指令。</li>
+</ul>
+<ul>
+<li>新执行节点启动后需要知道当前模式。</li>
+</ul>
+<ul>
+<li>不应积压大量过期控制命令。</li>
+</ul>
+<h2 id="7-标准消息字段建议">7. 标准消息字段建议</h2>
+<p>当前可先用已有 message 和 JSON 字符串兼容实现，后续建议新增统一 message。</p>
+<h3 id="71-统一事件字段">7.1 统一事件字段</h3>
+<p>关键事件建议包含：</p>
+<pre><code class="language-text">
+event_id
+sequence
+stamp
+source_module
+fault_key
+fault_type
+fault_model
+fault_name
+level
+action
+safety_command
+reason
+data
+</code></pre>
+<p>字段说明：</p>
+<ul>
+<li><code>event_id</code>：全局唯一事件 ID，建议由 <code>source_module + sequence + stamp</code> 生成。</li>
+</ul>
+<ul>
+<li><code>sequence</code>：模块内单调递增序号，供上层去重和排序。</li>
+</ul>
+<ul>
+<li><code>source_module</code>：事件来源模块，例如 <code>vehicle_state_judge</code>。</li>
+</ul>
+<ul>
+<li><code>fault_key</code>：稳定故障 key，触发和恢复应保持同一 key。</li>
+</ul>
+<ul>
+<li><code>action</code>：建议动作，例如 <code>NONE / SAFETY_SYSTEM / SUPERVISOR / HUMAN_INTERVENTION</code>。</li>
+</ul>
+<ul>
+<li><code>data</code>：模块扩展 JSON，用于携带频率、阈值、当前速度等上下文。</li>
+</ul>
+<h3 id="72-标准状态字段">7.2 标准状态字段</h3>
+<p>状态类消息建议包含：</p>
+<pre><code class="language-text">
+stamp
+source_module
+state
+healthy
+level
+summary
+items[]
+</code></pre>
+<p>例如 topic frequency item：</p>
+<pre><code class="language-text">
+topic
+type
+has_publisher
+has_data
+frequency_hz
+min_hz
+last_received
+stale
+qos
+</code></pre>
+<p>例如 vehicle state item：</p>
+<pre><code class="language-text">
+command_received
+command_speed
+motion_source
+motion_detected
+imu_yaw_rate
+odom_speed
+moto_speed
+source_fault
+anomaly
+requires_human_intervention
+</code></pre>
+<h3 id="73-推荐-topic-契约">7.3 推荐 topic 契约</h3>
+<p>为了让模块真正解耦，topic 契约必须稳定。模块内部实现可以变化，但 topic 名称、字段含义、状态枚举和 key 语义不能随意变化。</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Topic</th><th>建议类型</th><th>QoS</th><th>生产者</th><th>消费者</th><th>语义</th></tr></thead>
+<tbody>
+<tr><td><code>/monitor/topic_states</code></td><td><code>MonitorTopicStates</code> 或 JSON</td><td>reliable + transient_local + keep_last 1</td><td><code>topic_frequency_monitor_node</code></td><td>aggregator / 上层</td><td>所有 watch topic 的频率与新鲜度状态</td></tr>
+<tr><td><code>/monitor/vehicle_state</code></td><td><code>VehicleState</code> 或 JSON</td><td>reliable + transient_local + keep_last 1</td><td><code>vehicle_state_judge_node</code></td><td>aggregator / 上层</td><td>小车运动是否符合期望</td></tr>
+<tr><td><code>/monitor/collision_state</code></td><td><code>CollisionState</code> 或 JSON</td><td>reliable + transient_local + keep_last 1</td><td><code>collision_monitor_node</code></td><td>aggregator / 上层</td><td>zone/TTC/控制器切换状态</td></tr>
+<tr><td><code>/monitor/feedback_state</code></td><td><code>FeedbackState</code> 或 JSON</td><td>reliable + transient_local + keep_last 1</td><td><code>algorithm_feedback_monitor_node</code></td><td>aggregator / 上层</td><td>算法反馈规则状态</td></tr>
+<tr><td><code>/monitor/node_tf_state</code></td><td><code>NodeTfState</code> 或 JSON</td><td>reliable + transient_local + keep_last 1</td><td><code>node_tf_monitor_node</code></td><td>aggregator / 上层</td><td>节点与 TF 健康状态</td></tr>
+<tr><td><code>/nav2_monitor/status</code></td><td><code>MonitorStatus</code></td><td>reliable + transient_local + keep_last 1</td><td>aggregator</td><td>上层</td><td>汇总状态</td></tr>
+<tr><td><code>/nav2_monitor/fault_event</code></td><td><code>FaultEvent</code></td><td>reliable + volatile + keep_last 50/100</td><td>各模块或 aggregator</td><td>上层事件中心</td><td>故障触发/恢复边沿</td></tr>
+<tr><td><code>/nav2_monitor/human_intervention</code></td><td><code>std_msgs/String</code> 或专用 msg</td><td>reliable + volatile + keep_last 50/100</td><td><code>vehicle_state_judge_node</code></td><td>上层事件中心</td><td>人工介入提醒</td></tr>
+<tr><td><code>/nodemanager/cmd</code></td><td><code>std_msgs/String</code></td><td>reliable + volatile + keep_last 50/100</td><td>aggregator</td><td>nodemanager 节点管理器 / 上层</td><td>模块重启请求</td></tr>
+<tr><td><code>/navigation_mode</code></td><td><code>std_msgs/String</code></td><td>reliable + transient_local + keep_last 1</td><td><code>collision_monitor_node</code></td><td>导航控制器切换模块</td><td><code>FAST</code> / <code>SAFE</code> 当前模式</td></tr>
+</tbody></table></div>
+<p>短期为了兼容可以继续使用 JSON 字符串，但 JSON 必须满足：</p>
+<ul>
+<li>字段名稳定。</li>
+</ul>
+<ul>
+<li>必须包含 <code>stamp</code>、<code>source_module</code>、<code>state</code> 或 <code>event_id</code>。</li>
+</ul>
+<ul>
+<li>新增字段只能向后兼容，不能删除已有字段。</li>
+</ul>
+<ul>
+<li>数值单位必须写入文档，例如 <code>m/s</code>、<code>rad/s</code>、<code>Hz</code>、<code>s</code>。</li>
+</ul>
+<h3 id="74-故障-key-设计">7.4 故障 key 设计</h3>
+<p>故障 key 是后续去重、恢复、节点管理器合并重启、云端展示的核心字段。推荐格式：</p>
+<pre><code class="language-text">
+&lt;module&gt;/&lt;rule_group&gt;/&lt;item&gt;
+</code></pre>
+<p>示例：</p>
+<pre><code class="language-text">
+topic_frequency/livox_imu/min_hz
+vehicle_state/commanded_not_moving/base_motion
+vehicle_state/uncommanded_motion/base_motion
+collision/front_ttc/navigation_safe_switch
+feedback/light_lm/drift_delta_norm
+node_tf/base_to_laser/tf_timeout
+</code></pre>
+<p>设计原则：</p>
+<ul>
+<li>同一故障的触发和恢复必须使用同一个 key。</li>
+</ul>
+<ul>
+<li>key 中不要包含浮动数值、时间戳、临时文本。</li>
+</ul>
+<ul>
+<li>多个 key 可以映射到同一个 nodemanager 模块名，用于合并重启。</li>
+</ul>
+<ul>
+<li>人工介入类 key 应能直接说明需要人工看的原因。</li>
+</ul>
+<h3 id="75-状态枚举建议">7.5 状态枚举建议</h3>
+<p>建议所有模块统一使用以下健康状态：</p>
+<pre><code class="language-text">
+OK
+WARN
+ERROR
+CRITICAL
+STALE
+UNKNOWN
+</code></pre>
+<p>语义：</p>
+<ul>
+<li><code>OK</code>：数据源和业务判断均正常。</li>
+</ul>
+<ul>
+<li><code>WARN</code>：存在轻微异常或接近阈值，但不需要立即安全动作。</li>
+</ul>
+<ul>
+<li><code>ERROR</code>：明确异常，需要上层关注或局部安全动作。</li>
+</ul>
+<ul>
+<li><code>CRITICAL</code>：严重安全风险，需要急停、节点管理器或人工介入。</li>
+</ul>
+<ul>
+<li><code>STALE</code>：数据源过期，不能继续参与业务判断。</li>
+</ul>
+<ul>
+<li><code>UNKNOWN</code>：启动初期或数据不足，暂不能判断。</li>
+</ul>
+<p><code>UNKNOWN</code> 和 <code>STALE</code> 不应被当成 <code>OK</code>。启动初期可设置 grace period，超过 grace period 仍 UNKNOWN 时应转为 WARN 或 ERROR。</p>
+<h2 id="8-上层确认边界">8. 上层确认边界</h2>
+<p>本方案明确：ACK、重发、落盘、云端确认由上层实现。</p>
+<div class="svg-diagram"><div class="svg-diagram-title">可视化时序图</div><div class="svg-diagram-legend"><span><i style="background:#6ba2d7"></i>输入 / 数据源</span><span><i style="background:#d2a235"></i>判断 / 策略</span><span><i style="background:#61a87d"></i>状态 / 输出</span><span><i style="background:#d26a56"></i>故障 / 风险</span><span><i style="background:#8d7ed3"></i>执行 / 安全动作</span></div><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 613" role="img">
+<defs>
+<marker id="arrow-seq" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#1f6f50"/></marker>
+</defs>
+<rect width="860" height="613" rx="18" fill="#fbfefd"/>
+<rect x="60" y="18" width="130" height="38" rx="10" fill="#eaf7ef" stroke="#61a87d" stroke-width="1.3"/>
+<text x="125" y="42" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12" fill="#1f6f50" font-weight="700">monitor_system模块</text>
+<line x1="125" y1="58" x2="125" y2="581" stroke="#c7d8d0" stroke-width="1.2" stroke-dasharray="5 5"/>
+<rect x="230" y="18" width="130" height="38" rx="10" fill="#edf6ff" stroke="#6ba2d7" stroke-width="1.3"/>
+<text x="295" y="42" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12" fill="#265b89" font-weight="700">ROS topic</text>
+<line x1="295" y1="58" x2="295" y2="581" stroke="#c7d8d0" stroke-width="1.2" stroke-dasharray="5 5"/>
+<rect x="400" y="18" width="130" height="38" rx="10" fill="#ffffff" stroke="#86b6a3" stroke-width="1.3"/>
+<text x="465" y="42" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12" fill="#1f2a2c" font-weight="700">上层事件中心/MQTT桥</text>
+<line x1="465" y1="58" x2="465" y2="581" stroke="#c7d8d0" stroke-width="1.2" stroke-dasharray="5 5"/>
+<rect x="570" y="18" width="130" height="38" rx="10" fill="#ffffff" stroke="#86b6a3" stroke-width="1.3"/>
+<text x="635" y="42" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12" fill="#1f2a2c" font-weight="700">云端</text>
+<line x1="635" y1="58" x2="635" y2="581" stroke="#c7d8d0" stroke-width="1.2" stroke-dasharray="5 5"/>
+<line x1="133" y1="72" x2="287" y2="72" stroke="#d26a56" stroke-width="1.7" marker-end="url(#arrow-seq)"/>
+<circle cx="125" cy="72" r="12" fill="#ffffff" stroke="#d26a56"/>
+<text x="125" y="76" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="10" fill="#7c2f25" font-weight="700">1</text>
+<text x="210.0" y="62" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12" fill="#7c2f25">发布 FaultEvent(even</text>
+<text x="210.0" y="77" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12" fill="#7c2f25">t_id, sequence, re</text>
+<text x="210.0" y="92" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12" fill="#7c2f25">ason)</text>
+<line x1="303" y1="148" x2="457" y2="148" stroke="#86b6a3" stroke-width="1.7" marker-end="url(#arrow-seq)"/>
+<circle cx="295" cy="148" r="12" fill="#ffffff" stroke="#86b6a3"/>
+<text x="295" y="152" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="10" fill="#1f2a2c" font-weight="700">2</text>
+<text x="380.0" y="138" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12" fill="#1f2a2c">上层订阅事件</text>
+<path d="M465,224 C537,224 537,256 465,256" fill="none" stroke="#86b6a3" stroke-width="1.7" marker-end="url(#arrow-seq)"/>
+<circle cx="465" cy="224" r="12" fill="#ffffff" stroke="#86b6a3"/>
+<text x="465" y="228" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="10" fill="#1f2a2c" font-weight="700">3</text>
+<text x="545" y="214" text-anchor="start" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12" fill="#1f2a2c">本地落盘 / 去重</text>
+<line x1="473" y1="300" x2="627" y2="300" stroke="#61a87d" stroke-width="1.7" marker-end="url(#arrow-seq)"/>
+<circle cx="465" cy="300" r="12" fill="#ffffff" stroke="#61a87d"/>
+<text x="465" y="304" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="10" fill="#1f6f50" font-weight="700">4</text>
+<text x="550.0" y="290" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12" fill="#1f6f50">MQTT/HTTP 上报</text>
+<line x1="627" y1="376" x2="473" y2="376" stroke="#86b6a3" stroke-width="1.7" marker-end="url(#arrow-seq)" stroke-dasharray="6 5"/>
+<circle cx="635" cy="376" r="12" fill="#ffffff" stroke="#86b6a3"/>
+<text x="635" y="380" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="10" fill="#1f2a2c" font-weight="700">5</text>
+<text x="550.0" y="366" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12" fill="#1f2a2c">云端 ACK</text>
+<path d="M465,452 C537,452 537,484 465,484" fill="none" stroke="#d2a235" stroke-width="1.7" marker-end="url(#arrow-seq)"/>
+<circle cx="465" cy="452" r="12" fill="#ffffff" stroke="#d2a235"/>
+<text x="465" y="456" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="10" fill="#6c4d00" font-weight="700">6</text>
+<text x="545" y="442" text-anchor="start" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12" fill="#6c4d00">标记事件已确认</text>
+</svg></div>
+<p>monitor 侧不等待 ACK 的理由：</p>
+<ul>
+<li>不阻塞安全判断链路。</li>
+</ul>
+<ul>
+<li>不引入 MQTT 或云端依赖。</li>
+</ul>
+<ul>
+<li>不让本机 monitor 因网络问题积压。</li>
+</ul>
+<ul>
+<li>上层可以统一处理所有模块事件，避免每个本机模块重复实现 ACK/retry。</li>
+</ul>
+<p>monitor 侧需要保证：</p>
+<ul>
+<li>发布内容结构完整。</li>
+</ul>
+<ul>
+<li>事件 key 稳定。</li>
+</ul>
+<ul>
+<li>事件有 ID 和 sequence。</li>
+</ul>
+<ul>
+<li>事件 topic QoS 合理。</li>
+</ul>
+<h2 id="9-cpu-满载情况下的策略">9. CPU 满载情况下的策略</h2>
+<h3 id="91-关键链路优先级">9.1 关键链路优先级</h3>
+<p>建议进程优先级从高到低：</p>
+<ol>
+<li><code>safety_emergency_executor</code></li>
+</ol>
+<ol>
+<li><code>vehicle_state_judge_node</code></li>
+</ol>
+<ol>
+<li><code>collision_monitor_node</code></li>
+</ol>
+<ol>
+<li><code>topic_frequency_monitor_node</code></li>
+</ol>
+<ol>
+<li><code>nav2_monitor_aggregator_node</code></li>
+</ol>
+<ol>
+<li>可视化、日志、debug 工具</li>
+</ol>
+<p>原因：</p>
+<ul>
+<li>安全执行必须最先响应。</li>
+</ul>
+<ul>
+<li>小车状态和碰撞判断是运行安全核心。</li>
+</ul>
+<ul>
+<li>频率模块用于发现数据源异常，但不应阻塞安全执行。</li>
+</ul>
+<ul>
+<li>聚合和上报可短暂延迟，但不能无限卡死。</li>
+</ul>
+<h3 id="92-cpu调度隔离建议">9.2 CPU/调度隔离建议</h3>
+<p>可选手段：</p>
+<ul>
+<li>systemd <code>CPUSchedulingPolicy=fifo</code> 或提高 nice 优先级。</li>
+</ul>
+<ul>
+<li>cgroup 限制非关键模块 CPU。</li>
+</ul>
+<ul>
+<li>将可视化和日志模块降优先级。</li>
+</ul>
+<ul>
+<li>为高频传感器判断模块设置 CPU affinity。</li>
+</ul>
+<ul>
+<li>避免在高频 callback 内做文件 IO、日志打印、大对象复制和复杂 JSON 序列化。</li>
+</ul>
+<h3 id="93-降级策略">9.3 降级策略</h3>
+<p>CPU 满载时，系统应按以下原则降级：</p>
+<ul>
+<li>丢弃旧的高频原始帧。</li>
+</ul>
+<ul>
+<li>保留最新状态。</li>
+</ul>
+<ul>
+<li>故障事件继续可靠发布给上层。</li>
+</ul>
+<ul>
+<li>如果监控模块自身频率下降，应产生“monitor overloaded” 类状态，供上层判断是否需要人工介入。</li>
+</ul>
+<h2 id="10-数据链路详图">10. 数据链路详图</h2>
+<h3 id="101-频率检测链路">10.1 频率检测链路</h3>
+<div class="svg-diagram"><div class="svg-diagram-title">可视化流程图</div><div class="svg-diagram-legend"><span><i style="background:#6ba2d7"></i>输入 / 数据源</span><span><i style="background:#d2a235"></i>判断 / 策略</span><span><i style="background:#61a87d"></i>状态 / 输出</span><span><i style="background:#d26a56"></i>故障 / 风险</span><span><i style="background:#8d7ed3"></i>执行 / 安全动作</span></div><svg width="1034pt" height="72pt"
+ viewBox="0.00 0.00 1034.00 72.00" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<g id="graph0" class="graph" transform="scale(1 1) rotate(0) translate(18 54)">
+
+<!-- RawTopic&#45;&gt;GenericSub -->
+<g id="edge1" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M112.07,-18C112.07,-18 149.16,-18 149.16,-18"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="149.16,-20.73 156.96,-18 149.16,-15.27 149.16,-20.73"/>
+</g>
+<!-- GenericSub&#45;&gt;Counter -->
+<g id="edge2" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M289.01,-18C289.01,-18 326.14,-18 326.14,-18"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="326.14,-20.73 333.94,-18 326.14,-15.27 326.14,-20.73"/>
+</g>
+<!-- Counter&#45;&gt;Window -->
+<g id="edge3" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M413.27,-18C413.27,-18 449.96,-18 449.96,-18"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="449.96,-20.73 457.76,-18 449.96,-15.27 449.96,-20.73"/>
+</g>
+<!-- Window&#45;&gt;TopicStates -->
+<g id="edge4" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M564.01,-18C564.01,-18 601.1,-18 601.1,-18"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="601.1,-20.73 608.9,-18 601.1,-15.27 601.1,-20.73"/>
+</g>
+<!-- TopicStates&#45;&gt;Aggregator -->
+<g id="edge5" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M751.05,-18C751.05,-18 788.07,-18 788.07,-18"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="788.07,-20.73 795.87,-18 788.07,-15.27 788.07,-20.73"/>
+</g>
+<!-- RawTopic -->
+<g id="node1" class="node">
+
+<path fill="#edf6ff" stroke="#6ba2d7" stroke-width="1.45" d="M100,-36C100,-36 12,-36 12,-36 6,-36 0,-30 0,-24 0,-24 0,-12 0,-12 0,-6 6,0 12,0 12,0 100,0 100,0 106,0 112,-6 112,-12 112,-12 112,-24 112,-24 112,-30 106,-36 100,-36"/>
+<text text-anchor="middle" x="56" y="-14.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#265b89">任意 watch topic</text>
+</g>
+<!-- GenericSub -->
+<g id="node2" class="node">
+
+<path fill="#ffffff" stroke="#86b6a3" stroke-width="1.45" d="M277,-36C277,-36 169,-36 169,-36 163,-36 157,-30 157,-24 157,-24 157,-12 157,-12 157,-6 163,0 169,0 169,0 277,0 277,0 283,0 289,-6 289,-12 289,-12 289,-24 289,-24 289,-30 283,-36 277,-36"/>
+<text text-anchor="middle" x="223" y="-14.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f2a2c">generic subscription</text>
+</g>
+<!-- Counter -->
+<g id="node3" class="node">
+
+<path fill="#ffffff" stroke="#86b6a3" stroke-width="1.45" d="M401,-36C401,-36 346,-36 346,-36 340,-36 334,-30 334,-24 334,-24 334,-12 334,-12 334,-6 340,0 346,0 346,0 401,0 401,0 407,0 413,-6 413,-12 413,-12 413,-24 413,-24 413,-30 407,-36 401,-36"/>
+<text text-anchor="middle" x="373.5" y="-14.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f2a2c">轻量计数器</text>
+</g>
+<!-- Window -->
+<g id="node4" class="node">
+
+<path fill="#ffffff" stroke="#86b6a3" stroke-width="1.45" d="M552,-36C552,-36 470,-36 470,-36 464,-36 458,-30 458,-24 458,-24 458,-12 458,-12 458,-6 464,0 470,0 470,0 552,0 552,0 558,0 564,-6 564,-12 564,-12 564,-24 564,-24 564,-30 558,-36 552,-36"/>
+<text text-anchor="middle" x="511" y="-14.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f2a2c">1s 滚动频率窗口</text>
+</g>
+<!-- TopicStates -->
+<g id="node5" class="node">
+
+<path fill="#edf6ff" stroke="#6ba2d7" stroke-width="1.45" d="M739,-36C739,-36 621,-36 621,-36 615,-36 609,-30 609,-24 609,-24 609,-12 609,-12 609,-6 615,0 621,0 621,0 739,0 739,0 745,0 751,-6 751,-12 751,-12 751,-24 751,-24 751,-30 745,-36 739,-36"/>
+<text text-anchor="middle" x="680" y="-14.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#265b89">/monitor/topic_states</text>
+</g>
+<!-- Aggregator -->
+<g id="node6" class="node">
+
+<path fill="#eaf7ef" stroke="#61a87d" stroke-width="1.45" d="M986,-36C986,-36 808,-36 808,-36 802,-36 796,-30 796,-24 796,-24 796,-12 796,-12 796,-6 802,0 808,0 808,0 986,0 986,0 992,0 998,-6 998,-12 998,-12 998,-24 998,-24 998,-30 992,-36 986,-36"/>
+<text text-anchor="middle" x="897" y="-14.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">nav2_monitor_aggregator_node</text>
+</g>
+</g>
+</svg>
+</div>
+<p>关键点：</p>
+<ul>
+<li>不反序列化高频消息。</li>
+</ul>
+<ul>
+<li>不依赖 header stamp 计算频率，使用本机接收时间。</li>
+</ul>
+<ul>
+<li>频率波动通过滚动窗口平滑。</li>
+</ul>
+<ul>
+<li>掉线通过 idle timeout 快速归零。</li>
+</ul>
+<h3 id="102-小车状态链路">10.2 小车状态链路</h3>
+<div class="svg-diagram"><div class="svg-diagram-title">可视化流程图</div><div class="svg-diagram-legend"><span><i style="background:#6ba2d7"></i>输入 / 数据源</span><span><i style="background:#d2a235"></i>判断 / 策略</span><span><i style="background:#61a87d"></i>状态 / 输出</span><span><i style="background:#d26a56"></i>故障 / 风险</span><span><i style="background:#8d7ed3"></i>执行 / 安全动作</span></div><svg width="846pt" height="276pt"
+ viewBox="0.00 0.00 846.00 276.00" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<g id="graph0" class="graph" transform="scale(1 1) rotate(0) translate(18 258)">
+
+<!-- Cmd&#45;&gt;Judge -->
+<g id="edge1" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M81.72,-222C132.01,-222 211,-222 211,-222 211,-222 211,-146.04 211,-146.04"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="213.73,-146.04 211,-138.24 208.27,-146.04 213.73,-146.04"/>
+</g>
+<!-- Judge&#45;&gt;State -->
+<g id="edge5" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M294.28,-125.33C363.69,-125.33 451,-125.33 451,-125.33 451,-125.33 451,-127.88 451,-127.88"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="448.27,-127.88 451,-135.68 453.73,-127.88 448.27,-127.88"/>
+</g>
+<!-- Judge&#45;&gt;Human -->
+<g id="edge6" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M294.16,-114.67C327.45,-114.67 358,-114.67 358,-114.67 358,-114.67 358,-112.12 358,-112.12"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="360.73,-112.12 358,-104.32 355.27,-112.12 360.73,-112.12"/>
+</g>
+<!-- IMU&#45;&gt;Judge -->
+<g id="edge2" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M76,-135.94C76,-131.51 76,-128 76,-128 76,-128 119.05,-128 119.05,-128"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="119.05,-130.73 126.85,-128 119.05,-125.27 119.05,-130.73"/>
+</g>
+<!-- Odom&#45;&gt;Judge -->
+<g id="edge3" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M41,-104.19C41,-112.28 41,-120 41,-120 41,-120 118.94,-120 118.94,-120"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="118.94,-122.73 126.74,-120 118.94,-117.27 118.94,-122.73"/>
+</g>
+<!-- Moto&#45;&gt;Judge -->
+<g id="edge4" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M73,-36.12C73,-63.44 73,-112 73,-112 73,-112 119.15,-112 119.15,-112"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="119.15,-114.73 126.95,-112 119.15,-109.27 119.15,-114.73"/>
+</g>
+<!-- State&#45;&gt;Agg -->
+<g id="edge7" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M525.28,-154C525.28,-154 600.1,-154 600.1,-154"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="600.1,-156.73 607.9,-154 600.1,-151.27 600.1,-156.73"/>
+</g>
+<!-- Cmd -->
+<g id="node1" class="node">
+
+<path fill="#f1efff" stroke="#8d7ed3" stroke-width="1.45" d="M69.5,-240C69.5,-240 12.5,-240 12.5,-240 6.5,-240 0.5,-234 0.5,-228 0.5,-228 0.5,-216 0.5,-216 0.5,-210 6.5,-204 12.5,-204 12.5,-204 69.5,-204 69.5,-204 75.5,-204 81.5,-210 81.5,-216 81.5,-216 81.5,-228 81.5,-228 81.5,-234 75.5,-240 69.5,-240"/>
+<text text-anchor="middle" x="41" y="-218.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#463a88">/command</text>
+</g>
+<!-- Judge -->
+<g id="node2" class="node">
+
+<path fill="#fff6db" stroke="#d2a235" stroke-width="1.45" d="M282,-138C282,-138 139,-138 139,-138 133,-138 127,-132 127,-126 127,-126 127,-114 127,-114 127,-108 133,-102 139,-102 139,-102 282,-102 282,-102 288,-102 294,-108 294,-114 294,-114 294,-126 294,-126 294,-132 288,-138 282,-138"/>
+<text text-anchor="middle" x="210.5" y="-116.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#6c4d00">vehicle_state_judge_node</text>
+</g>
+<!-- IMU -->
+<g id="node3" class="node">
+
+<path fill="#ffffff" stroke="#86b6a3" stroke-width="1.45" d="M67,-172C67,-172 15,-172 15,-172 9,-172 3,-166 3,-160 3,-160 3,-148 3,-148 3,-142 9,-136 15,-136 15,-136 67,-136 67,-136 73,-136 79,-142 79,-148 79,-148 79,-160 79,-160 79,-166 73,-172 67,-172"/>
+<text text-anchor="middle" x="41" y="-150.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f2a2c">/livox/imu</text>
+</g>
+<!-- Odom -->
+<g id="node4" class="node">
+
+<path fill="#edf6ff" stroke="#6ba2d7" stroke-width="1.45" d="M57.5,-104C57.5,-104 24.5,-104 24.5,-104 18.5,-104 12.5,-98 12.5,-92 12.5,-92 12.5,-80 12.5,-80 12.5,-74 18.5,-68 24.5,-68 24.5,-68 57.5,-68 57.5,-68 63.5,-68 69.5,-74 69.5,-80 69.5,-80 69.5,-92 69.5,-92 69.5,-98 63.5,-104 57.5,-104"/>
+<text text-anchor="middle" x="41" y="-82.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#265b89">/odom</text>
+</g>
+<!-- Moto -->
+<g id="node5" class="node">
+
+<path fill="#ffffff" stroke="#86b6a3" stroke-width="1.45" d="M70,-36C70,-36 12,-36 12,-36 6,-36 0,-30 0,-24 0,-24 0,-12 0,-12 0,-6 6,0 12,0 12,0 70,0 70,0 76,0 82,-6 82,-12 82,-12 82,-24 82,-24 82,-30 76,-36 70,-36"/>
+<text text-anchor="middle" x="41" y="-14.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f2a2c">/moto_info</text>
+</g>
+<!-- State -->
+<g id="node6" class="node">
+
+<path fill="#eaf7ef" stroke="#61a87d" stroke-width="1.45" d="M513,-172C513,-172 389,-172 389,-172 383,-172 377,-166 377,-160 377,-160 377,-148 377,-148 377,-142 383,-136 389,-136 389,-136 513,-136 513,-136 519,-136 525,-142 525,-148 525,-148 525,-160 525,-160 525,-166 519,-172 513,-172"/>
+<text text-anchor="middle" x="451" y="-150.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">/monitor/vehicle_state</text>
+</g>
+<!-- Human -->
+<g id="node7" class="node">
+
+<path fill="#eaf7ef" stroke="#61a87d" stroke-width="1.45" d="M551,-104C551,-104 351,-104 351,-104 345,-104 339,-98 339,-92 339,-92 339,-80 339,-80 339,-74 345,-68 351,-68 351,-68 551,-68 551,-68 557,-68 563,-74 563,-80 563,-80 563,-92 563,-92 563,-98 557,-104 551,-104"/>
+<text text-anchor="middle" x="451" y="-82.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">/nav2_monitor/human_intervention</text>
+</g>
+<!-- Agg -->
+<g id="node8" class="node">
+
+<path fill="#eaf7ef" stroke="#61a87d" stroke-width="1.45" d="M798,-172C798,-172 620,-172 620,-172 614,-172 608,-166 608,-160 608,-160 608,-148 608,-148 608,-142 614,-136 620,-136 620,-136 798,-136 798,-136 804,-136 810,-142 810,-148 810,-148 810,-160 810,-160 810,-166 804,-172 798,-172"/>
+<text text-anchor="middle" x="709" y="-150.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">nav2_monitor_aggregator_node</text>
+</g>
+</g>
+</svg>
+</div>
+<p>关键点：</p>
+<ul>
+<li>先判断数据源新鲜性，再判断运动异常。</li>
+</ul>
+<ul>
+<li>IMU 重计算限频。</li>
+</ul>
+<ul>
+<li>command 有无与实际运动源交叉判断。</li>
+</ul>
+<ul>
+<li>人工介入事件只发布，不在本模块等待云端确认。</li>
+</ul>
+<h3 id="103-碰撞ttc-链路">10.3 碰撞/TTC 链路</h3>
+<div class="svg-diagram"><div class="svg-diagram-title">可视化流程图</div><div class="svg-diagram-legend"><span><i style="background:#6ba2d7"></i>输入 / 数据源</span><span><i style="background:#d2a235"></i>判断 / 策略</span><span><i style="background:#61a87d"></i>状态 / 输出</span><span><i style="background:#d26a56"></i>故障 / 风险</span><span><i style="background:#8d7ed3"></i>执行 / 安全动作</span></div><svg width="1003pt" height="242pt"
+ viewBox="0.00 0.00 1003.00 242.00" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<g id="graph0" class="graph" transform="scale(1 1) rotate(0) translate(18 224)">
+
+<!-- Scan&#45;&gt;Voxel -->
+<g id="edge1" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M44,-169.68C44,-164.06 44,-159.33 44,-159.33 44,-159.33 124.79,-159.33 124.79,-159.33"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="124.79,-162.06 132.59,-159.33 124.79,-156.6 124.79,-162.06"/>
+</g>
+<!-- Voxel&#45;&gt;Voxels -->
+<g id="edge3" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M269.16,-154C269.16,-154 305.86,-154 305.86,-154"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="305.86,-156.73 313.66,-154 305.86,-151.27 305.86,-156.73"/>
+</g>
+<!-- Depth&#45;&gt;Voxel -->
+<g id="edge2" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M80,-138.32C80,-143.94 80,-148.67 80,-148.67 80,-148.67 124.92,-148.67 124.92,-148.67"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="124.92,-151.4 132.72,-148.67 124.92,-145.94 124.92,-151.4"/>
+</g>
+<!-- Voxels&#45;&gt;Collision -->
+<g id="edge4" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M485,-135.98C485,-118.63 485,-95 485,-95 485,-95 530.86,-95 530.86,-95"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="530.86,-97.73 538.66,-95 530.86,-92.27 530.86,-97.73"/>
+</g>
+<!-- Collision&#45;&gt;State -->
+<g id="edge7" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M616,-104.22C616,-124.37 616,-154 616,-154 616,-154 766.93,-154 766.93,-154"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="766.93,-156.73 774.73,-154 766.93,-151.27 766.93,-156.73"/>
+</g>
+<!-- Collision&#45;&gt;NavMode -->
+<g id="edge8" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M693.11,-92C693.11,-92 752.44,-92 752.44,-92"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="752.44,-94.73 760.24,-92 752.44,-89.27 752.44,-94.73"/>
+</g>
+<!-- Collision&#45;&gt;Marker -->
+<g id="edge9" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M693.17,-80C722.96,-80 750,-80 750,-80 750,-80 750,-44.07 750,-44.07"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="752.73,-44.07 750,-36.27 747.27,-44.07 752.73,-44.07"/>
+</g>
+<!-- CmdVel&#45;&gt;Collision -->
+<g id="edge5" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M442.39,-86C442.39,-86 531.01,-86 531.01,-86"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="531.01,-88.73 538.81,-86 531.01,-83.27 531.01,-88.73"/>
+</g>
+<!-- Source&#45;&gt;Collision -->
+<g id="edge6" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M459,-36.02C459,-53.37 459,-77 459,-77 459,-77 531.08,-77 531.08,-77"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="531.08,-79.73 538.88,-77 531.08,-74.27 531.08,-79.73"/>
+</g>
+<!-- Scan -->
+<g id="node1" class="node">
+
+<path fill="#edf6ff" stroke="#6ba2d7" stroke-width="1.45" d="M59,-206C59,-206 29,-206 29,-206 23,-206 17,-200 17,-194 17,-194 17,-182 17,-182 17,-176 23,-170 29,-170 29,-170 59,-170 59,-170 65,-170 71,-176 71,-182 71,-182 71,-194 71,-194 71,-200 65,-206 59,-206"/>
+<text text-anchor="middle" x="44" y="-184.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#265b89">/scan</text>
+</g>
+<!-- Voxel -->
+<g id="node2" class="node">
+
+<path fill="#fff1ec" stroke="#d26a56" stroke-width="1.45" d="M257,-172C257,-172 145,-172 145,-172 139,-172 133,-166 133,-160 133,-160 133,-148 133,-148 133,-142 139,-136 145,-136 145,-136 257,-136 257,-136 263,-136 269,-142 269,-148 269,-148 269,-160 269,-160 269,-166 263,-172 257,-172"/>
+<text text-anchor="middle" x="201" y="-150.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#7c2f25">collision_voxel_layer</text>
+</g>
+<!-- Depth -->
+<g id="node3" class="node">
+
+<path fill="#ffffff" stroke="#86b6a3" stroke-width="1.45" d="M76,-138C76,-138 12,-138 12,-138 6,-138 0,-132 0,-126 0,-126 0,-114 0,-114 0,-108 6,-102 12,-102 12,-102 76,-102 76,-102 82,-102 88,-108 88,-114 88,-114 88,-126 88,-126 88,-132 82,-138 76,-138"/>
+<text text-anchor="middle" x="44" y="-116.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f2a2c">depth cloud</text>
+</g>
+<!-- Voxels -->
+<g id="node4" class="node">
+
+<path fill="#fff1ec" stroke="#d26a56" stroke-width="1.45" d="M482,-172C482,-172 326,-172 326,-172 320,-172 314,-166 314,-160 314,-160 314,-148 314,-148 314,-142 320,-136 326,-136 326,-136 482,-136 482,-136 488,-136 494,-142 494,-148 494,-148 494,-160 494,-160 494,-166 488,-172 482,-172"/>
+<text text-anchor="middle" x="404" y="-150.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#7c2f25">/collision_voxel_layer/voxels</text>
+</g>
+<!-- Collision -->
+<g id="node5" class="node">
+
+<path fill="#fff1ec" stroke="#d26a56" stroke-width="1.45" d="M681,-104C681,-104 551,-104 551,-104 545,-104 539,-98 539,-92 539,-92 539,-80 539,-80 539,-74 545,-68 551,-68 551,-68 681,-68 681,-68 687,-68 693,-74 693,-80 693,-80 693,-92 693,-92 693,-98 687,-104 681,-104"/>
+<text text-anchor="middle" x="616" y="-82.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#7c2f25">collision_monitor_node</text>
+</g>
+<!-- CmdVel -->
+<g id="node6" class="node">
+
+<path fill="#f1efff" stroke="#8d7ed3" stroke-width="1.45" d="M430,-104C430,-104 378,-104 378,-104 372,-104 366,-98 366,-92 366,-92 366,-80 366,-80 366,-74 372,-68 378,-68 378,-68 430,-68 430,-68 436,-68 442,-74 442,-80 442,-80 442,-92 442,-92 442,-98 436,-104 430,-104"/>
+<text text-anchor="middle" x="404" y="-82.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#463a88">/cmd_vel*</text>
+</g>
+<!-- Source -->
+<g id="node7" class="node">
+
+<path fill="#edf6ff" stroke="#6ba2d7" stroke-width="1.45" d="M463.5,-36C463.5,-36 344.5,-36 344.5,-36 338.5,-36 332.5,-30 332.5,-24 332.5,-24 332.5,-12 332.5,-12 332.5,-6 338.5,0 344.5,0 344.5,0 463.5,0 463.5,0 469.5,0 475.5,-6 475.5,-12 475.5,-12 475.5,-24 475.5,-24 475.5,-30 469.5,-36 463.5,-36"/>
+<text text-anchor="middle" x="404" y="-14.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#265b89">/control_source_state</text>
+</g>
+<!-- State -->
+<g id="node8" class="node">
+
+<path fill="#fff1ec" stroke="#d26a56" stroke-width="1.45" d="M918,-172C918,-172 787,-172 787,-172 781,-172 775,-166 775,-160 775,-160 775,-148 775,-148 775,-142 781,-136 787,-136 787,-136 918,-136 918,-136 924,-136 930,-142 930,-148 930,-148 930,-160 930,-160 930,-166 924,-172 918,-172"/>
+<text text-anchor="middle" x="852.5" y="-150.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#7c2f25">/monitor/collision_state</text>
+</g>
+<!-- NavMode -->
+<g id="node9" class="node">
+
+<path fill="#ffffff" stroke="#86b6a3" stroke-width="1.45" d="M932.5,-104C932.5,-104 772.5,-104 772.5,-104 766.5,-104 760.5,-98 760.5,-92 760.5,-92 760.5,-80 760.5,-80 760.5,-74 766.5,-68 772.5,-68 772.5,-68 932.5,-68 932.5,-68 938.5,-68 944.5,-74 944.5,-80 944.5,-80 944.5,-92 944.5,-92 944.5,-98 938.5,-104 932.5,-104"/>
+<text text-anchor="middle" x="852.5" y="-82.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f2a2c">/navigation_mode FAST/SAFE</text>
+</g>
+<!-- Marker -->
+<g id="node10" class="node">
+
+<path fill="#fff1ec" stroke="#d26a56" stroke-width="1.45" d="M955,-36C955,-36 750,-36 750,-36 744,-36 738,-30 738,-24 738,-24 738,-12 738,-12 738,-6 744,0 750,0 750,0 955,0 955,0 961,0 967,-6 967,-12 967,-12 967,-24 967,-24 967,-30 961,-36 955,-36"/>
+<text text-anchor="middle" x="852.5" y="-14.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#7c2f25">/nav2_monitor/collision_ttc_markers</text>
+</g>
+</g>
+</svg>
+</div>
+<p>关键点：</p>
+<ul>
+<li>至少一个碰撞数据源可用时继续判断。</li>
+</ul>
+<ul>
+<li>数据源丢失只影响该源，不阻塞其他源。</li>
+</ul>
+<ul>
+<li>控制器切换需要进入时间、退出时间、最小保持时间。</li>
+</ul>
+<ul>
+<li>SAFE 模式下可缩小急停/缓停触发范围，降低避障误触发。</li>
+</ul>
+<h2 id="11-nodemanager-节点管理器与模块重启">11. Nodemanager 节点管理器与模块重启</h2>
+<p>由于 <code>nodemanager</code> 节点管理器当前按模块重启，本方案与其天然匹配。后续统一使用 <code>nodemanager</code> 作为英文名称，中文名称为“节点管理器”。</p>
+<p>命名迁移要求：</p>
+<ul>
+<li>新 topic 使用 <code>/nodemanager/cmd</code>。</li>
+</ul>
+<ul>
+<li>新参数使用 <code>nodemanager_cmd_topic</code>、<code>nodemanager_cooldown_s</code>。</li>
+</ul>
+<ul>
+<li>新文档、日志、JSON 字段使用 <code>nodemanager</code>。</li>
+</ul>
+<ul>
+<li>旧 <code>/supervisor/cmd</code>、<code>supervisor_cmd_topic</code>、<code>supervisor_cooldown_s</code>、<code>actions: ["supervisor"]</code> 作为兼容别名保留一个迁移周期。</li>
+</ul>
+<ul>
+<li>迁移期内如果新旧参数同时存在，以 <code>nodemanager_*</code> 为准，并打印兼容提示日志。</li>
+</ul>
+<p>推荐模块名：</p>
+<pre><code class="language-text">
+topic_frequency_monitor
+vehicle_state_judge
+collision_monitor
+algorithm_feedback_monitor
+node_tf_monitor
+battery_monitor
+nav2_monitor_aggregator
+safety_emergency_executor
+</code></pre>
+<p>重启策略：</p>
+<ul>
+<li>单个监控模块异常，只重启该模块。</li>
+</ul>
+<ul>
+<li>aggregator 异常，只影响统一状态汇总，不影响各模块继续检测。</li>
+</ul>
+<ul>
+<li>safety executor 异常应最高优先级处理。</li>
+</ul>
+<ul>
+<li>同一模块多个 fault key 可以合并节点管理器请求，避免重复重启风暴。</li>
+</ul>
+<p>节点管理器请求通过 <code>/nodemanager/cmd</code> 发布；ACK 和执行结果确认由 nodemanager 或上层模块负责。迁移期可继续兼容旧 <code>/supervisor/cmd</code>，但新配置和新文档不再推荐使用旧名。</p>
+<h2 id="12-与现有系统的兼容迁移">12. 与现有系统的兼容迁移</h2>
+<h3 id="阶段-0命名迁移supervisor-更名为-nodemanager">阶段 0：命名迁移，<code>supervisor</code> 更名为 <code>nodemanager</code></h3>
+<p>目标：</p>
+<ul>
+<li>将面向模块重启/节点管理的名称统一为 <code>nodemanager</code>，中文统一称为“节点管理器”。</li>
+</ul>
+<ul>
+<li>新增 <code>/nodemanager/cmd</code> 作为节点管理器命令 topic。</li>
+</ul>
+<ul>
+<li>新增 <code>nodemanager_cmd_topic</code> 和 <code>nodemanager_cooldown_s</code> 参数。</li>
+</ul>
+<ul>
+<li>reporter JSON 中新增 <code>measure_execution.nodemanager</code> 字段。</li>
+</ul>
+<ul>
+<li>保留旧 <code>supervisor</code> 字段作为兼容别名，避免历史配置立即失效。</li>
+</ul>
+<p>兼容策略：</p>
+<ul>
+<li>旧 <code>actions: ["supervisor"]</code> 继续解析为节点管理器动作。</li>
+</ul>
+<ul>
+<li>新配置推荐写 <code>actions: ["nodemanager"]</code>。</li>
+</ul>
+<ul>
+<li>旧模块配置字段 <code>supervisor: 1</code> 暂时继续可用，新字段推荐为 <code>nodemanager: 1</code>。</li>
+</ul>
+<ul>
+<li>旧 <code>/supervisor/cmd</code> 可由参数显式配置继续使用，但默认值迁移到 <code>/nodemanager/cmd</code>。</li>
+</ul>
+<ul>
+<li><code>FaultEvent.msg</code> 中已新增 <code>NODEMANAGER=1</code>，并短期保留旧枚举 <code>SUPERVISOR=1</code> 作为兼容别名。</li>
+</ul>
+<p>收益：</p>
+<ul>
+<li>名称更贴近真实职责：节点管理器负责节点/模块重启，而不是沿用泛化的 supervisor 表述。</li>
+</ul>
+<ul>
+<li>后续文档、配置和日志语义更清晰。</li>
+</ul>
+<ul>
+<li>迁移期不打断实机已有配置。</li>
+</ul>
+<h3 id="阶段-1抽出频率模块并固定状态总线">阶段 1：抽出频率模块并固定状态总线</h3>
+<p>目标：</p>
+<ul>
+<li>将 watch topic 频率检测独立为 <code>topic_frequency_monitor_node</code>。</li>
+</ul>
+<ul>
+<li><code>nav2_monitor_aggregator</code> 固定订阅 <code>/monitor/topic_states</code>。</li>
+</ul>
+<ul>
+<li>移除 aggregator 内部原有 topic 直接监听回退路径。</li>
+</ul>
+<p>收益：</p>
+<ul>
+<li>高频 watch topic 与故障聚合解耦。</li>
+</ul>
+<ul>
+<li><code>/livox/imu</code> 频率统计更稳定。</li>
+</ul>
+<ul>
+<li>CPU 满载时不会直接拖慢 aggregator。</li>
+</ul>
+<h3 id="阶段-2抽出小车状态判断">阶段 2：抽出小车状态判断</h3>
+<p>目标：</p>
+<ul>
+<li>新增 <code>vehicle_state_judge_node</code>。</li>
+</ul>
+<ul>
+<li>独立发布 <code>/monitor/vehicle_state</code> 和 <code>/nav2_monitor/human_intervention</code>。</li>
+</ul>
+<ul>
+<li>aggregator 只汇总状态。</li>
+</ul>
+<p>收益：</p>
+<ul>
+<li>底盘异常判断不受碰撞、反馈、TF 判断影响。</li>
+</ul>
+<ul>
+<li>人工介入事件链路更清晰。</li>
+</ul>
+<h3 id="阶段-3抽出碰撞ttc-判断">阶段 3：抽出碰撞/TTC 判断</h3>
+<p>目标：</p>
+<ul>
+<li>新增 <code>collision_monitor_node</code>。</li>
+</ul>
+<ul>
+<li>独立发布 <code>/monitor/collision_state</code>、<code>/navigation_mode</code>、marker。</li>
+</ul>
+<ul>
+<li>保留 <code>collision_voxel_layer</code> 作为输入融合模块。</li>
+</ul>
+<p>收益：</p>
+<ul>
+<li>TTC、控制器切换、碰撞数据源检测独立运行。</li>
+</ul>
+<ul>
+<li>避免点云/体素处理影响其他监控功能。</li>
+</ul>
+<h3 id="阶段-4形成-aggregator">阶段 4：形成 aggregator</h3>
+<p>目标：</p>
+<ul>
+<li><code>nav2_monitor_aggregator_node</code> 不再直接订阅高频原始数据。</li>
+</ul>
+<ul>
+<li>只订阅标准状态。</li>
+</ul>
+<ul>
+<li>统一输出 status、fault_event、nodemanager、safety cmd。</li>
+</ul>
+<p>收益：</p>
+<ul>
+<li>聚合节点轻量、稳定。</li>
+</ul>
+<ul>
+<li>更容易做上层事件中心对接。</li>
+</ul>
+<h2 id="13-配置建议">13. 配置建议</h2>
+<p>建议配置采用“集中编排 + 分层覆盖”，避免每个任务都复制一整套模块配置，也避免所有参数堆进一个超大 YAML。</p>
+<pre><code class="language-text">
+/opt/ry/config/Monitor/
+  monitor_system.yaml
+  monitor_profile.yaml
+  common/
+    vehicle.yaml
+    topics.yaml
+    qos.yaml
+  modules/
+    topic_frequency_monitor.yaml
+    vehicle_state_judge.yaml
+    collision_monitor.yaml
+    algorithm_feedback_monitor.yaml
+    node_tf_monitor.yaml
+    nav2_monitor_aggregator.yaml
+    nodemanager.yaml
+  profiles/
+    default.yaml
+    todoor.yaml
+    elevator.yaml
+    reverse.yaml
+</code></pre>
+<p>核心原则：</p>
+<ul>
+<li><code>monitor_system.yaml</code> 是总编排入口，声明启用哪些模块、模块配置文件路径、当前 profile。</li>
+</ul>
+<ul>
+<li><code>monitor_profile.yaml</code> 只保存当前启用 profile，例如 <code>current_profile: elevator</code>，便于任务切换和 OTA 覆盖。</li>
+</ul>
+<ul>
+<li><code>common/</code> 保存稳定公共约定，例如车体尺寸、frame、公共 topic、QoS 默认策略。</li>
+</ul>
+<ul>
+<li><code>modules/</code> 保存模块默认参数，尽量只改随代码演进的稳定默认值。</li>
+</ul>
+<ul>
+<li><code>profiles/</code> 保存任务差异参数，只写覆盖项，不复制整份模块配置。</li>
+</ul>
+<p>参数最终加载顺序：</p>
+<pre><code class="language-text">
+common defaults
+-&gt; module defaults
+-&gt; selected profile overrides
+-&gt; runtime hot overrides
+</code></pre>
+<p>这样既能保持模块边界，又能保证任务切换只改 profile，不需要逐个修改模块配置文件。</p>
+<h3 id="131-配置分层原则">13.1 配置分层原则</h3>
+<p>配置分层不应理解成“每个模块完全孤立维护一套配置”。更合理的方式是：模块配置负责默认能力，profile 负责任务差异，总入口负责组合关系。</p>
+<h3 id="1311-总入口-monitorsystemyaml">13.1.1 总入口 <code>monitor_system.yaml</code></h3>
+<p>示例：</p>
+<pre><code class="language-yaml">
+schema_version: 1
+config_version: &quot;2026.05.09-001&quot;
+compatible_code_version: &quot;&gt;=2.3&quot;
+
+profile_file: &quot;/opt/ry/config/Monitor/monitor_profile.yaml&quot;
+
+common:
+  vehicle: &quot;common/vehicle.yaml&quot;
+  topics: &quot;common/topics.yaml&quot;
+  qos: &quot;common/qos.yaml&quot;
+
+modules:
+  topic_frequency_monitor:
+    enabled: true
+    config: &quot;modules/topic_frequency_monitor.yaml&quot;
+  vehicle_state_judge:
+    enabled: true
+    config: &quot;modules/vehicle_state_judge.yaml&quot;
+  collision_monitor:
+    enabled: true
+    config: &quot;modules/collision_monitor.yaml&quot;
+  nodemanager:
+    enabled: true
+    config: &quot;modules/nodemanager.yaml&quot;
+</code></pre>
+<p><code>monitor_system.yaml</code> 只描述“系统由哪些模块组成”，不直接塞大量阈值参数。</p>
+<h3 id="1312-当前-profile-monitorprofileyaml">13.1.2 当前 profile <code>monitor_profile.yaml</code></h3>
+<p>示例：</p>
+<pre><code class="language-yaml">
+current_profile: &quot;elevator&quot;
+profile_config: &quot;profiles/elevator.yaml&quot;
+</code></pre>
+<p>切换任务时，只需要更新这个文件或等价运行时参数。模块配置不随任务反复修改。</p>
+<h3 id="1313-模块默认配置-modulesyaml">13.1.3 模块默认配置 <code>modules/*.yaml</code></h3>
+<p>模块默认配置保存稳定默认值。</p>
+<p>示例：</p>
+<pre><code class="language-yaml">
+topic_frequency_monitor:
+  ros__parameters:
+    publish_topic: &quot;/monitor/topic_states&quot;
+    publish_rate_hz: 10.0
+    frequency_window_s: 1.0
+    default_idle_timeout_s: 0.3
+    watched_topics:
+      - topic: &quot;/livox/imu&quot;
+        type: &quot;sensor_msgs/msg/Imu&quot;
+        min_hz: 100.0
+      - topic: &quot;/livox/points&quot;
+        type: &quot;sensor_msgs/msg/PointCloud2&quot;
+        min_hz: 5.0
+</code></pre>
+<h3 id="1314-profile-覆盖配置-profilesyaml">13.1.4 Profile 覆盖配置 <code>profiles/*.yaml</code></h3>
+<p>profile 只写差异项。例如电梯任务更保守，倒车任务启用后向区域：</p>
+<pre><code class="language-yaml">
+profile: &quot;elevator&quot;
+overrides:
+  collision_monitor:
+    ros__parameters:
+      enter_ttc_threshold_s: 1.8
+      exit_ttc_threshold_s: 2.6
+      navigation_safe_min_hold_s: 2.5
+  vehicle_state_judge:
+    ros__parameters:
+      idle_timeout_s: 60.0
+</code></pre>
+<pre><code class="language-yaml">
+profile: &quot;reverse&quot;
+overrides:
+  collision_monitor:
+    ros__parameters:
+      reverse_zones_enabled: true
+      forward_zones_enabled: false
+</code></pre>
+<p>profile 覆盖必须是“局部 patch”，不允许复制整份模块配置，否则后期模块默认值升级时会被旧 profile 覆盖掉。</p>
+<h3 id="1315-有效配置输出">13.1.5 有效配置输出</h3>
+<p>每个模块启动时建议打印最终合成配置摘要，并可选输出一份有效配置：</p>
+<pre><code class="language-text">
+/tmp/monitor_effective_config/&lt;module_name&gt;.yaml
+</code></pre>
+<p>排障时优先看有效配置，而不是人工猜测 common、module、profile 到底谁覆盖了谁。</p>
+<h3 id="1316-迭代与回滚策略">13.1.6 迭代与回滚策略</h3>
+<p>为了形成有效迭代更新，每个配置入口必须带版本：</p>
+<ul>
+<li><code>schema_version</code>：配置结构版本。</li>
+</ul>
+<ul>
+<li><code>config_version</code>：配置包版本，可与 git commit 或 OTA 包版本关联。</li>
+</ul>
+<ul>
+<li><code>compatible_code_version</code>：声明兼容的代码版本范围。</li>
+</ul>
+<ul>
+<li><code>profile</code>：当前任务/场景名。</li>
+</ul>
+<p>回滚时以配置包为单位回滚，而不是只回滚某一个模块 YAML。这样能避免 common 和 profile 版本不匹配。</p>
+<h3 id="132-参数命名规范">13.2 参数命名规范</h3>
+<p>推荐参数命名遵循以下规则：</p>
+<ul>
+<li>时间统一使用 <code>_s</code> 后缀，例如 <code>source_timeout_s</code>。</li>
+</ul>
+<ul>
+<li>频率统一使用 <code>_hz</code> 后缀，例如 <code>publish_rate_hz</code>。</li>
+</ul>
+<ul>
+<li>距离统一使用 <code>_m</code> 后缀，例如 <code>stop_margin_m</code>。</li>
+</ul>
+<ul>
+<li>角速度统一使用 <code>_radps</code> 后缀。</li>
+</ul>
+<ul>
+<li>阈值使用 <code>min_</code>、<code>max_</code>、<code>enter_</code>、<code>exit_</code> 前缀区分含义。</li>
+</ul>
+<ul>
+<li>布尔开关使用 <code>_enabled</code> 后缀。</li>
+</ul>
+<p>示例：</p>
+<pre><code class="language-yaml">
+collision_monitor:
+  ros__parameters:
+    navigation_mode_topic: &quot;/navigation_mode&quot;
+    enter_confirm_time_s: 0.2
+    exit_confirm_time_s: 1.0
+    min_safe_hold_time_s: 2.0
+    enter_ttc_threshold_s: 1.5
+    exit_ttc_threshold_s: 2.2
+    safe_mode_zone_shrink_enabled: true
+</code></pre>
+<h3 id="133-配置校验">13.3 配置校验</h3>
+<p>每个模块启动时应做参数校验，发现明显错误应快速失败并给出明确日志，而不是带着错误参数运行。</p>
+<p>必须校验：</p>
+<ul>
+<li>topic 名称不能为空，除非该输入明确允许禁用。</li>
+</ul>
+<ul>
+<li>频率、时间、距离阈值必须大于 0。</li>
+</ul>
+<ul>
+<li><code>exit_ttc_threshold_s</code> 应大于 <code>enter_ttc_threshold_s</code>。</li>
+</ul>
+<ul>
+<li><code>min_safe_hold_time_s</code> 应大于等于 <code>exit_confirm_time_s</code>。</li>
+</ul>
+<ul>
+<li>footprint 至少 3 个点。</li>
+</ul>
+<ul>
+<li>watch topic 必须配置消息类型，否则 generic subscription 无法创建。</li>
+</ul>
+<p>启动失败日志应包含：</p>
+<pre><code class="language-text">
+module_name
+config_file
+parameter_name
+bad_value
+expected_range
+</code></pre>
+<h3 id="134-配置发布与回滚">13.4 配置发布与回滚</h3>
+<p>实机配置以 <code>/opt/ry/config/Monitor/</code> 为单一事实来源，推荐发布流程：</p>
+<pre><code class="language-text">
+仓库 config/Monitor 修改
+-&gt; 代码评审
+-&gt; 构建测试
+-&gt; 部署到 /opt/ry/config/Monitor
+-&gt; 启动前参数校验
+-&gt; 小流量/单机验证
+-&gt; 全量使用
+</code></pre>
+<p>回滚原则：</p>
+<ul>
+<li>配置和代码版本要能对应。</li>
+</ul>
+<ul>
+<li>每次部署应记录配置版本号或 git commit。</li>
+</ul>
+<ul>
+<li>如果新配置导致模块启动失败，nodemanager 不应无限重启刷屏，应触发配置错误状态。</li>
+</ul>
+<h2 id="14-运行部署设计">14. 运行部署设计</h2>
+<h3 id="141-launch-拆分">14.1 Launch 拆分</h3>
+<p>建议每个模块有独立 launch，也提供总 launch：</p>
+<pre><code class="language-text">
+topic_frequency_monitor.launch.py
+vehicle_state_judge.launch.py
+collision_monitor.launch.py
+algorithm_feedback_monitor.launch.py
+node_tf_monitor.launch.py
+nav2_monitor_aggregator.launch.py
+monitor_system.launch.py
+</code></pre>
+<p>好处：</p>
+<ul>
+<li>便于单模块调试。</li>
+</ul>
+<ul>
+<li>便于 nodemanager 按模块拉起。</li>
+</ul>
+<ul>
+<li>便于在不同车型或任务模式下裁剪模块。</li>
+</ul>
+<h3 id="142-进程命名">14.2 进程命名</h3>
+<p>ROS node name、nodemanager module name、日志 module name 应保持一致或可明确映射。</p>
+<p>推荐：</p>
+<pre><code class="language-text">
+topic_frequency_monitor
+vehicle_state_judge
+collision_monitor
+algorithm_feedback_monitor
+node_tf_monitor
+battery_monitor
+nav2_monitor_aggregator
+</code></pre>
+<p>不要在日志里混用旧名 <code>bridge</code>、<code>monitor</code>、<code>checker</code> 等模糊名称。名称越稳定，排障越快。</p>
+<h3 id="143-日志策略">14.3 日志策略</h3>
+<p>日志需要支持快速定位，但不能在高频回调内刷屏。</p>
+<p>推荐：</p>
+<ul>
+<li>数据源丢失：状态变化时打印一次，恢复时打印一次。</li>
+</ul>
+<ul>
+<li>高频统计：默认不逐帧打印，只在状态变化或 debug 开关打开时打印。</li>
+</ul>
+<ul>
+<li>TTC 切换：打印进入 pending、进入 SAFE、退出 pending、恢复 FAST。</li>
+</ul>
+<ul>
+<li>人工介入：每次事件发布打印 event_id、fault_key、reason。</li>
+</ul>
+<ul>
+<li>参数错误：启动时直接打印明确错误并退出。</li>
+</ul>
+<p>高频日志必须限速，例如：</p>
+<pre><code class="language-text">
+RCLCPP_WARN_THROTTLE(logger, clock, 5000, &quot;...&quot;)
+</code></pre>
+<h3 id="144-观测命令">14.4 观测命令</h3>
+<p>所有 ROS 命令显式声明 <code>ROS_DOMAIN_ID=66</code>。</p>
+<p>查看 topic 是否存在：</p>
+<pre><code class="language-bash">
+env ROS_DOMAIN_ID=66 ros2 topic list
+</code></pre>
+<p>查看 IMU 直测频率：</p>
+<pre><code class="language-bash">
+env ROS_DOMAIN_ID=66 ros2 topic hz /livox/imu
+</code></pre>
+<p>查看监控汇总状态：</p>
+<pre><code class="language-bash">
+env ROS_DOMAIN_ID=66 ros2 topic echo /nav2_monitor/status
+</code></pre>
+<p>查看人工介入提醒：</p>
+<pre><code class="language-bash">
+env ROS_DOMAIN_ID=66 ros2 topic echo /nav2_monitor/human_intervention
+</code></pre>
+<p>发布导航模式切换测试：</p>
+<pre><code class="language-bash">
+env ROS_DOMAIN_ID=66 ros2 topic pub --once /navigation_mode std_msgs/msg/String &quot;{data: SAFE}&quot;
+</code></pre>
+<p>恢复导航模式：</p>
+<pre><code class="language-bash">
+env ROS_DOMAIN_ID=66 ros2 topic pub --once /navigation_mode std_msgs/msg/String &quot;{data: FAST}&quot;
+</code></pre>
+<h2 id="15-风险与权衡">15. 风险与权衡</h2>
+<h3 id="151-多进程带来的开销">15.1 多进程带来的开销</h3>
+<p>风险：</p>
+<ul>
+<li>进程数增加。</li>
+</ul>
+<ul>
+<li>launch 和 nodemanager 配置更复杂。</li>
+</ul>
+<ul>
+<li>topic 数量增加。</li>
+</ul>
+<p>缓解：</p>
+<ul>
+<li>先拆高价值模块。</li>
+</ul>
+<ul>
+<li>标准化命名和配置路径。</li>
+</ul>
+<ul>
+<li>文档化 topic 契约。</li>
+</ul>
+<h3 id="152-topic-通信仍可能丢数据">15.2 topic 通信仍可能丢数据</h3>
+<p>风险：</p>
+<ul>
+<li>CPU 满载时，topic callback 仍可能延迟或丢帧。</li>
+</ul>
+<p>缓解：</p>
+<ul>
+<li>高频原始数据允许丢旧帧。</li>
+</ul>
+<ul>
+<li>状态 topic 用 <code>transient_local</code> 保最后状态。</li>
+</ul>
+<ul>
+<li>关键事件交给上层 ACK/重发/落盘。</li>
+</ul>
+<ul>
+<li>给关键进程更高优先级。</li>
+</ul>
+<h3 id="153-状态延迟">15.3 状态延迟</h3>
+<p>风险：</p>
+<ul>
+<li>多一层状态 topic 后，aggregator 看到的是模块输出状态，不是原始数据瞬时值。</li>
+</ul>
+<p>缓解：</p>
+<ul>
+<li>状态发布频率保持 5-10Hz。</li>
+</ul>
+<ul>
+<li>状态消息携带 <code>stamp</code> 和 <code>last_source_stamp</code>。</li>
+</ul>
+<ul>
+<li>aggregator 根据时间戳判断状态是否 stale。</li>
+</ul>
+<h3 id="154-配置复杂度上升">15.4 配置复杂度上升</h3>
+<p>风险：</p>
+<ul>
+<li>模块拆分后配置文件变多。</li>
+</ul>
+<ul>
+<li>参数之间存在隐含约束。</li>
+</ul>
+<ul>
+<li>实机 <code>/opt</code> 配置和仓库镜像可能不一致。</li>
+</ul>
+<p>缓解：</p>
+<ul>
+<li>使用清晰目录结构。</li>
+</ul>
+<ul>
+<li>每个模块只读取自己的配置。</li>
+</ul>
+<ul>
+<li>启动时打印实际加载的配置路径。</li>
+</ul>
+<ul>
+<li>增加参数校验和配置版本字段。</li>
+</ul>
+<ul>
+<li>文档明确 <code>/opt/ry/config/Monitor/</code> 是运行时单一事实来源。</li>
+</ul>
+<h3 id="155-过度拆分">15.5 过度拆分</h3>
+<p>风险：</p>
+<ul>
+<li>如果把非常小、强相关、低频的逻辑也拆成独立进程，会增加运维成本。</li>
+</ul>
+<p>缓解：</p>
+<ul>
+<li>优先拆高频、高风险、强实时模块。</li>
+</ul>
+<ul>
+<li>低频且强相关的判断可先保留在 aggregator 内。</li>
+</ul>
+<ul>
+<li>以“故障影响面是否值得单独重启”为拆分标准。</li>
+</ul>
+<h2 id="16-验证方案">16. 验证方案</h2>
+<h3 id="161-功能验证">16.1 功能验证</h3>
+<ul>
+<li>单独启动每个监控模块，确认其输出 topic 正常。</li>
+</ul>
+<ul>
+<li>停掉单个数据源，确认只影响对应状态。</li>
+</ul>
+<ul>
+<li>停掉单个监控模块，确认其他模块继续运行。</li>
+</ul>
+<ul>
+<li>重启 aggregator，确认能从 <code>transient_local</code> 状态恢复。</li>
+</ul>
+<h3 id="162-压力验证">16.2 压力验证</h3>
+<ul>
+<li>使用 CPU 压力工具制造 80%-100% CPU 占用。</li>
+</ul>
+<ul>
+<li>测量 <code>/livox/imu</code> 直测频率与 <code>/monitor/topic_states</code> 频率差异。</li>
+</ul>
+<ul>
+<li>验证高频数据掉帧不会导致事件链路阻塞。</li>
+</ul>
+<ul>
+<li>验证 <code>fault_event</code>、<code>human_intervention</code>、<code>nodemanager/cmd</code> 仍能发布。</li>
+</ul>
+<h3 id="163-故障注入">16.3 故障注入</h3>
+<ul>
+<li>kill <code>topic_frequency_monitor_node</code>，检查 nodemanager 是否只重启该模块。</li>
+</ul>
+<ul>
+<li>kill <code>vehicle_state_judge_node</code>，检查碰撞和频率模块是否继续工作。</li>
+</ul>
+<ul>
+<li>模拟 <code>/command</code> 有速度但 IMU/moto/odom 不动，确认人工介入事件发布。</li>
+</ul>
+<ul>
+<li>模拟 TTC 障碍物进入/退出，确认 <code>/navigation_mode</code> 不反复跳变。</li>
+</ul>
+<h3 id="164-qos-验证">16.4 QoS 验证</h3>
+<p>需要专门验证 QoS 匹配，因为 <code>ros2 topic echo/hz</code> 能订阅到，不代表业务节点一定能订阅到。原因是 CLI 工具通常会尝试较通用的 QoS，而业务节点如果固定 reliable/best_effort，可能与发布端不兼容。</p>
+<p>验证项：</p>
+<ul>
+<li>对每个高频原始 topic，记录发布端 QoS。</li>
+</ul>
+<ul>
+<li>业务订阅端使用与发布端兼容的 QoS。</li>
+</ul>
+<ul>
+<li>如果支持自动 QoS 探测，验证发布端 QoS 改变后订阅仍能建立。</li>
+</ul>
+<ul>
+<li>对状态 topic，验证新启动订阅者能立即收到最后状态。</li>
+</ul>
+<ul>
+<li>对事件 topic，验证连续多个事件不会只保留最后一个。</li>
+</ul>
+<p>示例命令：</p>
+<pre><code class="language-bash">
+env ROS_DOMAIN_ID=66 ros2 topic info /livox/imu --verbose
+</code></pre>
+<h3 id="165-频率验证">16.5 频率验证</h3>
+<p>频率计算需要同时验证“响应快”和“波动不过大”：</p>
+<ul>
+<li>稳态运行 60 秒，记录平均值、最小值、最大值、P95、P99。</li>
+</ul>
+<ul>
+<li>停止发布端，验证 idle timeout 内能归零或标记 stale。</li>
+</ul>
+<ul>
+<li>恢复发布端，验证恢复时间。</li>
+</ul>
+<ul>
+<li>CPU 压力下重复测试。</li>
+</ul>
+<ul>
+<li>对比 <code>ros2 topic hz</code>、硬件标称频率、监控模块输出频率。</li>
+</ul>
+<p>需要注意：<code>ros2 topic hz</code> 本身也是一个订阅者，它测到的是 CLI 进程收到的频率，不是发布端真实频率，也不是 monitor 节点收到的频率。因此它只能作为参考基准，不能作为唯一真值。</p>
+<h3 id="166-验收矩阵">16.6 验收矩阵</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>场景</th><th>预期结果</th></tr></thead>
+<tbody>
+<tr><td><code>/livox/imu</code> 正常 200Hz</td><td>频率模块输出稳定接近 200Hz</td></tr>
+<tr><td><code>/livox/imu</code> 停止</td><td>频率模块只报告 IMU stale，不影响碰撞模块</td></tr>
+<tr><td><code>/scan</code> 丢失但 depth cloud 正常</td><td>体素模块继续发布有效体素</td></tr>
+<tr><td>depth cloud 丢失但 <code>/scan</code> 正常</td><td>体素模块继续发布有效体素</td></tr>
+<tr><td><code>/command</code> 有速度但实际不动</td><td>小车状态模块发布人工介入提醒</td></tr>
+<tr><td><code>/command</code> 无速度但车辆短暂滑行</td><td><code>coast_grace_s</code> 内不误报</td></tr>
+<tr><td>TTC 障碍持续进入</td><td><code>/navigation_mode</code> 切换到 <code>SAFE</code></td></tr>
+<tr><td>TTC 障碍边界抖动</td><td>不允许 FAST/SAFE 高频跳变</td></tr>
+<tr><td>aggregator 崩溃重启</td><td>各模块继续运行，aggregator 快速恢复最后状态</td></tr>
+<tr><td>外部 MQTT 模块离线</td><td>本系统继续发布 topic，不阻塞安全判断</td></tr>
+</tbody></table></div>
+<h2 id="17-推荐落地顺序">17. 推荐落地顺序</h2>
+<p>推荐按风险收益比实施：</p>
+<ol>
+<li>先完成 <code>supervisor -&gt; nodemanager</code> 命名迁移设计与兼容层，确保新旧配置都能工作。</li>
+</ol>
+<ol>
+<li>抽出 <code>topic_frequency_monitor_node</code>。</li>
+</ol>
+<ol>
+<li>定义 <code>/monitor/topic_states</code> 标准状态消息或 JSON 兼容格式。</li>
+</ol>
+<ol>
+<li>让 aggregator 消费 topic state，而不是直接统计全部 watch topic。</li>
+</ol>
+<ol>
+<li>抽出 <code>vehicle_state_judge_node</code>。</li>
+</ol>
+<ol>
+<li>抽出 <code>collision_monitor_node</code>。</li>
+</ol>
+<ol>
+<li>最后整理 <code>nav2_monitor_aggregator_node</code>，只保留低频状态汇总和本机输出。</li>
+</ol>
+<h3 id="171-当前实现状态">17.1 当前实现状态</h3>
+<p>本轮实现按完整新方案落地，不再保留旧直连兼容路径：</p>
+<ul>
+<li>已完成 <code>nodemanager</code> 命名兼容层，默认使用 <code>/nodemanager/cmd</code>。</li>
+</ul>
+<ul>
+<li>已抽出 <code>topic_frequency_monitor_node</code>，独立 launch 和独立 <code>/opt</code> 配置。</li>
+</ul>
+<ul>
+<li>已新增 <code>/monitor/topic_states</code> JSON 状态输出。</li>
+</ul>
+<ul>
+<li>已抽出 <code>vehicle_state_judge_node</code>、<code>node_tf_monitor_node</code>、<code>battery_monitor_node</code>、<code>algorithm_feedback_monitor_node</code>、<code>collision_monitor_node</code>。</li>
+</ul>
+<ul>
+<li><code>nav2_monitor_aggregator</code> 固定消费 <code>/monitor/*_state</code>，不再直连 watch topic、底盘反馈、算法反馈原始输入或碰撞原始输入。</li>
+</ul>
+<ul>
+<li>后续部署直接按本方案启动全套独立模块和 aggregator。</li>
+</ul>
+<h2 id="18-结论">18. 结论</h2>
+<p>如果目标是“所有模块尽量互不影响，同时还能相互数据联通”，最佳方案不是在单个节点里继续增加线程，而是：</p>
+<pre><code class="language-text">
+多进程故障隔离
++ 标准化 ROS topic 状态总线
++ 高频数据保最新
++ 状态 topic 保最后值
++ 事件 topic 带 event_id/sequence
++ ACK/重发/落盘/云端确认交给上层
++ nodemanager 节点管理器按模块重启
++ 关键模块 CPU/调度优先级保障
+</code></pre>
+<p>本系统保持本机安全监控职责清晰：发现问题、形成状态、发布事件、发出本机安全/重启请求。最终确认、云端可靠投递和跨系统事件闭环由上层统一处理。</p>
+      <div class="meta">本文档已统一为 HTML 形式，便于浏览、打印和后续可视化扩展。</div>
+    </article>
+  </div>
+</body>
+</html>

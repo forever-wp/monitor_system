@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CONFIGURATION</title>
+  <style>
+    :root {
+      --bg: #f6f7f8;
+      --paper: #ffffff;
+      --ink: #1f2a2c;
+      --muted: #5f6f73;
+      --line: #dbe3e6;
+      --brand: #1f6f50;
+      --brand-soft: #e7f3ee;
+      --shadow: 0 10px 28px rgb(31 42 44 / 8%);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: linear-gradient(160deg, #f6f7f8 0%, #edf3f5 100%);
+      font-family: "Noto Sans SC", "Microsoft YaHei", Arial, sans-serif;
+      line-height: 1.72;
+    }
+    .page {
+      width: min(1100px, calc(100% - 28px));
+      margin: 0 auto;
+      padding: 28px 0 48px;
+    }
+    .card {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+      padding: 28px;
+    }
+    h1, h2, h3, h4, h5, h6 { line-height: 1.28; margin: 22px 0 10px; }
+    h1 { margin-top: 6px; font-size: clamp(28px, 4vw, 44px); }
+    h2 { font-size: clamp(21px, 2.7vw, 31px); }
+    h3 { font-size: clamp(18px, 2.1vw, 24px); }
+    p { margin: 10px 0; }
+    code {
+      padding: 2px 6px;
+      border-radius: 6px;
+      background: var(--brand-soft);
+      color: #154933;
+      font-family: "JetBrains Mono", Consolas, monospace;
+      font-size: 0.93em;
+    }
+    pre {
+      margin: 14px 0;
+      padding: 14px;
+      border-radius: 12px;
+      background: #152124;
+      color: #e6f0f2;
+      overflow-x: auto;
+      border: 1px solid #26363a;
+    }
+    pre code {
+      padding: 0;
+      background: transparent;
+      color: inherit;
+      font-size: 0.9em;
+    }
+    ul, ol { padding-left: 22px; margin: 8px 0 14px; }
+    li { margin: 4px 0; }
+    blockquote {
+      margin: 14px 0;
+      padding: 10px 14px;
+      border-left: 4px solid var(--brand);
+      background: var(--brand-soft);
+      color: #1f4f3c;
+    }
+    a { color: #1f5f8c; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .toc {
+      margin-bottom: 18px;
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #f9fcfd;
+    }
+    .toc strong { display: block; margin-bottom: 8px; color: var(--brand); }
+    .toc ul { margin: 0; padding-left: 18px; }
+    .table-wrap {
+      overflow-x: auto;
+      margin: 12px 0;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+    }
+    table { border-collapse: collapse; width: 100%; min-width: 520px; }
+    th, td {
+      border-bottom: 1px solid var(--line);
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+    thead th {
+      color: var(--brand);
+      background: var(--brand-soft);
+    }
+    tbody tr:last-child td { border-bottom: none; }
+    .meta {
+      margin-top: 20px;
+      color: var(--muted);
+      font-size: 13px;
+      border-top: 1px dashed var(--line);
+      padding-top: 12px;
+    }
+    @media (max-width: 720px) {
+      .card { padding: 20px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <article class="card">
+      <aside class="toc"><strong>目录</strong><ul><li><a href="#nav2monitor-配置说明">nav2_monitor 配置说明</a></li><li><a href="#1-节点参数层">1. 节点参数层</a></li><li><a href="#2-业务规则层">2. 业务规则层</a></li><li><a href="#3-任务切换">3. 任务切换</a></li><li><a href="#4-修改建议">4. 修改建议</a></li><li><a href="#5-校验要点">5. 校验要点</a></li></ul></aside>
+<h1 id="nav2monitor-配置说明">nav2_monitor 配置说明</h1>
+<p>本目录是包内默认配置，运行时配置通常同步到 <code>/opt/ry/config/Monitor/nav2_monitor/</code>。仓库根目录的 <code>config/Monitor/nav2_monitor/</code> 是部署配置镜像，两边的配置层级应保持一致。</p>
+<p>配置分为两层：节点参数层和业务规则层。节点参数层负责“节点怎么启动、订阅哪个状态、输出到哪里”；业务规则层负责“监控什么、怎样判故障、触发什么动作”。任务切换只切换业务规则文件，不需要为每个任务复制整套节点参数。</p>
+<h2 id="1-节点参数层">1. 节点参数层</h2>
+<p>这些文件都是 ROS 2 参数文件，格式必须是：</p>
+<pre><code class="language-yaml">
+节点名:
+  ros__parameters:
+    参数名: 参数值
+</code></pre>
+<p>顶层节点名必须和 launch 中的 <code>name=</code> 完全一致，否则 ROS 2 不会把参数加载到对应节点。</p>
+<div class="table-wrap"><table>
+<thead><tr><th>文件</th><th>顶层节点名</th><th>作用</th></tr></thead>
+<tbody>
+<tr><td><code>nav2_monitor_params.yaml</code></td><td><code>nav2_monitor_aggregator</code></td><td>聚合器参数，消费 <code>/monitor/*_state</code>，发布状态、故障事件、节点管理器命令和安全命令。</td></tr>
+<tr><td><code>topic_frequency_monitor_params.yaml</code></td><td><code>topic_frequency_monitor</code></td><td>topic 数据源、频率、新鲜度监测参数。</td></tr>
+<tr><td><code>vehicle_state_judge_params.yaml</code></td><td><code>vehicle_state_judge</code></td><td>小车状态判断节点参数，检测有指令不动、无指令仍运动、数据源缺失等。</td></tr>
+<tr><td><code>node_tf_monitor_params.yaml</code></td><td><code>node_tf_monitor</code></td><td>ROS 节点在线状态和 TF 可用性监测参数。</td></tr>
+<tr><td><code>battery_monitor_params.yaml</code></td><td><code>battery_monitor</code></td><td>电池 topic 订阅和状态输出参数。</td></tr>
+<tr><td><code>algorithm_feedback_monitor_params.yaml</code></td><td><code>algorithm_feedback_monitor</code></td><td>算法反馈状态监测参数。</td></tr>
+<tr><td><code>collision_monitor_params.yaml</code></td><td><code>collision_monitor</code></td><td>碰撞/TTC 原始输入、导航模式切换和可视化相关参数。</td></tr>
+</tbody></table></div>
+<p>聚合器只订阅标准状态总线：</p>
+<pre><code class="language-text">
+/monitor/topic_states
+/monitor/vehicle_state
+/monitor/node_tf_state
+/monitor/battery_state
+/monitor/feedback_state
+/monitor/collision_state
+</code></pre>
+<p>聚合器不再直接订阅高频传感器、底盘反馈、算法反馈原始输入或碰撞原始输入。</p>
+<h2 id="2-业务规则层">2. 业务规则层</h2>
+<p>这些文件不是 ROS 2 参数文件，不包含 <code>ros__parameters</code>。</p>
+<div class="table-wrap"><table>
+<thead><tr><th>文件</th><th>作用</th></tr></thead>
+<tbody>
+<tr><td><code>fault_detector_config.yaml</code></td><td>默认业务规则，定义模块、topic、TF、碰撞、小车状态、组合故障等规则。</td></tr>
+<tr><td><code>profiles/fault_detector_todoor.yaml</code></td><td>到门任务规则。</td></tr>
+<tr><td><code>profiles/fault_detector_elevator.yaml</code></td><td>电梯任务规则。</td></tr>
+<tr><td><code>profiles/fault_detector_reverse.yaml</code></td><td>倒车任务规则。</td></tr>
+</tbody></table></div>
+<p>业务规则顶层结构：</p>
+<pre><code class="language-yaml">
+multi_value_judge:
+combined_fault_rules:
+target_transforms:
+collision_detection:
+vehicle_state_judge:
+modules:
+</code></pre>
+<p><code>modules</code> 中每个模块描述节点、topic 和反馈规则。当前格式只使用 <code>nodemanager</code>，不使用旧 <code>supervisor</code> 字段。</p>
+<h2 id="3-任务切换">3. 任务切换</h2>
+<p>任务切换入口在 <code>nav2_monitor_params.yaml</code>：</p>
+<pre><code class="language-yaml">
+current_nav_task: &quot;default&quot;
+task_status_topic: &quot;/task_status_code&quot;
+task_fault_configs.default: &quot;/opt/ry/config/Monitor/nav2_monitor/fault_detector_config.yaml&quot;
+task_fault_configs.todoor: &quot;/opt/ry/config/Monitor/nav2_monitor/profiles/fault_detector_todoor.yaml&quot;
+task_fault_configs.elevator: &quot;/opt/ry/config/Monitor/nav2_monitor/profiles/fault_detector_elevator.yaml&quot;
+task_fault_configs.reverse: &quot;/opt/ry/config/Monitor/nav2_monitor/profiles/fault_detector_reverse.yaml&quot;
+</code></pre>
+<p>切换任务时，只切换当前使用的 <code>fault_detector_config</code> 路径。节点参数文件仍保持同一套，避免每个任务都复制一组启动参数。</p>
+<p>聚合器会把当前任务和 <code>fault_config</code> 通过 <code>/monitor/config_profile</code> 广播出去，QoS 为 <code>reliable + transient_local</code>。以下独立模块会订阅该 topic，并在 profile 变化时自动重载业务规则：</p>
+<ul>
+<li><code>vehicle_state_judge</code></li>
+</ul>
+<ul>
+<li><code>node_tf_monitor</code></li>
+</ul>
+<ul>
+<li><code>algorithm_feedback_monitor</code></li>
+</ul>
+<ul>
+<li><code>collision_monitor</code></li>
+</ul>
+<ul>
+<li><code>topic_frequency_monitor</code></li>
+</ul>
+<p><code>topic_frequency_monitor</code> 从当前业务规则的 <code>modules[].watch_topics</code> 生成监控清单。只有配置了 <code>min_hz &gt; 0</code> 的 topic 才会通过 ROS graph 自动发现消息类型并建立订阅计算频率；未配置 <code>min_hz</code> 的 topic 只检查 publisher 是否存在，不订阅数据流。任务 profile 切换后会自动重建清单；如果某个需要频率统计的 topic 暂时没有发布者，频率节点会先输出 <code>has_publisher=false</code>、<code>has_data=false</code>，等发布者出现后自动补建订阅。</p>
+<h2 id="4-修改建议">4. 修改建议</h2>
+<ul>
+<li>改 topic 名、输出名、超时时间：优先修改对应 <code>*_params.yaml</code>。</li>
+</ul>
+<ul>
+<li>改监控哪些模块、哪些节点、哪些 topic、故障动作：修改 <code>fault_detector_config.yaml</code> 或对应 profile。</li>
+</ul>
+<ul>
+<li>改 TTC、碰撞源、导航 FAST/SAFE 切换：修改 <code>collision_detection</code> 段，必要时同步 <code>collision_monitor_params.yaml</code> 中的基础参数。</li>
+</ul>
+<ul>
+<li>改小车状态判断阈值：修改 <code>vehicle_state_judge</code> 段。</li>
+</ul>
+<ul>
+<li>新增任务模式：新增 <code>profiles/fault_detector_xxx.yaml</code>，并在 <code>nav2_monitor_params.yaml</code> 中增加 <code>task_fault_configs.xxx</code> 和任务状态码映射。</li>
+</ul>
+<ul>
+<li>如果新增的任务 profile 改了碰撞、小车状态、节点/TF、算法反馈或 watch topic 规则，独立模块会通过 <code>/monitor/config_profile</code> 自动跟随。</li>
+</ul>
+<h2 id="5-校验要点">5. 校验要点</h2>
+<ul>
+<li>所有 <code>*_params.yaml</code> 顶层节点名必须和 launch 节点名一致。</li>
+</ul>
+<ul>
+<li><code>fault_detector_config.yaml</code> 和 profiles 不要加 <code>ros__parameters</code>。</li>
+</ul>
+<ul>
+<li>配置中不要使用旧字段 <code>supervisor</code>、<code>topics</code>、<code>feedback_topics</code>、<code>topic_name</code>。</li>
+</ul>
+<ul>
+<li>部署路径统一使用 <code>/opt/ry/config/Monitor/nav2_monitor/</code>。</li>
+</ul>
+      <div class="meta">本文档已统一为 HTML 形式，便于浏览、打印和后续可视化扩展。</div>
+    </article>
+  </div>
+</body>
+</html>

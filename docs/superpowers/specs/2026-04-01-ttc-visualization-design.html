@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>2026-04-01-ttc-visualization-design</title>
+  <style>
+    :root {
+      --bg: #f6f7f8;
+      --paper: #ffffff;
+      --ink: #1f2a2c;
+      --muted: #5f6f73;
+      --line: #dbe3e6;
+      --brand: #1f6f50;
+      --brand-soft: #e7f3ee;
+      --shadow: 0 10px 28px rgb(31 42 44 / 8%);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: linear-gradient(160deg, #f6f7f8 0%, #edf3f5 100%);
+      font-family: "Noto Sans SC", "Microsoft YaHei", Arial, sans-serif;
+      line-height: 1.72;
+    }
+    .page {
+      width: min(1100px, calc(100% - 28px));
+      margin: 0 auto;
+      padding: 28px 0 48px;
+    }
+    .card {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+      padding: 28px;
+    }
+    h1, h2, h3, h4, h5, h6 { line-height: 1.28; margin: 22px 0 10px; }
+    h1 { margin-top: 6px; font-size: clamp(28px, 4vw, 44px); }
+    h2 { font-size: clamp(21px, 2.7vw, 31px); }
+    h3 { font-size: clamp(18px, 2.1vw, 24px); }
+    p { margin: 10px 0; }
+    code {
+      padding: 2px 6px;
+      border-radius: 6px;
+      background: var(--brand-soft);
+      color: #154933;
+      font-family: "JetBrains Mono", Consolas, monospace;
+      font-size: 0.93em;
+    }
+    pre {
+      margin: 14px 0;
+      padding: 14px;
+      border-radius: 12px;
+      background: #152124;
+      color: #e6f0f2;
+      overflow-x: auto;
+      border: 1px solid #26363a;
+    }
+    pre code {
+      padding: 0;
+      background: transparent;
+      color: inherit;
+      font-size: 0.9em;
+    }
+    ul, ol { padding-left: 22px; margin: 8px 0 14px; }
+    li { margin: 4px 0; }
+    blockquote {
+      margin: 14px 0;
+      padding: 10px 14px;
+      border-left: 4px solid var(--brand);
+      background: var(--brand-soft);
+      color: #1f4f3c;
+    }
+    a { color: #1f5f8c; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .toc {
+      margin-bottom: 18px;
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #f9fcfd;
+    }
+    .toc strong { display: block; margin-bottom: 8px; color: var(--brand); }
+    .toc ul { margin: 0; padding-left: 18px; }
+    .table-wrap {
+      overflow-x: auto;
+      margin: 12px 0;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+    }
+    table { border-collapse: collapse; width: 100%; min-width: 520px; }
+    th, td {
+      border-bottom: 1px solid var(--line);
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+    thead th {
+      color: var(--brand);
+      background: var(--brand-soft);
+    }
+    tbody tr:last-child td { border-bottom: none; }
+    .meta {
+      margin-top: 20px;
+      color: var(--muted);
+      font-size: 13px;
+      border-top: 1px dashed var(--line);
+      padding-top: 12px;
+    }
+    @media (max-width: 720px) {
+      .card { padding: 20px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <article class="card">
+      <aside class="toc"><strong>目录</strong><ul><li><a href="#ttc-visualization-design">TTC Visualization Design</a></li><li><a href="#background">Background</a></li><li><a href="#goal">Goal</a></li><li><a href="#scope">Scope</a></li><li><a href="#chosen-design">Chosen Design</a></li><li><a href="#visualized-items">Visualized Items</a></li><li><a href="#runtime-behavior">Runtime Behavior</a></li><li><a href="#why-this-design">Why This Design</a></li><li><a href="#affected-files">Affected Files</a></li><li><a href="#testing-strategy">Testing Strategy</a></li><li><a href="#risks-and-mitigations">Risks And Mitigations</a></li><li><a href="#verification-criteria">Verification Criteria</a></li></ul></aside>
+<h1 id="ttc-visualization-design">TTC Visualization Design</h1>
+<h2 id="background">Background</h2>
+<p>当前 <code>nav2_monitor</code> 已支持 <code>approach / TTC</code> 碰撞检测，包括：</p>
+<ul>
+<li>footprint clearance</li>
+</ul>
+<ul>
+<li>轻量预测轨迹</li>
+</ul>
+<ul>
+<li>hysteresis / min hold</li>
+</ul>
+<p>但目前在 RViz2 中只能看到静态碰撞区 polygon， 无法直接看到 TTC 计算过程中的预测轨迹、预测 footprint、最近碰撞点或 TTC 数值。</p>
+<h2 id="goal">Goal</h2>
+<p>为 <code>approach / TTC</code> 增加 RViz2 可视化，并通过单一配置开关控制开闭。</p>
+<h2 id="scope">Scope</h2>
+<p>In scope:</p>
+<ul>
+<li>为 <code>approach / TTC</code> 增加 <code>MarkerArray</code> 可视化</li>
+</ul>
+<ul>
+<li>增加一个总开关配置</li>
+</ul>
+<ul>
+<li>默认关闭，避免影响现网开销</li>
+</ul>
+<ul>
+<li>增加相应测试和文档</li>
+</ul>
+<p>Out of scope:</p>
+<ul>
+<li>不改现有 <code>PolygonStamped</code> zone 可视化逻辑</li>
+</ul>
+<ul>
+<li>不增加复杂的可视化参数矩阵</li>
+</ul>
+<ul>
+<li>不改变 TTC 判定本身</li>
+</ul>
+<h2 id="chosen-design">Chosen Design</h2>
+<p>采用最小实现：</p>
+<ul>
+<li>在 <code>collision_detection</code> 下增加一个总开关：</li>
+</ul>
+<pre><code class="language-yaml">
+ttc_visualization_enabled: 0
+</code></pre>
+<ul>
+<li>当开关关闭时，不发布 TTC 可视化 marker</li>
+</ul>
+<ul>
+<li>当开关打开时，发布一个固定 topic：</li>
+</ul>
+<pre><code class="language-text">
+/nav2_monitor/collision_ttc_markers
+</code></pre>
+<ul>
+<li>使用 <code>visualization_msgs/msg/MarkerArray</code></li>
+</ul>
+<h2 id="visualized-items">Visualized Items</h2>
+<p>仅针对 <code>approach / TTC</code> 发布以下内容：</p>
+<ol>
+<li>预测轨迹 <code>LINE_STRIP</code></li>
+</ol>
+<ol>
+<li>预测 footprint 轮廓</li>
+</ol>
+<ol>
+<li>最近碰撞点 <code>SPHERE</code></li>
+</ol>
+<ol>
+<li>TTC 文本 <code>TEXT_VIEW_FACING</code></li>
+</ol>
+<p>这些 marker 只作为调试辅助，不参与控制。</p>
+<h2 id="runtime-behavior">Runtime Behavior</h2>
+<ul>
+<li>开关关闭：</li>
+</ul>
+<ul>
+<li>不发布 TTC marker</li>
+</ul>
+<ul>
+<li>不影响现有 zone polygon 可视化</li>
+</ul>
+<ul>
+<li>开关打开：</li>
+</ul>
+<ul>
+<li>在 <code>approach / TTC</code> 路径计算后构造 marker</li>
+</ul>
+<ul>
+<li>每次 <code>check_health()</code> 或碰撞评估周期更新</li>
+</ul>
+<ul>
+<li>无有效 TTC 时清空或发布空 marker 集</li>
+</ul>
+<h2 id="why-this-design">Why This Design</h2>
+<ul>
+<li>单开关最简单，符合“只需要设置开关”</li>
+</ul>
+<ul>
+<li>默认关闭，避免给现网增加额外负担</li>
+</ul>
+<ul>
+<li>用固定 topic，便于 RViz2 直接配置</li>
+</ul>
+<ul>
+<li>不把 zone polygon 和 TTC 轨迹混到一套消息里，调试更清晰</li>
+</ul>
+<h2 id="affected-files">Affected Files</h2>
+<ul>
+<li><code>src/nav2_monitor/include/nav2_monitor/fault_detector.hpp</code></li>
+</ul>
+<ul>
+<li><code>src/nav2_monitor/src/fault_detector.cpp</code></li>
+</ul>
+<ul>
+<li><code>src/nav2_monitor/include/nav2_monitor/collision_evaluator.hpp</code></li>
+</ul>
+<ul>
+<li><code>src/nav2_monitor/src/collision_evaluator.cpp</code></li>
+</ul>
+<ul>
+<li><code>src/nav2_monitor/include/nav2_monitor/nav2_monitor_node.hpp</code></li>
+</ul>
+<ul>
+<li><code>src/nav2_monitor/src/nav2_monitor_node.cpp</code></li>
+</ul>
+<ul>
+<li><code>src/nav2_monitor/test/test_fault_detector.cpp</code></li>
+</ul>
+<ul>
+<li><code>config/Monitor/nav2_monitor/fault_detector_config.yaml</code></li>
+</ul>
+<ul>
+<li><code>config/Monitor/nav2_monitor/profiles/*.yaml</code></li>
+</ul>
+<ul>
+<li><code>src/nav2_monitor/config/*.yaml</code></li>
+</ul>
+<ul>
+<li><code>src/nav2_monitor/README.md</code></li>
+</ul>
+<ul>
+<li><code>src/nav2_monitor/docs/architecture.html</code></li>
+</ul>
+<h2 id="testing-strategy">Testing Strategy</h2>
+<p>新增/调整验证：</p>
+<ul>
+<li>默认关闭时，现有测试全部保持通过</li>
+</ul>
+<ul>
+<li>打开开关时，能创建并发布 TTC marker topic</li>
+</ul>
+<ul>
+<li><code>approach / TTC</code> 逻辑不回归</li>
+</ul>
+<h2 id="risks-and-mitigations">Risks And Mitigations</h2>
+<ul>
+<li>风险：marker 发布增加少量运行时开销</li>
+</ul>
+<ul>
+<li>缓解：默认关闭，仅调试时打开</li>
+</ul>
+<ul>
+<li>风险：轨迹/footprint marker 与现有 polygon 可视化混淆</li>
+</ul>
+<ul>
+<li>缓解：单独使用 <code>/nav2_monitor/collision_ttc_markers</code></li>
+</ul>
+<ul>
+<li>风险：无有效 TTC 时显示残留 marker</li>
+</ul>
+<ul>
+<li>缓解：无有效命中时主动清空 marker</li>
+</ul>
+<h2 id="verification-criteria">Verification Criteria</h2>
+<p>满足以下条件即可认为设计落地成功：</p>
+<ol>
+<li>配置中仅通过一个开关控制 TTC 可视化</li>
+</ol>
+<ol>
+<li>默认关闭时系统行为与当前一致</li>
+</ol>
+<ol>
+<li>打开后 RViz2 可看到 TTC 相关 marker</li>
+</ol>
+<ol>
+<li>现有碰撞检测测试不回归</li>
+</ol>
+      <div class="meta">本文档已统一为 HTML 形式，便于浏览、打印和后续可视化扩展。</div>
+    </article>
+  </div>
+</body>
+</html>

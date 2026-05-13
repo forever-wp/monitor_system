@@ -1,0 +1,895 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>2026-04-07-control-source-routing-design</title>
+  <style>
+    :root {
+      --bg: #f6f7f8;
+      --paper: #ffffff;
+      --ink: #1f2a2c;
+      --muted: #5f6f73;
+      --line: #dbe3e6;
+      --brand: #1f6f50;
+      --brand-soft: #e7f3ee;
+      --shadow: 0 10px 28px rgb(31 42 44 / 8%);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: linear-gradient(160deg, #f6f7f8 0%, #edf3f5 100%);
+      font-family: "Noto Sans SC", "Microsoft YaHei", Arial, sans-serif;
+      line-height: 1.72;
+    }
+    .page {
+      width: min(1100px, calc(100% - 28px));
+      margin: 0 auto;
+      padding: 28px 0 48px;
+    }
+    .card {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+      padding: 28px;
+    }
+    h1, h2, h3, h4, h5, h6 { line-height: 1.28; margin: 22px 0 10px; }
+    h1 { margin-top: 6px; font-size: clamp(28px, 4vw, 44px); }
+    h2 { font-size: clamp(21px, 2.7vw, 31px); }
+    h3 { font-size: clamp(18px, 2.1vw, 24px); }
+    p { margin: 10px 0; }
+    code {
+      padding: 2px 6px;
+      border-radius: 6px;
+      background: var(--brand-soft);
+      color: #154933;
+      font-family: "JetBrains Mono", Consolas, monospace;
+      font-size: 0.93em;
+    }
+    pre {
+      margin: 14px 0;
+      padding: 14px;
+      border-radius: 12px;
+      background: #152124;
+      color: #e6f0f2;
+      overflow-x: auto;
+      border: 1px solid #26363a;
+    }
+    pre code {
+      padding: 0;
+      background: transparent;
+      color: inherit;
+      font-size: 0.9em;
+    }
+    ul, ol { padding-left: 22px; margin: 8px 0 14px; }
+    li { margin: 4px 0; }
+    blockquote {
+      margin: 14px 0;
+      padding: 10px 14px;
+      border-left: 4px solid var(--brand);
+      background: var(--brand-soft);
+      color: #1f4f3c;
+    }
+    a { color: #1f5f8c; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .toc {
+      margin-bottom: 18px;
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #f9fcfd;
+    }
+    .toc strong { display: block; margin-bottom: 8px; color: var(--brand); }
+    .toc ul { margin: 0; padding-left: 18px; }
+    .table-wrap {
+      overflow-x: auto;
+      margin: 12px 0;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+    }
+    table { border-collapse: collapse; width: 100%; min-width: 520px; }
+    th, td {
+      border-bottom: 1px solid var(--line);
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+    thead th {
+      color: var(--brand);
+      background: var(--brand-soft);
+    }
+    tbody tr:last-child td { border-bottom: none; }
+    .meta {
+      margin-top: 20px;
+      color: var(--muted);
+      font-size: 13px;
+      border-top: 1px dashed var(--line);
+      padding-top: 12px;
+    }
+    @media (max-width: 720px) {
+      .card { padding: 20px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <article class="card">
+      <aside class="toc"><strong>目录</strong><ul><li><a href="#control-source-routing-design">Control Source Routing Design</a></li><li><a href="#background">Background</a></li><li><a href="#goal">Goal</a></li><li><a href="#scope">Scope</a></li><li><a href="#chosen-design">Chosen Design</a></li><li><a href="#control-model">Control Model</a></li><li><a href="#1-canonical-control-sources">1. Canonical control sources</a></li><li><a href="#2-gate-semantics">2. Gate semantics</a></li><li><a href="#3-source-silence-behavior">3. Source silence behavior</a></li><li><a href="#4-relationship-with-safety-policy">4. Relationship with safety policy</a></li><li><a href="#interfaces">Interfaces</a></li><li><a href="#1-speed-input-topics">1. Speed input topics</a></li><li><a href="#2-set-interface">2. Set interface</a></li><li><a href="#3-query-interface">3. Query interface</a></li><li><a href="#4-passive-state-topic">4. Passive state topic</a></li><li><a href="#5-automatic-preemption-reservation">5. Automatic preemption reservation</a></li><li><a href="#runtime-architecture">Runtime Architecture</a></li><li><a href="#1-new-unit-controlsourcecontroller">1. New unit: `ControlSourceController`</a></li><li><a href="#2-existing-units-remain-focused">2. Existing units remain focused</a></li><li><a href="#runtime-flow">Runtime Flow</a></li><li><a href="#1-startup">1. Startup</a></li><li><a href="#2-on-velocity-message">2. On velocity message</a></li><li><a href="#3-on-control-source-switch">3. On control source switch</a></li><li><a href="#4-on-safety-command">4. On safety command</a></li><li><a href="#configuration-changes">Configuration Changes</a></li><li><a href="#interface-packaging">Interface Packaging</a></li><li><a href="#migration-plan">Migration Plan</a></li><li><a href="#affected-files">Affected Files</a></li><li><a href="#testing-strategy">Testing Strategy</a></li><li><a href="#1-controller-unit-coverage">1. Controller unit coverage</a></li><li><a href="#2-node-component-coverage">2. Node component coverage</a></li><li><a href="#3-safety-interaction-coverage">3. Safety interaction coverage</a></li><li><a href="#4-config-and-documentation-coverage">4. Config and documentation coverage</a></li><li><a href="#risks-and-mitigations">Risks And Mitigations</a></li><li><a href="#verification-criteria">Verification Criteria</a></li></ul></aside>
+<h1 id="control-source-routing-design">Control Source Routing Design</h1>
+<h2 id="background">Background</h2>
+<p>当前 <code>safety_emergency_executor</code> 只有一条速度输入链路：</p>
+<ul>
+<li>订阅单一 <code>cmd_vel_topic</code></li>
+</ul>
+<ul>
+<li>通过 <code>/set_manual_override</code> / <code>/get_manual_override</code> / <code>/manual_override_active</code></li>
+<p>表示是否进入“外部手动接管”</p>
+</ul>
+<ul>
+<li>再经过 <code>VelocityConverter -&gt; PressureAdjuster -&gt; SafetyPolicyExecutor</code></li>
+<p>输出到底盘 <code>/command</code></p>
+</ul>
+<p>这套结构已经能完成“自动控制 + 安全动作执行”，但无法满足以下新需求：</p>
+<ul>
+<li>同时接入多类速度来源：</li>
+</ul>
+<ul>
+<li><code>navigation</code></li>
+</ul>
+<ul>
+<li><code>miniapp</code></li>
+</ul>
+<ul>
+<li><code>remote</code></li>
+</ul>
+<ul>
+<li><code>other</code></li>
+</ul>
+<ul>
+<li>由外部显式指定当前唯一有效的速度来源</li>
+</ul>
+<ul>
+<li>同一时间必须有且仅有一种速度指令允许进入底盘执行链路</li>
+</ul>
+<ul>
+<li>非当前来源的速度消息直接截断丢弃，不做融合，不做排队</li>
+</ul>
+<ul>
+<li>保持安全动作链路独立存在，不因控制来源切换而失效</li>
+</ul>
+<p>用户明确要求：</p>
+<ul>
+<li>不做“百分比限速式分级”</li>
+</ul>
+<ul>
+<li>做成“按来源分级 + 非激活来源截断”</li>
+</ul>
+<ul>
+<li>启动默认来源为 <code>navigation</code></li>
+</ul>
+<ul>
+<li>当前来源停发速度时，不补发 0 速，不保持上一帧，不做额外动作</li>
+</ul>
+<ul>
+<li>现有 <code>manual_override</code> 语义直接升级并并入新的多来源控制方案</li>
+</ul>
+<ul>
+<li>外部切换为主，未来可预留自动抢占扩展</li>
+</ul>
+<h2 id="goal">Goal</h2>
+<p>把 <code>safety_emergency_executor</code> 升级为“多来源速度仲裁 + 安全执行”节点：</p>
+<ul>
+<li>接入多路 <code>Twist</code> 输入</li>
+</ul>
+<ul>
+<li>由外部显式切换当前控制来源</li>
+</ul>
+<ul>
+<li>在任意时刻只放行当前来源的速度消息</li>
+</ul>
+<ul>
+<li>保持 <code>SLOW_DOWN / SOFT_STOP / EMERGENCY_STOP / RESUME</code> 安全语义不变</li>
+</ul>
+<h2 id="scope">Scope</h2>
+<p>In scope:</p>
+<ul>
+<li>将 <code>manual_override</code> 升级为多来源 <code>control_source</code></li>
+</ul>
+<ul>
+<li>为 4 类来源分别增加独立速度 topic</li>
+</ul>
+<ul>
+<li>增加设置、查询、状态发布接口</li>
+</ul>
+<ul>
+<li>重构节点内部路由逻辑，保证单时刻单来源放行</li>
+</ul>
+<ul>
+<li>更新配置、测试、README、launch 说明</li>
+</ul>
+<p>Out of scope:</p>
+<ul>
+<li>本期不实现自动抢占策略</li>
+</ul>
+<ul>
+<li>不增加速度来源间的优先级抢占规则</li>
+</ul>
+<ul>
+<li>不做多来源速度融合</li>
+</ul>
+<ul>
+<li>不在来源停发时主动补发停车命令</li>
+</ul>
+<ul>
+<li>不修改 <code>nav2_monitor</code> 的安全故障判定语义</li>
+</ul>
+<h2 id="chosen-design">Chosen Design</h2>
+<p>采用“来源仲裁内聚到 <code>safety_emergency_executor</code>”的方案：</p>
+<ul>
+<li>在当前执行器节点内部新增 <code>ControlSourceController</code></li>
+</ul>
+<ul>
+<li>由它统一维护当前激活来源、来源合法性校验和模式切换</li>
+</ul>
+<ul>
+<li><code>SafetyEmergencyExecutorNode</code> 改为订阅 4 路速度 topic</li>
+</ul>
+<ul>
+<li>每条速度消息都先经过“来源是否激活”的门禁判断</li>
+</ul>
+<ul>
+<li>只有当前来源的速度消息才能继续进入原有执行链路</li>
+</ul>
+<p>这样可以最小化改动范围：</p>
+<ul>
+<li>保留当前 <code>/safety_system/cmd -&gt; SafetyPolicyExecutor -&gt; /command</code> 主链路</li>
+</ul>
+<ul>
+<li>不额外增加新的 mux 节点</li>
+</ul>
+<ul>
+<li>让“控制来源”和“安全策略”在同一个执行节点内协同，但仍保持职责边界清晰</li>
+</ul>
+<h2 id="control-model">Control Model</h2>
+<h3 id="1-canonical-control-sources">1. Canonical control sources</h3>
+<p>第一期固定支持 4 类来源：</p>
+<ul>
+<li><code>navigation</code></li>
+</ul>
+<ul>
+<li><code>miniapp</code></li>
+</ul>
+<ul>
+<li><code>remote</code></li>
+</ul>
+<ul>
+<li><code>other</code></li>
+</ul>
+<p>运行时任何时刻都只有一个 <code>active_source</code>。</p>
+<p>默认值：</p>
+<ul>
+<li><code>active_source = navigation</code></li>
+</ul>
+<h3 id="2-gate-semantics">2. Gate semantics</h3>
+<p>速度消息的处理规则固定为：</p>
+<ul>
+<li>若消息来源 <code>!= active_source</code></li>
+</ul>
+<ul>
+<li>直接丢弃</li>
+</ul>
+<ul>
+<li>不进入 <code>VelocityConverter</code></li>
+</ul>
+<ul>
+<li>不进入 <code>PressureAdjuster</code></li>
+</ul>
+<ul>
+<li>不进入 <code>SafetyPolicyExecutor</code></li>
+</ul>
+<ul>
+<li>不发布 <code>/command</code></li>
+</ul>
+<ul>
+<li>若消息来源 <code>== active_source</code></li>
+</ul>
+<ul>
+<li>按现有链路继续处理</li>
+</ul>
+<p>这意味着系统保证：</p>
+<ul>
+<li>同一时刻只有一个来源能真正驱动底盘</li>
+</ul>
+<ul>
+<li>非当前来源的输入不会混入执行链路</li>
+</ul>
+<h3 id="3-source-silence-behavior">3. Source silence behavior</h3>
+<p>若当前 <code>active_source</code> 在一段时间内没有继续发布速度：</p>
+<ul>
+<li>节点不补发 0 速</li>
+</ul>
+<ul>
+<li>节点不保持上一帧速度</li>
+</ul>
+<ul>
+<li>节点不主动发任何额外控制</li>
+</ul>
+<p>底盘后续行为继续由现有底盘侧机制负责。</p>
+<h3 id="4-relationship-with-safety-policy">4. Relationship with safety policy</h3>
+<p>控制来源与安全策略是两条独立语义：</p>
+<ul>
+<li><code>control_source</code></li>
+</ul>
+<ul>
+<li>决定“谁的速度消息能进入执行链路”</li>
+</ul>
+<ul>
+<li><code>safety_system/cmd</code></li>
+</ul>
+<ul>
+<li>决定“当前被放行的速度链路还能否继续运行，以及是否需要降速/停车”</li>
+</ul>
+<p>因此即使当前来源是 <code>miniapp</code> 或 <code>remote</code>：</p>
+<ul>
+<li><code>SLOW_DOWN</code> 仍然生效</li>
+</ul>
+<ul>
+<li><code>SOFT_STOP</code> 仍然生效</li>
+</ul>
+<ul>
+<li><code>EMERGENCY_STOP</code> 仍然生效</li>
+</ul>
+<ul>
+<li><code>RESUME</code> 仍然恢复安全策略</li>
+</ul>
+<p>控制来源切换不会绕过安全，也不会替代安全动作。</p>
+<h2 id="interfaces">Interfaces</h2>
+<h2 id="1-speed-input-topics">1. Speed input topics</h2>
+<p>将当前单一 <code>cmd_vel_topic</code> 拆分为 4 个参数化输入：</p>
+<ul>
+<li><code>cmd_vel_navigation_topic</code></li>
+</ul>
+<ul>
+<li>默认 <code>/cmd_vel</code></li>
+</ul>
+<ul>
+<li><code>cmd_vel_miniapp_topic</code></li>
+</ul>
+<ul>
+<li>默认 <code>/cmd_vel_miniapp</code></li>
+</ul>
+<ul>
+<li><code>cmd_vel_remote_topic</code></li>
+</ul>
+<ul>
+<li>默认 <code>/cmd_vel_remote</code></li>
+</ul>
+<ul>
+<li><code>cmd_vel_other_topic</code></li>
+</ul>
+<ul>
+<li>默认 <code>/cmd_vel_other</code></li>
+</ul>
+<p>约束：</p>
+<ul>
+<li>每个 topic 对应唯一来源</li>
+</ul>
+<ul>
+<li>若某个 topic 参数为空字符串，则不创建该来源订阅</li>
+</ul>
+<ul>
+<li>来源可以被切到一个未配置 topic 的 source，但此时不会有速度消息进入执行链路，节点需打印明确日志</li>
+</ul>
+<h2 id="2-set-interface">2. Set interface</h2>
+<p>不新增自定义 service，直接复用 ROS 2 节点自带的参数服务：</p>
+<ul>
+<li><code>/safety_emergency_executor/set_parameters</code></li>
+</ul>
+<p>外部通过更新字符串参数 <code>active_control_source</code> 完成模式切换。</p>
+<p>语义：</p>
+<ul>
+<li>参数值必须是 4 个 canonical source 之一</li>
+</ul>
+<ul>
+<li>合法时：</li>
+</ul>
+<ul>
+<li>更新 <code>active_source</code></li>
+</ul>
+<ul>
+<li>发布状态 topic</li>
+</ul>
+<ul>
+<li>参数服务返回成功</li>
+</ul>
+<ul>
+<li>非法时：</li>
+</ul>
+<ul>
+<li>参数回调拒绝本次更新</li>
+</ul>
+<ul>
+<li>当前来源保持不变</li>
+</ul>
+<ul>
+<li>参数服务返回失败原因</li>
+</ul>
+<p>切换行为只更新控制门禁，不主动发布 0 速。</p>
+<h2 id="3-query-interface">3. Query interface</h2>
+<p>查询同样复用 ROS 2 节点自带的参数服务：</p>
+<ul>
+<li><code>/safety_emergency_executor/get_parameters</code></li>
+</ul>
+<p>外部读取参数名：</p>
+<ul>
+<li><code>active_control_source</code></li>
+</ul>
+<p>语义：</p>
+<ul>
+<li>总是返回当前 <code>active_source</code></li>
+</ul>
+<ul>
+<li>外部若只需要当前模式，可优先订阅状态 topic；若需要主动查询，则读取该参数</li>
+</ul>
+<h2 id="4-passive-state-topic">4. Passive state topic</h2>
+<p>新增状态 topic：</p>
+<ul>
+<li><code>/control_source_state</code></li>
+</ul>
+<p>建议类型：</p>
+<ul>
+<li><code>std_msgs/msg/String</code></li>
+</ul>
+<p>内容：</p>
+<ul>
+<li><code>data = active_source</code></li>
+</ul>
+<p>QoS：</p>
+<ul>
+<li><code>transient_local</code></li>
+</ul>
+<ul>
+<li><code>reliable</code></li>
+</ul>
+<p>发布时机：</p>
+<ul>
+<li>节点启动完成后立即发布一次</li>
+</ul>
+<ul>
+<li>每次控制来源切换后再次发布</li>
+</ul>
+<h2 id="5-automatic-preemption-reservation">5. Automatic preemption reservation</h2>
+<p>本期不实现自动抢占，但保留扩展边界：</p>
+<ul>
+<li><code>ControlSourceController</code> 内部 API 设计为可在未来接入“候选来源请求”</li>
+</ul>
+<ul>
+<li>可预留参数 <code>control_source_auto_preempt_enabled</code></li>
+</ul>
+<ul>
+<li>第一期开关默认 <code>false</code></li>
+</ul>
+<ul>
+<li>第一期开启后也不自动切换来源；仅用于保留配置位和内部状态位，避免未来改接口</li>
+</ul>
+<p>这样可以满足“外部显式切换为主，自动抢占后续再加”的要求，同时不在本期引入未定义的抢占规则。</p>
+<h2 id="runtime-architecture">Runtime Architecture</h2>
+<h3 id="1-new-unit-controlsourcecontroller">1. New unit: <code>ControlSourceController</code></h3>
+<p>新增独立组件，职责收敛为：</p>
+<ul>
+<li>保存当前 <code>active_source</code></li>
+</ul>
+<ul>
+<li>校验来源是否合法</li>
+</ul>
+<ul>
+<li>处理参数更新请求</li>
+</ul>
+<ul>
+<li>提供参数查询值</li>
+</ul>
+<ul>
+<li>提供状态 topic 输出内容</li>
+</ul>
+<ul>
+<li>为未来自动抢占保留扩展点</li>
+</ul>
+<p>该组件不负责：</p>
+<ul>
+<li>速度转换</li>
+</ul>
+<ul>
+<li>压力调整</li>
+</ul>
+<ul>
+<li>安全动作执行</li>
+</ul>
+<ul>
+<li>底盘命令发布</li>
+</ul>
+<h3 id="2-existing-units-remain-focused">2. Existing units remain focused</h3>
+<ul>
+<li><code>VelocityConverter</code></li>
+</ul>
+<ul>
+<li>继续只负责 <code>Twist -&gt; CommandFrame</code></li>
+</ul>
+<ul>
+<li><code>PressureAdjuster</code></li>
+</ul>
+<ul>
+<li>继续只负责压力调节</li>
+</ul>
+<ul>
+<li><code>SafetyPolicyExecutor</code></li>
+</ul>
+<ul>
+<li>继续只负责安全动作约束与急停制动序列</li>
+</ul>
+<ul>
+<li><code>SafetyEmergencyExecutorNode</code></li>
+</ul>
+<ul>
+<li>负责 ROS 接线、来源路由、状态发布和组件编排</li>
+</ul>
+<h2 id="runtime-flow">Runtime Flow</h2>
+<h3 id="1-startup">1. Startup</h3>
+<p>节点启动时：</p>
+<ol>
+<li>读取 <code>default_control_source</code></li>
+</ol>
+<ol>
+<li>初始化 <code>ControlSourceController</code></li>
+</ol>
+<ol>
+<li>创建 4 路来源订阅</li>
+</ol>
+<ol>
+<li>注册 <code>active_control_source</code> 参数校验回调，并准备状态 topic</li>
+</ol>
+<ol>
+<li>发布一次 <code>/control_source_state</code></li>
+</ol>
+<ol>
+<li>继续创建现有安全相关订阅与发布器</li>
+</ol>
+<h3 id="2-on-velocity-message">2. On velocity message</h3>
+<p>每路 <code>Twist</code> 回调统一使用相同逻辑：</p>
+<ol>
+<li>回调已知消息所属来源</li>
+</ol>
+<ol>
+<li>向 <code>ControlSourceController</code> 查询当前 <code>active_source</code></li>
+</ol>
+<ol>
+<li>若来源不匹配：</li>
+</ol>
+<ul>
+<li>节流日志提示</li>
+</ul>
+<ul>
+<li>直接返回</li>
+</ul>
+<ol>
+<li>若来源匹配：</li>
+</ol>
+<ul>
+<li>执行 <code>VelocityConverter::convert</code></li>
+</ul>
+<ul>
+<li>执行 <code>PressureAdjuster::apply</code></li>
+</ul>
+<ul>
+<li>执行 <code>SafetyPolicyExecutor::apply</code></li>
+</ul>
+<ul>
+<li>若安全策略允许，则发布 <code>/command</code></li>
+</ul>
+<h3 id="3-on-control-source-switch">3. On control source switch</h3>
+<p>外部通过 <code>/safety_emergency_executor/set_parameters</code> 更新 <code>active_control_source</code> 时：</p>
+<ol>
+<li>参数回调读取新值</li>
+</ol>
+<ol>
+<li>校验 source 是否合法</li>
+</ol>
+<ol>
+<li>若非法：</li>
+</ol>
+<ul>
+<li>返回失败</li>
+</ul>
+<ul>
+<li>当前来源保持不变</li>
+</ul>
+<ol>
+<li>若合法：</li>
+</ol>
+<ul>
+<li>更新 <code>active_source</code></li>
+</ul>
+<ul>
+<li>发布 <code>/control_source_state</code></li>
+</ul>
+<ul>
+<li>打印切换日志</li>
+</ul>
+<p>明确不做：</p>
+<ul>
+<li>不发 0 速</li>
+</ul>
+<ul>
+<li>不清空最近命令</li>
+</ul>
+<ul>
+<li>不重置 <code>PressureAdjuster</code></li>
+</ul>
+<ul>
+<li>不重置 <code>SafetyPolicyExecutor</code></li>
+</ul>
+<h3 id="4-on-safety-command">4. On safety command</h3>
+<p><code>/safety_system/cmd</code> 处理流程保持现有语义：</p>
+<ul>
+<li>不依赖 <code>active_source</code></li>
+</ul>
+<ul>
+<li>继续更新 <code>SafetyPolicyExecutor</code></li>
+</ul>
+<ul>
+<li><code>EMERGENCY_STOP</code> 继续直接发布制动序列</li>
+</ul>
+<p>这样即使当前来源切到 <code>remote</code>，安全链路仍可强制减速或停车。</p>
+<h2 id="configuration-changes">Configuration Changes</h2>
+<p>参数文件 <code>config/Monitor/safety_emergency_executor/safety_emergency_executor_params.yaml</code> 需要从“单 topic + manual override”迁移到“多 topic + control source”。</p>
+<p>新增参数：</p>
+<ul>
+<li><code>cmd_vel_navigation_topic</code></li>
+</ul>
+<ul>
+<li><code>cmd_vel_miniapp_topic</code></li>
+</ul>
+<ul>
+<li><code>cmd_vel_remote_topic</code></li>
+</ul>
+<ul>
+<li><code>cmd_vel_other_topic</code></li>
+</ul>
+<ul>
+<li><code>control_source_state_topic</code></li>
+</ul>
+<ul>
+<li><code>active_control_source</code></li>
+</ul>
+<ul>
+<li><code>control_source_auto_preempt_enabled</code></li>
+</ul>
+<p>删除参数：</p>
+<ul>
+<li><code>cmd_vel_topic</code></li>
+</ul>
+<ul>
+<li><code>manual_override_service</code></li>
+</ul>
+<ul>
+<li><code>manual_override_query_service</code></li>
+</ul>
+<ul>
+<li><code>manual_override_state_topic</code></li>
+</ul>
+<p>默认值建议：</p>
+<pre><code class="language-yaml">
+cmd_vel_navigation_topic: &quot;/cmd_vel&quot;
+cmd_vel_miniapp_topic: &quot;/cmd_vel_miniapp&quot;
+cmd_vel_remote_topic: &quot;/cmd_vel_remote&quot;
+cmd_vel_other_topic: &quot;/cmd_vel_other&quot;
+control_source_state_topic: &quot;/control_source_state&quot;
+active_control_source: &quot;navigation&quot;
+control_source_auto_preempt_enabled: false
+</code></pre>
+<h2 id="interface-packaging">Interface Packaging</h2>
+<p>本期不新增任何自定义 <code>srv/msg</code> 接口。</p>
+<p>设置与查询统一复用 ROS 2 标准参数服务：</p>
+<ul>
+<li>设置：<code>/safety_emergency_executor/set_parameters</code></li>
+</ul>
+<ul>
+<li>查询：<code>/safety_emergency_executor/get_parameters</code></li>
+</ul>
+<p>这意味着构建层不需要引入 <code>rosidl_generate_interfaces(...)</code>， 只需要在节点中增加参数声明、参数回调和测试侧参数客户端使用即可。</p>
+<h2 id="migration-plan">Migration Plan</h2>
+<p>本次升级属于语义替换，不保留旧 <code>manual_override</code> 接口。</p>
+<p>迁移规则：</p>
+<ul>
+<li><code>/set_manual_override</code> -&gt; <code>/safety_emergency_executor/set_parameters(active_control_source=...)</code></li>
+</ul>
+<ul>
+<li><code>/get_manual_override</code> -&gt; <code>/safety_emergency_executor/get_parameters(active_control_source)</code></li>
+</ul>
+<ul>
+<li><code>/manual_override_active</code> -&gt; <code>/control_source_state</code></li>
+</ul>
+<p>外部调用方需要显式迁移到新的来源语义：</p>
+<ul>
+<li>过去的“手动接管=true”</li>
+</ul>
+<ul>
+<li>现在应切换到 <code>miniapp</code> 或 <code>remote</code></li>
+</ul>
+<ul>
+<li>过去的“恢复自动=false”</li>
+</ul>
+<ul>
+<li>现在应切换回 <code>navigation</code></li>
+</ul>
+<p>README 和参数说明必须同步删除“manual override”旧措辞，统一使用 <code>control_source</code>。</p>
+<h2 id="affected-files">Affected Files</h2>
+<ul>
+<li><code>src/safety_emergency_executor/include/safety_emergency_executor/safety_emergency_executor_node.hpp</code></li>
+</ul>
+<ul>
+<li><code>src/safety_emergency_executor/src/safety_emergency_executor_node.cpp</code></li>
+</ul>
+<ul>
+<li><code>src/safety_emergency_executor/include/safety_emergency_executor/external_override_controller.hpp</code></li>
+</ul>
+<ul>
+<li><code>src/safety_emergency_executor/src/external_override_controller.cpp</code></li>
+</ul>
+<ul>
+<li><code>src/safety_emergency_executor/include/safety_emergency_executor/control_source_controller.hpp</code></li>
+</ul>
+<ul>
+<li><code>src/safety_emergency_executor/src/control_source_controller.cpp</code></li>
+</ul>
+<ul>
+<li><code>src/safety_emergency_executor/CMakeLists.txt</code></li>
+</ul>
+<ul>
+<li><code>src/safety_emergency_executor/README.md</code></li>
+</ul>
+<ul>
+<li><code>src/safety_emergency_executor/test/test_pipeline_components.cpp</code></li>
+</ul>
+<ul>
+<li><code>config/Monitor/safety_emergency_executor/safety_emergency_executor_params.yaml</code></li>
+</ul>
+<ul>
+<li><code>src/safety_emergency_executor/config/safety_emergency_executor_params.yaml</code></li>
+</ul>
+<h2 id="testing-strategy">Testing Strategy</h2>
+<h3 id="1-controller-unit-coverage">1. Controller unit coverage</h3>
+<p>新增测试覆盖：</p>
+<ul>
+<li>默认来源初始化为 <code>navigation</code></li>
+</ul>
+<ul>
+<li>合法来源切换成功</li>
+</ul>
+<ul>
+<li>非法来源切换失败且保持原值</li>
+</ul>
+<ul>
+<li>当前来源查询值可直接读取为 <code>active_control_source</code></li>
+</ul>
+<h3 id="2-node-component-coverage">2. Node component coverage</h3>
+<p>调整现有组件测试，覆盖：</p>
+<ul>
+<li>默认 <code>navigation</code> 时，仅导航 topic 可放行</li>
+</ul>
+<ul>
+<li>切到 <code>remote</code> 后：</li>
+</ul>
+<ul>
+<li><code>navigation</code> 消息被丢弃</li>
+</ul>
+<ul>
+<li><code>remote</code> 消息被放行</li>
+</ul>
+<ul>
+<li>切到 <code>miniapp</code> 后：</li>
+</ul>
+<ul>
+<li><code>miniapp</code> 消息被放行</li>
+</ul>
+<ul>
+<li>其余来源被丢弃</li>
+</ul>
+<ul>
+<li>当前来源停发时：</li>
+</ul>
+<ul>
+<li>不额外产生新的 <code>/command</code></li>
+</ul>
+<ul>
+<li><code>/control_source_state</code> 启动即发布</li>
+</ul>
+<ul>
+<li>切换来源后 <code>/control_source_state</code> 正确更新</li>
+</ul>
+<ul>
+<li>参数服务修改 <code>active_control_source</code> 后，节点立即切换来源</li>
+</ul>
+<h3 id="3-safety-interaction-coverage">3. Safety interaction coverage</h3>
+<p>必须验证：</p>
+<ul>
+<li>任意 <code>active_source</code> 下，<code>SLOW_DOWN</code> 仍会限制当前被放行来源的速度</li>
+</ul>
+<ul>
+<li>任意 <code>active_source</code> 下，<code>SOFT_STOP</code> 仍会把当前被放行速度截到 0</li>
+</ul>
+<ul>
+<li>任意 <code>active_source</code> 下，<code>EMERGENCY_STOP</code> 仍会直接发送制动序列</li>
+</ul>
+<ul>
+<li><code>RESUME</code> 只恢复安全策略，不修改当前 <code>active_source</code></li>
+</ul>
+<h3 id="4-config-and-documentation-coverage">4. Config and documentation coverage</h3>
+<p>增加静态验证：</p>
+<ul>
+<li>默认参数文件不再出现 <code>manual_override_*</code></li>
+</ul>
+<ul>
+<li>默认参数文件包含四路 <code>cmd_vel_*_topic</code></li>
+</ul>
+<ul>
+<li>默认参数文件包含 <code>active_control_source</code></li>
+</ul>
+<ul>
+<li>README 中所有外部接口文档切换为 <code>control_source</code></li>
+</ul>
+<h2 id="risks-and-mitigations">Risks And Mitigations</h2>
+<ul>
+<li>风险：旧客户端仍调用 <code>manual_override</code> 接口，升级后直接失效</li>
+</ul>
+<ul>
+<li>缓解：README、参数、变更说明中明确声明该接口族被替换</li>
+</ul>
+<ul>
+<li>风险：切换到一个未配置 topic 的来源后，外部误以为“切换成功但车不动是故障”</li>
+</ul>
+<ul>
+<li>缓解：service 成功响应中附带当前来源；启动和切换日志中明确提示该来源是否配置了输入 topic</li>
+</ul>
+<ul>
+<li>风险：多路回调逻辑散落在主节点中，后续自动抢占难扩展</li>
+</ul>
+<ul>
+<li>缓解：把来源状态和校验逻辑收敛到 <code>ControlSourceController</code></li>
+</ul>
+<ul>
+<li>风险：把安全控制和来源控制混成一个状态机，后续排障困难</li>
+</ul>
+<ul>
+<li>缓解：保持两条状态独立；<code>control_source</code> 不控制安全状态，<code>safety_cmd</code> 不修改来源</li>
+</ul>
+<h2 id="verification-criteria">Verification Criteria</h2>
+<p>满足以下条件即可认为设计落地成功：</p>
+<ol>
+<li><code>safety_emergency_executor</code> 可同时接入四路速度来源</li>
+</ol>
+<ol>
+<li>运行时始终只有当前 <code>active_source</code> 的速度消息能进入 <code>/command</code> 链路</li>
+</ol>
+<ol>
+<li>非当前来源消息被截断，不做融合、不补偿、不保留</li>
+</ol>
+<ol>
+<li>默认来源为 <code>navigation</code></li>
+</ol>
+<ol>
+<li>通过标准参数服务和状态 topic 管理当前来源</li>
+</ol>
+<ol>
+<li>旧 <code>manual_override</code> 接口已被移除并完成文档迁移</li>
+</ol>
+<ol>
+<li>安全动作在任意控制来源下仍保持原有语义</li>
+</ol>
+      <div class="meta">本文档已统一为 HTML 形式，便于浏览、打印和后续可视化扩展。</div>
+    </article>
+  </div>
+</body>
+</html>

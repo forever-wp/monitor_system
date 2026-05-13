@@ -6,13 +6,18 @@
 
 ## 文档入口
 
-- [项目架构与数据链路](docs/project_architecture.md)：项目级总览、数据链路、功能图、流程图。
-- [监控系统模块独立化与可靠数据联通设计方案](docs/monitor_modular_isolation_design.md)：面向“模块互不影响、数据可靠联通、CPU 满载可降级”的后续架构设计。
-- [接口说明](INTERFACES.md)：topic、message、参数和包间接口。
+- [文档索引主界面](index.html)：项目文档总入口，支持分类浏览和搜索。
+- [项目架构与数据链路](docs/project_architecture.html)：项目级总览、数据链路、功能图、流程图。
+- [监控系统模块独立化与可靠数据联通设计方案](docs/monitor_modular_isolation_design.html)：面向“模块互不影响、数据可靠联通、CPU 满载可降级”的后续架构设计。
+- [事件法典仲裁与事件执行层整合计划](docs/event_codex_executor_integration_plan.html)：事件发现器、法典仲裁、事件执行层、上报器的完整实施蓝图。
+- [多错误组合策略仲裁层设计页](docs/combined_fault_policy_arbiter_design.html)：组合故障的流程图、数据流、交叉策略和恢复逻辑。
+- [接口说明](INTERFACES.html)：topic、message、参数和包间接口。
 - [algorithm_feedback_adapter](src/algorithm_feedback_adapter/README.md)：算法 topic 适配为 `AlgorithmFeedback`。
 - [nav2_monitor](src/nav2_monitor/README.md)：状态采集、故障判断、事件上报、安全仲裁。
 - [collision_voxel_layer](src/collision_voxel_layer/README.md)：scan/depth cloud 融合为体素障碍输入。
 - [safety_emergency_executor](src/safety_emergency_executor/README.md)：安全命令执行、速度源选择、底盘 `/command` 输出。
+
+文档规范：`README.md/Readme.md` 保留为入口说明；其他设计、说明、接口、配置类文档统一使用 HTML。README 可互相引用，设计/说明类入口统一指向 HTML 页面。
 
 ## 功能边界
 

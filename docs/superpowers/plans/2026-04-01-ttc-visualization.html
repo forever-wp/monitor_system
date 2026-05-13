@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>2026-04-01-ttc-visualization</title>
+  <style>
+    :root {
+      --bg: #f6f7f8;
+      --paper: #ffffff;
+      --ink: #1f2a2c;
+      --muted: #5f6f73;
+      --line: #dbe3e6;
+      --brand: #1f6f50;
+      --brand-soft: #e7f3ee;
+      --shadow: 0 10px 28px rgb(31 42 44 / 8%);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: linear-gradient(160deg, #f6f7f8 0%, #edf3f5 100%);
+      font-family: "Noto Sans SC", "Microsoft YaHei", Arial, sans-serif;
+      line-height: 1.72;
+    }
+    .page {
+      width: min(1100px, calc(100% - 28px));
+      margin: 0 auto;
+      padding: 28px 0 48px;
+    }
+    .card {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+      padding: 28px;
+    }
+    h1, h2, h3, h4, h5, h6 { line-height: 1.28; margin: 22px 0 10px; }
+    h1 { margin-top: 6px; font-size: clamp(28px, 4vw, 44px); }
+    h2 { font-size: clamp(21px, 2.7vw, 31px); }
+    h3 { font-size: clamp(18px, 2.1vw, 24px); }
+    p { margin: 10px 0; }
+    code {
+      padding: 2px 6px;
+      border-radius: 6px;
+      background: var(--brand-soft);
+      color: #154933;
+      font-family: "JetBrains Mono", Consolas, monospace;
+      font-size: 0.93em;
+    }
+    pre {
+      margin: 14px 0;
+      padding: 14px;
+      border-radius: 12px;
+      background: #152124;
+      color: #e6f0f2;
+      overflow-x: auto;
+      border: 1px solid #26363a;
+    }
+    pre code {
+      padding: 0;
+      background: transparent;
+      color: inherit;
+      font-size: 0.9em;
+    }
+    ul, ol { padding-left: 22px; margin: 8px 0 14px; }
+    li { margin: 4px 0; }
+    blockquote {
+      margin: 14px 0;
+      padding: 10px 14px;
+      border-left: 4px solid var(--brand);
+      background: var(--brand-soft);
+      color: #1f4f3c;
+    }
+    a { color: #1f5f8c; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .toc {
+      margin-bottom: 18px;
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #f9fcfd;
+    }
+    .toc strong { display: block; margin-bottom: 8px; color: var(--brand); }
+    .toc ul { margin: 0; padding-left: 18px; }
+    .table-wrap {
+      overflow-x: auto;
+      margin: 12px 0;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+    }
+    table { border-collapse: collapse; width: 100%; min-width: 520px; }
+    th, td {
+      border-bottom: 1px solid var(--line);
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+    thead th {
+      color: var(--brand);
+      background: var(--brand-soft);
+    }
+    tbody tr:last-child td { border-bottom: none; }
+    .meta {
+      margin-top: 20px;
+      color: var(--muted);
+      font-size: 13px;
+      border-top: 1px dashed var(--line);
+      padding-top: 12px;
+    }
+    @media (max-width: 720px) {
+      .card { padding: 20px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <article class="card">
+      <aside class="toc"><strong>目录</strong><ul><li><a href="#ttc-visualization-implementation-plan">TTC Visualization Implementation Plan</a></li><li><a href="#file-map">File Map</a></li><li><a href="#task-1-add-failing-tests-for-ttc-visualization-config-support">Task 1: Add failing tests for TTC visualization config support</a></li><li><a href="#task-2-implement-the-ttc-visualization-switch-and-data-plumbing">Task 2: Implement the TTC visualization switch and data plumbing</a></li><li><a href="#task-3-publish-markerarray-in-nav2monitor">Task 3: Publish `MarkerArray` in nav2_monitor</a></li><li><a href="#task-4-wire-the-config-files-and-docs">Task 4: Wire the config files and docs</a></li></ul></aside>
+<h1 id="ttc-visualization-implementation-plan">TTC Visualization Implementation Plan</h1>
+<blockquote><strong>For agentic workers:</strong> REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (<code>- [ ]</code>) syntax for tracking.</blockquote>
+<p><strong>Goal:</strong> Add RViz2 TTC visualization for <code>approach / TTC</code> collision detection with a single config switch.</p>
+<p><strong>Architecture:</strong> Keep the existing TTC logic unchanged and only add optional <code>MarkerArray</code> publishing around the already computed trajectory/clearance/TTC result. Default the feature off and publish on a dedicated topic so existing polygon visualization stays untouched.</p>
+<p><strong>Tech Stack:</strong> ROS 2 C++, <code>visualization_msgs/msg/MarkerArray</code>, YAML config, gtest, Markdown docs</p>
+<p>---</p>
+<h2 id="file-map">File Map</h2>
+<ul>
+<li><code>src/nav2_monitor/include/nav2_monitor/fault_detector.hpp</code></li>
+<p>Responsibility: add TTC visualization config flag to collision detection config.</p>
+</ul>
+<ul>
+<li><code>src/nav2_monitor/src/fault_detector.cpp</code></li>
+<p>Responsibility: parse <code>ttc_visualization_enabled</code>.</p>
+</ul>
+<ul>
+<li><code>src/nav2_monitor/include/nav2_monitor/collision_evaluator.hpp</code></li>
+<p>Responsibility: expose minimal TTC visualization snapshot data structures.</p>
+</ul>
+<ul>
+<li><code>src/nav2_monitor/src/collision_evaluator.cpp</code></li>
+<p>Responsibility: capture the latest TTC trajectory/debug state when enabled.</p>
+</ul>
+<ul>
+<li><code>src/nav2_monitor/include/nav2_monitor/nav2_monitor_node.hpp</code></li>
+<p>Responsibility: declare <code>MarkerArray</code> publisher and visualization helpers.</p>
+</ul>
+<ul>
+<li><code>src/nav2_monitor/src/nav2_monitor_node.cpp</code></li>
+<p>Responsibility: publish <code>/nav2_monitor/collision_ttc_markers</code> only when enabled.</p>
+</ul>
+<ul>
+<li><code>src/nav2_monitor/test/test_fault_detector.cpp</code></li>
+<p>Responsibility: regression tests for the new config parsing and non-regression behavior.</p>
+</ul>
+<ul>
+<li><code>config/Monitor/nav2_monitor/fault_detector_config.yaml</code></li>
+<p>Responsibility: authoritative OTA default for <code>ttc_visualization_enabled</code>.</p>
+</ul>
+<ul>
+<li><code>config/Monitor/nav2_monitor/profiles/*.yaml</code></li>
+<p>Responsibility: profile copies of the TTC visualization switch.</p>
+</ul>
+<ul>
+<li><code>src/nav2_monitor/config/*.yaml</code></li>
+<p>Responsibility: mirrored package-local copies of the TTC visualization switch.</p>
+</ul>
+<ul>
+<li><code>src/nav2_monitor/README.md</code></li>
+<p>Responsibility: user-facing topic/config documentation.</p>
+</ul>
+<ul>
+<li><code>src/nav2_monitor/docs/architecture.html</code></li>
+<p>Responsibility: architecture notes for TTC markers.</p>
+</ul>
+<h2 id="task-1-add-failing-tests-for-ttc-visualization-config-support">Task 1: Add failing tests for TTC visualization config support</h2>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Modify: <code>src/nav2_monitor/test/test_fault_detector.cpp</code></li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 1: Add a failing config parse test for <code>ttc_visualization_enabled</code></strong></li>
+</ul>
+<pre><code class="language-cpp">
+TEST_F(FaultDetectorTest, CollisionDetectionParsesTtcVisualizationEnabled)
+{
+  // load config with ttc_visualization_enabled: 1
+  // expect getter/config field to reflect true
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 2: Add a failing regression test that disabled remains default</strong></li>
+</ul>
+<pre><code class="language-cpp">
+TEST_F(FaultDetectorTest, CollisionDetectionTtcVisualizationDefaultsToDisabled)
+{
+  // load config without the field
+  // expect false
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 3: Run nav2_monitor tests and verify the new parse test fails</strong></li>
+</ul>
+<p>Run: <code>source /opt/ros/humble/setup.bash &amp;&amp; source /home/tokou/claude/ry_work/install/setup.bash &amp;&amp; source /home/tokou/claude/ry_work/.worktrees/monitor-ota-config/install/setup.bash &amp;&amp; colcon build --packages-select nav2_monitor --cmake-clean-first --event-handlers console_direct+ &amp;&amp; colcon test --packages-select nav2_monitor --event-handlers console_direct+</code></p>
+<p>Expected: FAIL because the config struct/parser does not yet know <code>ttc_visualization_enabled</code>.</p>
+<h2 id="task-2-implement-the-ttc-visualization-switch-and-data-plumbing">Task 2: Implement the TTC visualization switch and data plumbing</h2>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Modify: <code>src/nav2_monitor/include/nav2_monitor/fault_detector.hpp</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/src/fault_detector.cpp</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/include/nav2_monitor/collision_evaluator.hpp</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/src/collision_evaluator.cpp</code></li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 1: Add the config flag</strong></li>
+</ul>
+<pre><code class="language-cpp">
+bool ttc_visualization_enabled{false};
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 2: Parse the YAML field</strong></li>
+</ul>
+<pre><code class="language-yaml">
+ttc_visualization_enabled: 1
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 3: Add a minimal TTC debug snapshot in <code>CollisionEvaluator</code></strong></li>
+</ul>
+<p>Capture only what is already computed:</p>
+<ul>
+<li>active zone name</li>
+</ul>
+<ul>
+<li>trajectory points</li>
+</ul>
+<ul>
+<li>footprint poses</li>
+</ul>
+<ul>
+<li>nearest collision point</li>
+</ul>
+<ul>
+<li>current TTC</li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 4: Re-run nav2_monitor tests to verify the config tests pass</strong></li>
+</ul>
+<p>Run: <code>source /opt/ros/humble/setup.bash &amp;&amp; source /home/tokou/claude/ry_work/install/setup.bash &amp;&amp; source /home/tokou/claude/ry_work/.worktrees/monitor-ota-config/install/setup.bash &amp;&amp; colcon build --packages-select nav2_monitor --cmake-clean-first --event-handlers console_direct+ &amp;&amp; colcon test --packages-select nav2_monitor --event-handlers console_direct+</code></p>
+<p>Expected: PASS, with TTC behavior unchanged.</p>
+<h2 id="task-3-publish-markerarray-in-nav2monitor">Task 3: Publish <code>MarkerArray</code> in nav2_monitor</h2>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Modify: <code>src/nav2_monitor/include/nav2_monitor/nav2_monitor_node.hpp</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/src/nav2_monitor_node.cpp</code></li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 1: Add a dedicated publisher</strong></li>
+</ul>
+<p>Topic:</p>
+<pre><code class="language-text">
+/nav2_monitor/collision_ttc_markers
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 2: Publish only when <code>ttc_visualization_enabled</code> is true</strong></li>
+</ul>
+<p>Markers:</p>
+<ul>
+<li>trajectory <code>LINE_STRIP</code></li>
+</ul>
+<ul>
+<li>footprint <code>LINE_LIST</code> or <code>LINE_STRIP</code></li>
+</ul>
+<ul>
+<li>nearest point <code>SPHERE</code></li>
+</ul>
+<ul>
+<li>TTC text <code>TEXT_VIEW_FACING</code></li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 3: Clear markers when no TTC candidate is active</strong></li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 4: Run the package tests again</strong></li>
+</ul>
+<p>Run: <code>source /opt/ros/humble/setup.bash &amp;&amp; source /home/tokou/claude/ry_work/install/setup.bash &amp;&amp; source /home/tokou/claude/ry_work/.worktrees/monitor-ota-config/install/setup.bash &amp;&amp; colcon build --packages-select nav2_monitor --cmake-clean-first --event-handlers console_direct+ &amp;&amp; colcon test --packages-select nav2_monitor --event-handlers console_direct+</code></p>
+<p>Expected: PASS.</p>
+<h2 id="task-4-wire-the-config-files-and-docs">Task 4: Wire the config files and docs</h2>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Modify: <code>config/Monitor/nav2_monitor/fault_detector_config.yaml</code></li>
+</ul>
+<ul>
+<li>Modify: <code>config/Monitor/nav2_monitor/profiles/fault_detector_todoor.yaml</code></li>
+</ul>
+<ul>
+<li>Modify: <code>config/Monitor/nav2_monitor/profiles/fault_detector_elevator.yaml</code></li>
+</ul>
+<ul>
+<li>Modify: <code>config/Monitor/nav2_monitor/profiles/fault_detector_reverse.yaml</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/config/fault_detector_config.yaml</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/config/profiles/fault_detector_todoor.yaml</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/config/profiles/fault_detector_elevator.yaml</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/config/profiles/fault_detector_reverse.yaml</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/README.md</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/docs/architecture.html</code></li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 1: Add <code>ttc_visualization_enabled: 0</code> to the collision configs</strong></li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 2: Mirror <code>config/Monitor</code> changes back into <code>src/nav2_monitor/config/</code></strong></li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 3: Document the marker topic and single switch</strong></li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 4: Run the full verification suite</strong></li>
+</ul>
+<p>Run: <code>source /opt/ros/humble/setup.bash &amp;&amp; source /home/tokou/claude/ry_work/install/setup.bash &amp;&amp; source /home/tokou/claude/ry_work/.worktrees/monitor-ota-config/install/setup.bash &amp;&amp; colcon test --packages-select bridge nav2_monitor safety_emergency_executor --event-handlers console_direct+</code></p>
+<p>Expected: PASS.</p>
+<p>Plan complete and saved to <code>docs/superpowers/plans/2026-04-01-ttc-visualization.html</code>. Ready to execute?</p>
+      <div class="meta">本文档已统一为 HTML 形式，便于浏览、打印和后续可视化扩展。</div>
+    </article>
+  </div>
+</body>
+</html>

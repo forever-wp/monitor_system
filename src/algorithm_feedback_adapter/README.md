@@ -2,7 +2,7 @@
 
 Algorithm feedback adapter package for `nav2_monitor/msg/AlgorithmFeedback`.
 
-项目级数据链路见 [项目架构与数据链路](../../docs/project_architecture.md)。
+项目级数据链路见 [项目架构与数据链路](../../docs/project_architecture.html)。
 
 ## Modes
 

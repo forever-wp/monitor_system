@@ -1,0 +1,979 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>architecture diagrams</title>
+  <style>
+    :root {
+      --bg: #f6f7f8;
+      --paper: #ffffff;
+      --ink: #1f2a2c;
+      --muted: #5f6f73;
+      --line: #dbe3e6;
+      --brand: #1f6f50;
+      --brand-soft: #e7f3ee;
+      --shadow: 0 10px 28px rgb(31 42 44 / 8%);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: linear-gradient(160deg, #f6f7f8 0%, #edf3f5 100%);
+      font-family: "Noto Sans SC", "Microsoft YaHei", Arial, sans-serif;
+      line-height: 1.72;
+    }
+    .page {
+      width: min(1100px, calc(100% - 28px));
+      margin: 0 auto;
+      padding: 28px 0 48px;
+    }
+    .card {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+      padding: 28px;
+    }
+    h1, h2, h3, h4, h5, h6 { line-height: 1.28; margin: 22px 0 10px; }
+    h1 { margin-top: 6px; font-size: clamp(28px, 4vw, 44px); }
+    h2 { font-size: clamp(21px, 2.7vw, 31px); }
+    h3 { font-size: clamp(18px, 2.1vw, 24px); }
+    p { margin: 10px 0; }
+    code {
+      padding: 2px 6px;
+      border-radius: 6px;
+      background: var(--brand-soft);
+      color: #154933;
+      font-family: "JetBrains Mono", Consolas, monospace;
+      font-size: 0.93em;
+    }
+    pre {
+      margin: 14px 0;
+      padding: 14px;
+      border-radius: 12px;
+      background: #152124;
+      color: #e6f0f2;
+      overflow-x: auto;
+      border: 1px solid #26363a;
+    }
+    pre code {
+      padding: 0;
+      background: transparent;
+      color: inherit;
+      font-size: 0.9em;
+    }
+    ul, ol { padding-left: 22px; margin: 8px 0 14px; }
+    li { margin: 4px 0; }
+    blockquote {
+      margin: 14px 0;
+      padding: 10px 14px;
+      border-left: 4px solid var(--brand);
+      background: var(--brand-soft);
+      color: #1f4f3c;
+    }
+    a { color: #1f5f8c; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .toc {
+      margin-bottom: 18px;
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #f9fcfd;
+    }
+    .toc strong { display: block; margin-bottom: 8px; color: var(--brand); }
+    .toc ul { margin: 0; padding-left: 18px; }
+    .table-wrap {
+      overflow-x: auto;
+      margin: 12px 0;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+    }
+    table { border-collapse: collapse; width: 100%; min-width: 520px; }
+    th, td {
+      border-bottom: 1px solid var(--line);
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+    thead th {
+      color: var(--brand);
+      background: var(--brand-soft);
+    }
+    tbody tr:last-child td { border-bottom: none; }
+    .meta {
+      margin-top: 20px;
+      color: var(--muted);
+      font-size: 13px;
+      border-top: 1px dashed var(--line);
+      padding-top: 12px;
+    }
+    @media (max-width: 720px) {
+      .card { padding: 20px; }
+    }
+  
+
+    /* SVG diagrams generated from Mermaid blocks. Offline, no CDN/runtime dependency. */
+    .svg-diagram {
+      margin: 20px 0;
+      padding: 20px;
+      border: 1px solid #cfe0d8;
+      border-radius: 22px;
+      background:
+        radial-gradient(circle at 10% 8%, rgb(255 255 255 / 92%), transparent 30%),
+        linear-gradient(135deg, #fbfefd 0%, #eef7f3 100%);
+      overflow-x: auto;
+      box-shadow: 0 14px 30px rgb(31 42 44 / 8%);
+    }
+    .svg-diagram-title {
+      display: inline-flex;
+      align-items: center;
+      margin-bottom: 14px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      background: #dff0e8;
+      color: #1f6f50;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+    .svg-diagram-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: -2px 0 14px;
+      color: #5b6c67;
+      font-size: 12px;
+    }
+    .svg-diagram-legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: rgb(255 255 255 / 68%);
+      border: 1px solid #d6e5df;
+    }
+    .svg-diagram-legend i {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .svg-diagram svg {
+      display: block;
+      max-width: 100%;
+      height: auto;
+      min-width: 720px;
+    }
+
+  </style>
+</head>
+<body>
+  <div class="page">
+    <article class="card">
+      <aside class="toc"><strong>目录</strong><ul><li><a href="#nav2monitor-架构图流程图-数据流图-功能图">nav2_monitor 架构图（流程图 / 数据流图 / 功能图）</a></li><li><a href="#1-流程图运行流程">1) 流程图（运行流程）</a></li><li><a href="#2-数据流图data-flow">2) 数据流图（Data Flow）</a></li><li><a href="#3-功能图模块功能分解">3) 功能图（模块功能分解）</a></li></ul></aside>
+<h1 id="nav2monitor-架构图流程图-数据流图-功能图">nav2_monitor 架构图（流程图 / 数据流图 / 功能图）</h1>
+<h2 id="1-流程图运行流程">1) 流程图（运行流程）</h2>
+<div class="svg-diagram"><div class="svg-diagram-title">可视化流程图</div><div class="svg-diagram-legend"><span><i style="background:#6ba2d7"></i>输入 / 数据源</span><span><i style="background:#d2a235"></i>判断 / 策略</span><span><i style="background:#61a87d"></i>状态 / 输出</span><span><i style="background:#d26a56"></i>故障 / 风险</span><span><i style="background:#8d7ed3"></i>执行 / 安全动作</span></div><svg width="1200pt" height="1013pt"
+ viewBox="0.00 0.00 1200.00 1013.00" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<g id="graph0" class="graph" transform="scale(1 1) rotate(0) translate(18 995)">
+
+<!-- A&#45;&gt;B -->
+<g id="edge1" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M405.5,-940.99C405.5,-940.99 405.5,-902.06 405.5,-902.06"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="408.23,-902.06 405.5,-894.26 402.77,-902.06 408.23,-902.06"/>
+</g>
+<!-- B&#45;&gt;C -->
+<g id="edge2" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M405.5,-857.99C405.5,-857.99 405.5,-819.06 405.5,-819.06"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="408.23,-819.06 405.5,-811.26 402.77,-819.06 408.23,-819.06"/>
+</g>
+<!-- C&#45;&gt;D -->
+<g id="edge3" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M405.5,-774.82C405.5,-774.82 405.5,-736.01 405.5,-736.01"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="408.23,-736.01 405.5,-728.21 402.77,-736.01 408.23,-736.01"/>
+</g>
+<!-- D&#45;&gt;E -->
+<g id="edge4" class="edge">
+
+<path fill="none" stroke="#5b8f79" stroke-width="1.45" d="M347.5,-688.49C347.5,-688.49 347.5,-624.92 347.5,-624.92"/>
+<polygon fill="#5b8f79" stroke="#5b8f79" stroke-width="1.45" points="350.23,-624.92 347.5,-617.12 344.77,-624.92 350.23,-624.92"/>
+<text text-anchor="middle" x="387.5" y="-643" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="10.00">是</text>
+</g>
+<!-- D&#45;&gt;F -->
+<g id="edge5" class="edge">
+
+<path fill="none" stroke="#5b8f79" stroke-width="1.45" d="M470.5,-690.08C470.5,-690.08 470.5,-624.82 470.5,-624.82"/>
+<polygon fill="#5b8f79" stroke="#5b8f79" stroke-width="1.45" points="473.23,-624.82 470.5,-617.02 467.77,-624.82 473.23,-624.82"/>
+<text text-anchor="middle" x="483.5" y="-643" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="10.00">否</text>
+</g>
+<!-- E&#45;&gt;G -->
+<g id="edge6" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M358,-580.99C358,-580.99 358,-542.06 358,-542.06"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="360.73,-542.06 358,-534.26 355.27,-542.06 360.73,-542.06"/>
+</g>
+<!-- F&#45;&gt;G -->
+<g id="edge7" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M460,-580.99C460,-580.99 460,-542.06 460,-542.06"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="462.73,-542.06 460,-534.26 457.27,-542.06 462.73,-542.06"/>
+</g>
+<!-- G&#45;&gt;H -->
+<g id="edge8" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M326,-497.99C326,-473.58 326,-433 326,-433 326,-433 325.32,-433 325.32,-433"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="326.97,-430.27 319.17,-433 326.97,-435.73 326.97,-430.27"/>
+</g>
+<!-- G&#45;&gt;I -->
+<g id="edge9" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M476.5,-497.99C476.5,-497.99 476.5,-459.06 476.5,-459.06"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="479.23,-459.06 476.5,-451.26 473.77,-459.06 479.23,-459.06"/>
+</g>
+<!-- H&#45;&gt;H1 -->
+<g id="edge10" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M175.5,-414.99C175.5,-390.58 175.5,-350 175.5,-350 175.5,-350 160.84,-350 160.84,-350"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="160.84,-347.27 153.04,-350 160.84,-352.73 160.84,-347.27"/>
+</g>
+<!-- H&#45;&gt;H2 -->
+<g id="edge11" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M242.5,-414.99C242.5,-414.99 242.5,-376.06 242.5,-376.06"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="245.23,-376.06 242.5,-368.26 239.77,-376.06 245.23,-376.06"/>
+</g>
+<!-- I&#45;&gt;I1 -->
+<g id="edge12" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M471,-414.99C471,-414.99 471,-376.06 471,-376.06"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="473.73,-376.06 471,-368.26 468.27,-376.06 473.73,-376.06"/>
+</g>
+<!-- I&#45;&gt;I2 -->
+<g id="edge13" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M560.25,-414.99C560.25,-414.99 560.25,-376.06 560.25,-376.06"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="562.98,-376.06 560.25,-368.26 557.52,-376.06 562.98,-376.06"/>
+</g>
+<!-- I&#45;&gt;I3 -->
+<g id="edge14" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M607.6,-433C667.87,-433 743.5,-433 743.5,-433 743.5,-433 743.5,-375.81 743.5,-375.81"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="746.23,-375.81 743.5,-368.01 740.77,-375.81 746.23,-375.81"/>
+</g>
+<!-- I3&#45;&gt;I4 -->
+<g id="edge15" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M743.5,-331.99C743.5,-331.99 743.5,-293.06 743.5,-293.06"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="746.23,-293.06 743.5,-285.26 740.77,-293.06 746.23,-293.06"/>
+</g>
+<!-- I4&#45;&gt;I5 -->
+<g id="edge16" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M743.5,-248.99C743.5,-248.99 743.5,-210.06 743.5,-210.06"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="746.23,-210.06 743.5,-202.26 740.77,-210.06 746.23,-210.06"/>
+</g>
+<!-- I5&#45;&gt;I6 -->
+<g id="edge17" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M743.5,-165.99C743.5,-165.99 743.5,-127.06 743.5,-127.06"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="746.23,-127.06 743.5,-119.26 740.77,-127.06 746.23,-127.06"/>
+</g>
+<!-- I6&#45;&gt;I7 -->
+<g id="edge18" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M639.91,-101C599.3,-101 562.25,-101 562.25,-101 562.25,-101 562.25,-43.81 562.25,-43.81"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="564.98,-43.81 562.25,-36.01 559.52,-43.81 564.98,-43.81"/>
+</g>
+<!-- I6&#45;&gt;I8 -->
+<g id="edge19" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M743.5,-82.99C743.5,-82.99 743.5,-44.06 743.5,-44.06"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="746.23,-44.06 743.5,-36.26 740.77,-44.06 746.23,-44.06"/>
+</g>
+<!-- I6&#45;&gt;I9 -->
+<g id="edge20" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M847.06,-101C925.37,-101 1019.5,-101 1019.5,-101 1019.5,-101 1019.5,-43.81 1019.5,-43.81"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="1022.23,-43.81 1019.5,-36.01 1016.77,-43.81 1022.23,-43.81"/>
+</g>
+<!-- A -->
+<g id="node1" class="node">
+
+<path fill="#f1efff" stroke="#8d7ed3" stroke-width="1.45" d="M511,-977C511,-977 300,-977 300,-977 294,-977 288,-971 288,-965 288,-965 288,-953 288,-953 288,-947 294,-941 300,-941 300,-941 511,-941 511,-941 517,-941 523,-947 523,-953 523,-953 523,-965 523,-965 523,-971 517,-977 511,-977"/>
+<text text-anchor="middle" x="405.5" y="-955.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#463a88">节点启动 Nav2MonitorAggregatorNode</text>
+</g>
+<!-- B -->
+<g id="node2" class="node">
+
+<path fill="#ffffff" stroke="#86b6a3" stroke-width="1.45" d="M427,-894C427,-894 384,-894 384,-894 378,-894 372,-888 372,-882 372,-882 372,-870 372,-870 372,-864 378,-858 384,-858 384,-858 427,-858 427,-858 433,-858 439,-864 439,-870 439,-870 439,-882 439,-882 439,-888 433,-894 427,-894"/>
+<text text-anchor="middle" x="405.5" y="-872.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f2a2c">加载参数</text>
+</g>
+<!-- C -->
+<g id="node3" class="node">
+
+<path fill="#fff1ec" stroke="#d26a56" stroke-width="1.45" d="M498,-811C498,-811 313,-811 313,-811 307,-811 301,-805 301,-799 301,-799 301,-787 301,-787 301,-781 307,-775 313,-775 313,-775 498,-775 498,-775 504,-775 510,-781 510,-787 510,-787 510,-799 510,-799 510,-805 504,-811 498,-811"/>
+<text text-anchor="middle" x="405.5" y="-789.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#7c2f25">加载 fault_config 到 FaultDetector</text>
+</g>
+<!-- D -->
+<g id="node4" class="node">
+
+<polygon fill="#ffffff" stroke="#86b6a3" stroke-width="1.45" points="405.5,-728 298.5,-701 405.5,-674 512.5,-701 405.5,-728"/>
+<text text-anchor="middle" x="405.5" y="-697.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f2a2c">modules 有效?</text>
+</g>
+<!-- E -->
+<g id="node5" class="node">
+
+<path fill="#edf6ff" stroke="#6ba2d7" stroke-width="1.45" d="M384.5,-617C384.5,-617 182.5,-617 182.5,-617 176.5,-617 170.5,-611 170.5,-605 170.5,-605 170.5,-593 170.5,-593 170.5,-587 176.5,-581 182.5,-581 182.5,-581 384.5,-581 384.5,-581 390.5,-581 396.5,-587 396.5,-593 396.5,-593 396.5,-605 396.5,-605 396.5,-611 390.5,-617 384.5,-617"/>
+<text text-anchor="middle" x="283.5" y="-595.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#265b89">监控目标=modules 汇总 nodes/topics</text>
+</g>
+<!-- F -->
+<g id="node6" class="node">
+
+<path fill="#edf6ff" stroke="#6ba2d7" stroke-width="1.45" d="M616.5,-617C616.5,-617 440.5,-617 440.5,-617 434.5,-617 428.5,-611 428.5,-605 428.5,-605 428.5,-593 428.5,-593 428.5,-587 434.5,-581 440.5,-581 440.5,-581 616.5,-581 616.5,-581 622.5,-581 628.5,-587 628.5,-593 628.5,-593 628.5,-605 628.5,-605 628.5,-611 622.5,-617 616.5,-617"/>
+<text text-anchor="middle" x="528.5" y="-595.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#265b89">回退 target_nodes/watch_topics</text>
+</g>
+<!-- G -->
+<g id="node7" class="node">
+
+<path fill="#ffffff" stroke="#86b6a3" stroke-width="1.45" d="M479.5,-534C479.5,-534 331.5,-534 331.5,-534 325.5,-534 319.5,-528 319.5,-522 319.5,-522 319.5,-510 319.5,-510 319.5,-504 325.5,-498 331.5,-498 331.5,-498 479.5,-498 479.5,-498 485.5,-498 491.5,-504 491.5,-510 491.5,-510 491.5,-522 491.5,-522 491.5,-528 485.5,-534 479.5,-534"/>
+<text text-anchor="middle" x="405.5" y="-512.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f2a2c">初始化发布器/订阅器/定时器</text>
+</g>
+<!-- H -->
+<g id="node8" class="node">
+
+<path fill="#edf6ff" stroke="#6ba2d7" stroke-width="1.45" d="M307,-451C307,-451 178,-451 178,-451 172,-451 166,-445 166,-439 166,-439 166,-427 166,-427 166,-421 172,-415 178,-415 178,-415 307,-415 307,-415 313,-415 319,-421 319,-427 319,-427 319,-439 319,-439 319,-445 313,-451 307,-451"/>
+<text text-anchor="middle" x="242.5" y="-429.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#265b89">scan_topology 定时循环</text>
+</g>
+<!-- I -->
+<g id="node9" class="node">
+
+<path fill="#ffffff" stroke="#86b6a3" stroke-width="1.45" d="M595.5,-451C595.5,-451 473.5,-451 473.5,-451 467.5,-451 461.5,-445 461.5,-439 461.5,-439 461.5,-427 461.5,-427 461.5,-421 467.5,-415 473.5,-415 473.5,-415 595.5,-415 595.5,-415 601.5,-415 607.5,-421 607.5,-427 607.5,-427 607.5,-439 607.5,-439 607.5,-445 601.5,-451 595.5,-451"/>
+<text text-anchor="middle" x="534.5" y="-429.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f2a2c">check_health 定时循环</text>
+</g>
+<!-- H1 -->
+<g id="node10" class="node">
+
+<path fill="#fff1ec" stroke="#d26a56" stroke-width="1.45" d="M141,-368C141,-368 12,-368 12,-368 6,-368 0,-362 0,-356 0,-356 0,-344 0,-344 0,-338 6,-332 12,-332 12,-332 141,-332 141,-332 147,-332 153,-338 153,-344 153,-344 153,-356 153,-356 153,-362 147,-368 141,-368"/>
+<text text-anchor="middle" x="76.5" y="-346.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#7c2f25">检查 fault_config 热重载</text>
+</g>
+<!-- H2 -->
+<g id="node11" class="node">
+
+<path fill="#ffffff" stroke="#86b6a3" stroke-width="1.45" d="M288,-368C288,-368 197,-368 197,-368 191,-368 185,-362 185,-356 185,-356 185,-344 185,-344 185,-338 191,-332 197,-332 197,-332 288,-332 288,-332 294,-332 300,-338 300,-344 300,-344 300,-356 300,-356 300,-362 294,-368 288,-368"/>
+<text text-anchor="middle" x="242.5" y="-346.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f2a2c">刷新模块目标清单</text>
+</g>
+<!-- I1 -->
+<g id="node12" class="node">
+
+<path fill="#eaf7ef" stroke="#61a87d" stroke-width="1.45" d="M468.5,-368C468.5,-368 344.5,-368 344.5,-368 338.5,-368 332.5,-362 332.5,-356 332.5,-356 332.5,-344 332.5,-344 332.5,-338 338.5,-332 344.5,-332 344.5,-332 468.5,-332 468.5,-332 474.5,-332 480.5,-338 480.5,-344 480.5,-344 480.5,-356 480.5,-356 480.5,-362 474.5,-368 468.5,-368"/>
+<text text-anchor="middle" x="406.5" y="-346.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">读取 VehicleStatus 文件</text>
+</g>
+<!-- I2 -->
+<g id="node13" class="node">
+
+<path fill="#ffffff" stroke="#86b6a3" stroke-width="1.45" d="M616,-368C616,-368 525,-368 525,-368 519,-368 513,-362 513,-356 513,-356 513,-344 513,-344 513,-338 519,-332 525,-332 525,-332 616,-332 616,-332 622,-332 628,-338 628,-344 628,-344 628,-356 628,-356 628,-362 622,-368 616,-368"/>
+<text text-anchor="middle" x="570.5" y="-346.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f2a2c">采集系统资源指标</text>
+</g>
+<!-- I3 -->
+<g id="node14" class="node">
+
+<path fill="#eaf7ef" stroke="#61a87d" stroke-width="1.45" d="M815,-368C815,-368 672,-368 672,-368 666,-368 660,-362 660,-356 660,-356 660,-344 660,-344 660,-338 666,-332 672,-332 672,-332 815,-332 815,-332 821,-332 827,-338 827,-344 827,-344 827,-356 827,-356 827,-362 821,-368 815,-368"/>
+<text text-anchor="middle" x="743.5" y="-346.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">聚合 /monitor/*_state 状态</text>
+</g>
+<!-- I4 -->
+<g id="node15" class="node">
+
+<path fill="#fff1ec" stroke="#d26a56" stroke-width="1.45" d="M806.5,-285C806.5,-285 680.5,-285 680.5,-285 674.5,-285 668.5,-279 668.5,-273 668.5,-273 668.5,-261 668.5,-261 668.5,-255 674.5,-249 680.5,-249 680.5,-249 806.5,-249 806.5,-249 812.5,-249 818.5,-255 818.5,-261 818.5,-261 818.5,-273 818.5,-273 818.5,-279 812.5,-285 806.5,-285"/>
+<text text-anchor="middle" x="743.5" y="-263.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#7c2f25">更新 FaultDetector 输入</text>
+</g>
+<!-- I5 -->
+<g id="node16" class="node">
+
+<path fill="#fff1ec" stroke="#d26a56" stroke-width="1.45" d="M778,-202C778,-202 709,-202 709,-202 703,-202 697,-196 697,-190 697,-190 697,-178 697,-178 697,-172 703,-166 709,-166 709,-166 778,-166 778,-166 784,-166 790,-172 790,-178 790,-178 790,-190 790,-190 790,-196 784,-202 778,-202"/>
+<text text-anchor="middle" x="743.5" y="-180.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#7c2f25">detect_faults</text>
+</g>
+<!-- I6 -->
+<g id="node17" class="node">
+
+<path fill="#f1efff" stroke="#8d7ed3" stroke-width="1.45" d="M835,-119C835,-119 652,-119 652,-119 646,-119 640,-113 640,-107 640,-107 640,-95 640,-95 640,-89 646,-83 652,-83 652,-83 835,-83 835,-83 841,-83 847,-89 847,-95 847,-95 847,-107 847,-107 847,-113 841,-119 835,-119"/>
+<text text-anchor="middle" x="743.5" y="-97.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#463a88">按 module+action 执行 cooldown</text>
+</g>
+<!-- I7 -->
+<g id="node18" class="node">
+
+<path fill="#eaf7ef" stroke="#61a87d" stroke-width="1.45" d="M599.5,-36C599.5,-36 455.5,-36 455.5,-36 449.5,-36 443.5,-30 443.5,-24 443.5,-24 443.5,-12 443.5,-12 443.5,-6 449.5,0 455.5,0 455.5,0 599.5,0 599.5,0 605.5,0 611.5,-6 611.5,-12 611.5,-12 611.5,-24 611.5,-24 611.5,-30 605.5,-36 599.5,-36"/>
+<text text-anchor="middle" x="527.5" y="-14.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">发布 /nav2_monitor/status</text>
+</g>
+<!-- I8 -->
+<g id="node19" class="node">
+
+<path fill="#fff1ec" stroke="#d26a56" stroke-width="1.45" d="M831,-36C831,-36 656,-36 656,-36 650,-36 644,-30 644,-24 644,-24 644,-12 644,-12 644,-6 650,0 656,0 656,0 831,0 831,0 837,0 843,-6 843,-12 843,-12 843,-24 843,-24 843,-30 837,-36 831,-36"/>
+<text text-anchor="middle" x="743.5" y="-14.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#7c2f25">发布 /nav2_monitor/fault_event</text>
+</g>
+<!-- I9 -->
+<g id="node20" class="node">
+
+<path fill="#f1efff" stroke="#8d7ed3" stroke-width="1.45" d="M1152,-36C1152,-36 887,-36 887,-36 881,-36 875,-30 875,-24 875,-24 875,-12 875,-12 875,-6 881,0 887,0 887,0 1152,0 1152,0 1158,0 1164,-6 1164,-12 1164,-12 1164,-24 1164,-24 1164,-30 1158,-36 1152,-36"/>
+<text text-anchor="middle" x="1019.5" y="-14.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#463a88">发布 /nodemanager/cmd 或 /safety_system/cmd</text>
+</g>
+</g>
+</svg>
+</div>
+<h2 id="2-数据流图data-flow">2) 数据流图（Data Flow）</h2>
+<div class="svg-diagram"><div class="svg-diagram-title">可视化流程图</div><div class="svg-diagram-legend"><span><i style="background:#6ba2d7"></i>输入 / 数据源</span><span><i style="background:#d2a235"></i>判断 / 策略</span><span><i style="background:#61a87d"></i>状态 / 输出</span><span><i style="background:#d26a56"></i>故障 / 风险</span><span><i style="background:#8d7ed3"></i>执行 / 安全动作</span></div><svg width="1266pt" height="955pt"
+ viewBox="0.00 0.00 1266.00 955.00" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<g id="graph0" class="graph" transform="scale(1 1) rotate(0) translate(18 937)">
+
+<g id="clust1" class="cluster">
+
+<path fill="#f7fbf9" stroke="#c8ded4" d="M20,-8C20,-8 184,-8 184,-8 190,-8 196,-14 196,-20 196,-20 196,-615 196,-615 196,-621 190,-627 184,-627 184,-627 20,-627 20,-627 14,-627 8,-621 8,-615 8,-615 8,-20 8,-20 8,-14 14,-8 20,-8"/>
+<text text-anchor="middle" x="102" y="-611.8" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="14.00" fill="#1f6f50">外部输入</text>
+</g>
+<g id="clust2" class="cluster">
+
+<path fill="#f7fbf9" stroke="#c8ded4" d="M239,-445C239,-445 1181,-445 1181,-445 1187,-445 1193,-451 1193,-457 1193,-457 1193,-612 1193,-612 1193,-618 1187,-624 1181,-624 1181,-624 239,-624 239,-624 233,-624 227,-618 227,-612 227,-612 227,-457 227,-457 227,-451 233,-445 239,-445"/>
+<text text-anchor="middle" x="710" y="-608.8" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="14.00" fill="#1f6f50">nav2_monitor 核心</text>
+</g>
+<g id="clust3" class="cluster">
+
+<path fill="#f7fbf9" stroke="#c8ded4" d="M1046,-632C1046,-632 1210,-632 1210,-632 1216,-632 1222,-638 1222,-644 1222,-644 1222,-899 1222,-899 1222,-905 1216,-911 1210,-911 1210,-911 1046,-911 1046,-911 1040,-911 1034,-905 1034,-899 1034,-899 1034,-644 1034,-644 1034,-638 1040,-632 1046,-632"/>
+<text text-anchor="middle" x="1128" y="-895.8" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="14.00" fill="#1f6f50">输出</text>
+</g>
+<!-- FC&#45;&gt;FD -->
+<g id="edge1" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M188.21,-20.5C401.56,-20.5 937,-20.5 937,-20.5 937,-20.5 937,-444.98 937,-444.98"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="934.27,-444.98 937,-452.78 939.73,-444.98 934.27,-444.98"/>
+</g>
+<!-- TS&#45;&gt;N -->
+<g id="edge2" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M173.28,-456.5C273.51,-456.5 444,-456.5 444,-456.5 444,-456.5 444,-480.97 444,-480.97"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="441.27,-480.97 444,-488.77 446.73,-480.97 441.27,-480.97"/>
+</g>
+<!-- VSJ&#45;&gt;N -->
+<g id="edge3" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M176.3,-374C283.02,-374 467,-374 467,-374 467,-374 467,-480.99 467,-480.99"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="464.27,-480.99 467,-488.79 469.73,-480.99 464.27,-480.99"/>
+</g>
+<!-- NTF&#45;&gt;N -->
+<g id="edge4" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M178.19,-306C291.19,-306 490,-306 490,-306 490,-306 490,-481.01 490,-481.01"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="487.27,-481.01 490,-488.81 492.73,-481.01 487.27,-481.01"/>
+</g>
+<!-- BAT&#45;&gt;N -->
+<g id="edge5" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M176.91,-238C295.45,-238 513,-238 513,-238 513,-238 513,-481.13 513,-481.13"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="510.27,-481.13 513,-488.93 515.73,-481.13 510.27,-481.13"/>
+</g>
+<!-- FB&#45;&gt;N -->
+<g id="edge6" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M182.11,-170C307.51,-170 536,-170 536,-170 536,-170 536,-481.08 536,-481.08"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="533.27,-481.08 536,-488.88 538.73,-481.08 533.27,-481.08"/>
+</g>
+<!-- COL&#45;&gt;N -->
+<g id="edge7" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M179.52,-102C309.91,-102 559,-102 559,-102 559,-102 559,-481.01 559,-481.01"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="556.27,-481.01 559,-488.81 561.73,-481.01 556.27,-481.01"/>
+</g>
+<!-- VS&#45;&gt;VM -->
+<g id="edge11" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M164.13,-576.5C164.13,-576.5 226.9,-576.5 226.9,-576.5"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="226.9,-579.23 234.7,-576.5 226.9,-573.77 226.9,-579.23"/>
+</g>
+<!-- SYS&#45;&gt;SM -->
+<g id="edge13" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M165.52,-508.5C165.52,-508.5 244.6,-508.5 244.6,-508.5"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="244.6,-511.23 252.4,-508.5 244.6,-505.77 244.6,-511.23"/>
+</g>
+<!-- N&#45;&gt;FD -->
+<g id="edge15" class="edge">
+
+<path fill="none" stroke="#5b8f79" stroke-width="1.45" d="M605.07,-494.14C725.41,-494.14 921,-494.14 921,-494.14 921,-494.14 921,-493.65 921,-493.65"/>
+<polygon fill="#5b8f79" stroke="#5b8f79" stroke-width="1.45" points="923.73,-497.03 921,-489.23 918.27,-497.03 923.73,-497.03"/>
+<text text-anchor="middle" x="742" y="-498" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="10.00">node_status/topic_freq + feedback + chassis state</text>
+</g>
+<!-- N&#45;&gt;CD -->
+<g id="edge18" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M605.41,-519.86C715,-519.86 883,-519.86 883,-519.86 883,-519.86 883,-546.96 883,-546.96"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="880.27,-546.96 883,-554.76 885.73,-546.96 880.27,-546.96"/>
+</g>
+<!-- N&#45;&gt;CD -->
+<g id="edge20" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M605.2,-514.71C715.66,-514.71 886,-514.71 886,-514.71 886,-514.71 886,-547.12 886,-547.12"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="883.27,-547.12 886,-554.92 888.73,-547.12 883.27,-547.12"/>
+</g>
+<!-- N&#45;&gt;ST -->
+<g id="edge23" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M559,-525.09C559,-597.43 559,-862 559,-862 559,-862 1049.57,-862 1049.57,-862"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="1049.57,-864.73 1057.37,-862 1049.57,-859.27 1049.57,-864.73"/>
+</g>
+<!-- N&#45;&gt;FE -->
+<g id="edge22" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M605.04,-509.57C758.99,-509.57 1052,-509.57 1052,-509.57 1052,-509.57 1052,-767.98 1052,-767.98"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="1049.27,-767.97 1052,-775.78 1054.73,-767.98 1049.27,-767.97"/>
+</g>
+<!-- FD&#45;&gt;MV -->
+<g id="edge16" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M953,-489.07C953,-494.62 953,-499.29 953,-499.29 953,-499.29 1062.9,-499.29 1062.9,-499.29"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="1062.9,-502.02 1070.7,-499.29 1062.9,-496.56 1062.9,-502.02"/>
+</g>
+<!-- VM&#45;&gt;N -->
+<g id="edge12" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M366,-556.73C366,-538.44 366,-513 366,-513 366,-513 412.94,-513 412.94,-513"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="412.94,-515.73 420.74,-513 412.94,-510.27 412.94,-515.73"/>
+</g>
+<!-- SM&#45;&gt;N -->
+<g id="edge14" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M356.58,-501C356.58,-501 412.83,-501 412.83,-501"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="412.83,-503.73 420.63,-501 412.83,-498.27 412.83,-503.73"/>
+</g>
+<!-- MV&#45;&gt;N -->
+<g id="edge17" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M1070.97,-504.43C1070.97,-504.43 612.94,-504.43 612.94,-504.43"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="612.94,-501.7 605.14,-504.43 612.94,-507.16 612.94,-501.7"/>
+</g>
+<!-- CD&#45;&gt;SP -->
+<g id="edge19" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M995.16,-574C1029.77,-574 1067,-574 1067,-574 1067,-574 1067,-631.97 1067,-631.97"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="1064.27,-631.97 1067,-639.77 1069.73,-631.97 1064.27,-631.97"/>
+</g>
+<!-- CD&#45;&gt;SA -->
+<g id="edge21" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M937,-593.05C937,-633.02 937,-722 937,-722 937,-722 1054.47,-722 1054.47,-722"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="1054.47,-724.73 1062.27,-722 1054.47,-719.27 1054.47,-724.73"/>
+</g>
+<!-- CMD&#45;&gt;N -->
+<g id="edge8" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M331.61,-43C401.44,-43 582,-43 582,-43 582,-43 582,-481.01 582,-481.01"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="579.27,-481.01 582,-488.81 584.73,-481.01 579.27,-481.01"/>
+</g>
+<!-- MOTO&#45;&gt;N -->
+<g id="edge9" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M331.76,-704C388.27,-704 513,-704 513,-704 513,-704 513,-532.98 513,-532.98"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="515.73,-532.98 513,-525.18 510.27,-532.98 515.73,-532.98"/>
+</g>
+<!-- ODOM&#45;&gt;N -->
+<g id="edge10" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M332.07,-636C378.43,-636 467,-636 467,-636 467,-636 467,-533.01 467,-533.01"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="469.73,-533.01 467,-525.21 464.27,-533.01 469.73,-533.01"/>
+</g>
+<!-- FC -->
+<g id="node1" class="node">
+
+<path fill="#fff1ec" stroke="#d26a56" stroke-width="1.45" d="M176,-52C176,-52 28,-52 28,-52 22,-52 16,-46 16,-40 16,-40 16,-28 16,-28 16,-22 22,-16 28,-16 28,-16 176,-16 176,-16 182,-16 188,-22 188,-28 188,-28 188,-40 188,-40 188,-46 182,-52 176,-52"/>
+<text text-anchor="middle" x="102" y="-30.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#7c2f25">fault_detector_config.yaml</text>
+</g>
+<!-- TS -->
+<g id="node2" class="node">
+
+<path fill="#edf6ff" stroke="#6ba2d7" stroke-width="1.45" d="M161,-460C161,-460 43,-460 43,-460 37,-460 31,-454 31,-448 31,-448 31,-436 31,-436 31,-430 37,-424 43,-424 43,-424 161,-424 161,-424 167,-424 173,-430 173,-436 173,-436 173,-448 173,-448 173,-454 167,-460 161,-460"/>
+<text text-anchor="middle" x="102" y="-438.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#265b89">/monitor/topic_states</text>
+</g>
+<!-- VSJ -->
+<g id="node3" class="node">
+
+<path fill="#eaf7ef" stroke="#61a87d" stroke-width="1.45" d="M164,-392C164,-392 40,-392 40,-392 34,-392 28,-386 28,-380 28,-380 28,-368 28,-368 28,-362 34,-356 40,-356 40,-356 164,-356 164,-356 170,-356 176,-362 176,-368 176,-368 176,-380 176,-380 176,-386 170,-392 164,-392"/>
+<text text-anchor="middle" x="102" y="-370.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">/monitor/vehicle_state</text>
+</g>
+<!-- NTF -->
+<g id="node4" class="node">
+
+<path fill="#edf6ff" stroke="#6ba2d7" stroke-width="1.45" d="M166,-324C166,-324 38,-324 38,-324 32,-324 26,-318 26,-312 26,-312 26,-300 26,-300 26,-294 32,-288 38,-288 38,-288 166,-288 166,-288 172,-288 178,-294 178,-300 178,-300 178,-312 178,-312 178,-318 172,-324 166,-324"/>
+<text text-anchor="middle" x="102" y="-302.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#265b89">/monitor/node_tf_state</text>
+</g>
+<!-- BAT -->
+<g id="node5" class="node">
+
+<path fill="#eaf7ef" stroke="#61a87d" stroke-width="1.45" d="M164.5,-256C164.5,-256 39.5,-256 39.5,-256 33.5,-256 27.5,-250 27.5,-244 27.5,-244 27.5,-232 27.5,-232 27.5,-226 33.5,-220 39.5,-220 39.5,-220 164.5,-220 164.5,-220 170.5,-220 176.5,-226 176.5,-232 176.5,-232 176.5,-244 176.5,-244 176.5,-250 170.5,-256 164.5,-256"/>
+<text text-anchor="middle" x="102" y="-234.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">/monitor/battery_state</text>
+</g>
+<!-- FB -->
+<g id="node6" class="node">
+
+<path fill="#eaf7ef" stroke="#61a87d" stroke-width="1.45" d="M170,-188C170,-188 34,-188 34,-188 28,-188 22,-182 22,-176 22,-176 22,-164 22,-164 22,-158 28,-152 34,-152 34,-152 170,-152 170,-152 176,-152 182,-158 182,-164 182,-164 182,-176 182,-176 182,-182 176,-188 170,-188"/>
+<text text-anchor="middle" x="102" y="-166.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">/monitor/feedback_state</text>
+</g>
+<!-- COL -->
+<g id="node7" class="node">
+
+<path fill="#fff1ec" stroke="#d26a56" stroke-width="1.45" d="M167.5,-120C167.5,-120 36.5,-120 36.5,-120 30.5,-120 24.5,-114 24.5,-108 24.5,-108 24.5,-96 24.5,-96 24.5,-90 30.5,-84 36.5,-84 36.5,-84 167.5,-84 167.5,-84 173.5,-84 179.5,-90 179.5,-96 179.5,-96 179.5,-108 179.5,-108 179.5,-114 173.5,-120 167.5,-120"/>
+<text text-anchor="middle" x="102" y="-98.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#7c2f25">/monitor/collision_state</text>
+</g>
+<!-- VS -->
+<g id="node8" class="node">
+
+<path fill="#eaf7ef" stroke="#61a87d" stroke-width="1.45" d="M152,-596C152,-596 52,-596 52,-596 46,-596 40,-590 40,-584 40,-584 40,-572 40,-572 40,-566 46,-560 52,-560 52,-560 152,-560 152,-560 158,-560 164,-566 164,-572 164,-572 164,-584 164,-584 164,-590 158,-596 152,-596"/>
+<text text-anchor="middle" x="102" y="-574.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">vehicle_status_file</text>
+</g>
+<!-- SYS -->
+<g id="node9" class="node">
+
+<path fill="#ffffff" stroke="#86b6a3" stroke-width="1.45" d="M153.5,-528C153.5,-528 50.5,-528 50.5,-528 44.5,-528 38.5,-522 38.5,-516 38.5,-516 38.5,-504 38.5,-504 38.5,-498 44.5,-492 50.5,-492 50.5,-492 153.5,-492 153.5,-492 159.5,-492 165.5,-498 165.5,-504 165.5,-504 165.5,-516 165.5,-516 165.5,-522 159.5,-528 153.5,-528"/>
+<text text-anchor="middle" x="102" y="-506.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f2a2c">/proc + /sys + NVML</text>
+</g>
+<!-- N -->
+<g id="node10" class="node">
+
+<path fill="#eaf7ef" stroke="#61a87d" stroke-width="1.45" d="M593,-525C593,-525 433,-525 433,-525 427,-525 421,-519 421,-513 421,-513 421,-501 421,-501 421,-495 427,-489 433,-489 433,-489 593,-489 593,-489 599,-489 605,-495 605,-501 605,-501 605,-513 605,-513 605,-519 599,-525 593,-525"/>
+<text text-anchor="middle" x="513" y="-503.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">Nav2MonitorAggregatorNode</text>
+</g>
+<!-- FD -->
+<g id="node11" class="node">
+
+<path fill="#fff1ec" stroke="#d26a56" stroke-width="1.45" d="M973,-489C973,-489 901,-489 901,-489 895,-489 889,-483 889,-477 889,-477 889,-465 889,-465 889,-459 895,-453 901,-453 901,-453 973,-453 973,-453 979,-453 985,-459 985,-465 985,-465 985,-477 985,-477 985,-483 979,-489 973,-489"/>
+<text text-anchor="middle" x="937" y="-467.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#7c2f25">FaultDetector</text>
+</g>
+<!-- VM -->
+<g id="node12" class="node">
+
+<path fill="#eaf7ef" stroke="#61a87d" stroke-width="1.45" d="M362,-593C362,-593 247,-593 247,-593 241,-593 235,-587 235,-581 235,-581 235,-569 235,-569 235,-563 241,-557 247,-557 247,-557 362,-557 362,-557 368,-557 374,-563 374,-569 374,-569 374,-581 374,-581 374,-587 368,-593 362,-593"/>
+<text text-anchor="middle" x="304.5" y="-571.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">VehicleStatusMonitor</text>
+</g>
+<!-- SM -->
+<g id="node13" class="node">
+
+<path fill="#eaf7ef" stroke="#61a87d" stroke-width="1.45" d="M344.5,-525C344.5,-525 264.5,-525 264.5,-525 258.5,-525 252.5,-519 252.5,-513 252.5,-513 252.5,-501 252.5,-501 252.5,-495 258.5,-489 264.5,-489 264.5,-489 344.5,-489 344.5,-489 350.5,-489 356.5,-495 356.5,-501 356.5,-501 356.5,-513 356.5,-513 356.5,-519 350.5,-525 344.5,-525"/>
+<text text-anchor="middle" x="304.5" y="-503.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">SystemMonitor</text>
+</g>
+<!-- MV -->
+<g id="node14" class="node">
+
+<path fill="#fff6db" stroke="#d2a235" stroke-width="1.45" d="M1173,-527C1173,-527 1083,-527 1083,-527 1077,-527 1071,-521 1071,-515 1071,-515 1071,-501 1071,-501 1071,-495 1077,-489 1083,-489 1083,-489 1173,-489 1173,-489 1179,-489 1185,-495 1185,-501 1185,-501 1185,-515 1185,-515 1185,-521 1179,-527 1173,-527"/>
+<text text-anchor="middle" x="1128" y="-511.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#6c4d00">MultiValueJudge</text>
+<text text-anchor="middle" x="1128" y="-498.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#6c4d00">trigger/recover</text>
+</g>
+<!-- CD -->
+<g id="node15" class="node">
+
+<path fill="#f1efff" stroke="#8d7ed3" stroke-width="1.45" d="M983,-593C983,-593 891,-593 891,-593 885,-593 879,-587 879,-581 879,-581 879,-567 879,-567 879,-561 885,-555 891,-555 891,-555 983,-555 983,-555 989,-555 995,-561 995,-567 995,-567 995,-581 995,-581 995,-587 989,-593 983,-593"/>
+<text text-anchor="middle" x="937" y="-577.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#463a88">Action Cooldown</text>
+<text text-anchor="middle" x="937" y="-564.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#463a88">module+action</text>
+</g>
+<!-- ST -->
+<g id="node16" class="node">
+
+<path fill="#eaf7ef" stroke="#61a87d" stroke-width="1.45" d="M1186.5,-880C1186.5,-880 1069.5,-880 1069.5,-880 1063.5,-880 1057.5,-874 1057.5,-868 1057.5,-868 1057.5,-856 1057.5,-856 1057.5,-850 1063.5,-844 1069.5,-844 1069.5,-844 1186.5,-844 1186.5,-844 1192.5,-844 1198.5,-850 1198.5,-856 1198.5,-856 1198.5,-868 1198.5,-868 1198.5,-874 1192.5,-880 1186.5,-880"/>
+<text text-anchor="middle" x="1128" y="-858.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">/nav2_monitor/status</text>
+</g>
+<!-- FE -->
+<g id="node17" class="node">
+
+<path fill="#fff1ec" stroke="#d26a56" stroke-width="1.45" d="M1202,-812C1202,-812 1054,-812 1054,-812 1048,-812 1042,-806 1042,-800 1042,-800 1042,-788 1042,-788 1042,-782 1048,-776 1054,-776 1054,-776 1202,-776 1202,-776 1208,-776 1214,-782 1214,-788 1214,-788 1214,-800 1214,-800 1214,-806 1208,-812 1202,-812"/>
+<text text-anchor="middle" x="1128" y="-790.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#7c2f25">/nav2_monitor/fault_event</text>
+</g>
+<!-- SP -->
+<g id="node18" class="node">
+
+<path fill="#f1efff" stroke="#8d7ed3" stroke-width="1.45" d="M1182,-676C1182,-676 1074,-676 1074,-676 1068,-676 1062,-670 1062,-664 1062,-664 1062,-652 1062,-652 1062,-646 1068,-640 1074,-640 1074,-640 1182,-640 1182,-640 1188,-640 1194,-646 1194,-652 1194,-652 1194,-664 1194,-664 1194,-670 1188,-676 1182,-676"/>
+<text text-anchor="middle" x="1128" y="-654.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#463a88">/nodemanager/cmd</text>
+</g>
+<!-- SA -->
+<g id="node19" class="node">
+
+<path fill="#f1efff" stroke="#8d7ed3" stroke-width="1.45" d="M1181.5,-744C1181.5,-744 1074.5,-744 1074.5,-744 1068.5,-744 1062.5,-738 1062.5,-732 1062.5,-732 1062.5,-720 1062.5,-720 1062.5,-714 1068.5,-708 1074.5,-708 1074.5,-708 1181.5,-708 1181.5,-708 1187.5,-708 1193.5,-714 1193.5,-720 1193.5,-720 1193.5,-732 1193.5,-732 1193.5,-738 1187.5,-744 1181.5,-744"/>
+<text text-anchor="middle" x="1128" y="-722.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#463a88">/safety_system/cmd</text>
+</g>
+<!-- CMD -->
+<g id="node20" class="node">
+
+<path fill="#f1efff" stroke="#8d7ed3" stroke-width="1.45" d="M319.5,-61C319.5,-61 289.5,-61 289.5,-61 283.5,-61 277.5,-55 277.5,-49 277.5,-49 277.5,-37 277.5,-37 277.5,-31 283.5,-25 289.5,-25 289.5,-25 319.5,-25 319.5,-25 325.5,-25 331.5,-31 331.5,-37 331.5,-37 331.5,-49 331.5,-49 331.5,-55 325.5,-61 319.5,-61"/>
+<text text-anchor="middle" x="304.5" y="-39.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#463a88">CMD</text>
+</g>
+<!-- MOTO -->
+<g id="node21" class="node">
+
+<path fill="#ffffff" stroke="#86b6a3" stroke-width="1.45" d="M319.5,-736C319.5,-736 289.5,-736 289.5,-736 283.5,-736 277.5,-730 277.5,-724 277.5,-724 277.5,-712 277.5,-712 277.5,-706 283.5,-700 289.5,-700 289.5,-700 319.5,-700 319.5,-700 325.5,-700 331.5,-706 331.5,-712 331.5,-712 331.5,-724 331.5,-724 331.5,-730 325.5,-736 319.5,-736"/>
+<text text-anchor="middle" x="304.5" y="-714.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f2a2c">MOTO</text>
+</g>
+<!-- ODOM -->
+<g id="node22" class="node">
+
+<path fill="#edf6ff" stroke="#6ba2d7" stroke-width="1.45" d="M320,-668C320,-668 289,-668 289,-668 283,-668 277,-662 277,-656 277,-656 277,-644 277,-644 277,-638 283,-632 289,-632 289,-632 320,-632 320,-632 326,-632 332,-638 332,-644 332,-644 332,-656 332,-656 332,-662 326,-668 320,-668"/>
+<text text-anchor="middle" x="304.5" y="-646.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#265b89">ODOM</text>
+</g>
+</g>
+</svg>
+</div>
+<h2 id="3-功能图模块功能分解">3) 功能图（模块功能分解）</h2>
+<div class="svg-diagram"><div class="svg-diagram-title">可视化流程图</div><div class="svg-diagram-legend"><span><i style="background:#6ba2d7"></i>输入 / 数据源</span><span><i style="background:#d2a235"></i>判断 / 策略</span><span><i style="background:#61a87d"></i>状态 / 输出</span><span><i style="background:#d26a56"></i>故障 / 风险</span><span><i style="background:#8d7ed3"></i>执行 / 安全动作</span></div><svg width="2870pt" height="236pt"
+ viewBox="0.00 0.00 2869.50 236.00" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<g id="graph0" class="graph" transform="scale(1 1) rotate(0) translate(18 218)">
+
+<!-- ROOT&#45;&gt;M1 -->
+<g id="edge1" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M1986.85,-182C1727.81,-182 533,-182 533,-182 533,-182 533,-127.18 533,-127.18"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="535.73,-127.18 533,-119.38 530.27,-127.18 535.73,-127.18"/>
+</g>
+<!-- ROOT&#45;&gt;M2 -->
+<g id="edge2" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M2022.75,-163.91C2022.75,-140.87 2022.75,-104 2022.75,-104 2022.75,-104 1830.06,-104 1830.06,-104"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="1830.06,-101.27 1822.26,-104 1830.06,-106.73 1830.06,-101.27"/>
+</g>
+<!-- ROOT&#45;&gt;M3 -->
+<g id="edge3" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M2071.75,-163.72C2071.75,-142.68 2071.75,-111 2071.75,-111 2071.75,-111 2221.47,-111 2221.47,-111"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="2221.47,-113.73 2229.27,-111 2221.47,-108.27 2221.47,-113.73"/>
+</g>
+<!-- ROOT&#45;&gt;M4 -->
+<g id="edge4" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M2085.47,-182C2222.85,-182 2599,-182 2599,-182 2599,-182 2599,-127.18 2599,-127.18"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="2601.73,-127.18 2599,-119.38 2596.27,-127.18 2601.73,-127.18"/>
+</g>
+<!-- M1&#45;&gt;M11 -->
+<g id="edge5" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M440.92,-107C299.5,-107 45,-107 45,-107 45,-107 45,-45.89 45,-45.89"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="47.73,-45.89 45,-38.09 42.27,-45.89 47.73,-45.89"/>
+</g>
+<!-- M1&#45;&gt;M12 -->
+<g id="edge6" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M440.99,-95C340.3,-95 193,-95 193,-95 193,-95 193,-45.98 193,-45.98"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="195.73,-45.98 193,-38.18 190.27,-45.98 195.73,-45.98"/>
+</g>
+<!-- M1&#45;&gt;M13 -->
+<g id="edge7" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M470.75,-82.8C470.75,-82.8 470.75,-45.8 470.75,-45.8"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="473.48,-45.8 470.75,-38 468.02,-45.8 473.48,-45.8"/>
+</g>
+<!-- M1&#45;&gt;M14 -->
+<g id="edge8" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M578.75,-82.8C578.75,-82.8 578.75,-45.8 578.75,-45.8"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="581.48,-45.8 578.75,-38 576.02,-45.8 581.48,-45.8"/>
+</g>
+<!-- M1&#45;&gt;M15 -->
+<g id="edge9" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M625.07,-104C764.21,-104 1012,-104 1012,-104 1012,-104 1012,-46.09 1012,-46.09"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="1014.73,-46.09 1012,-38.29 1009.27,-46.09 1014.73,-46.09"/>
+</g>
+<!-- M2&#45;&gt;M21 -->
+<g id="edge10" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M1725.94,-111C1599.63,-111 1268,-111 1268,-111 1268,-111 1268,-45.86 1268,-45.86"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="1270.73,-45.86 1268,-38.06 1265.27,-45.86 1270.73,-45.86"/>
+</g>
+<!-- M2&#45;&gt;M22 -->
+<g id="edge11" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M1725.7,-97C1629.69,-97 1424,-97 1424,-97 1424,-97 1424,-44.89 1424,-44.89"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="1426.73,-44.89 1424,-37.09 1421.27,-44.89 1426.73,-44.89"/>
+</g>
+<!-- M2&#45;&gt;M23 -->
+<g id="edge12" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M1725.57,-90C1675.63,-90 1605,-90 1605,-90 1605,-90 1605,-45.08 1605,-45.08"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="1607.73,-45.08 1605,-37.28 1602.27,-45.08 1607.73,-45.08"/>
+</g>
+<!-- M2&#45;&gt;M24 -->
+<g id="edge13" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M1774,-82.8C1774,-82.8 1774,-45.8 1774,-45.8"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="1776.73,-45.8 1774,-38 1771.27,-45.8 1776.73,-45.8"/>
+</g>
+<!-- M2&#45;&gt;M25 -->
+<g id="edge14" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M1822.27,-90C1867.85,-90 1929.25,-90 1929.25,-90 1929.25,-90 1929.25,-45.83 1929.25,-45.83"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="1931.98,-45.83 1929.25,-38.03 1926.52,-45.83 1931.98,-45.83"/>
+</g>
+<!-- M2&#45;&gt;M26 -->
+<g id="edge15" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M1822,-97C1923.37,-97 2150,-97 2150,-97 2150,-97 2150,-46.08 2150,-46.08"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="2152.73,-46.08 2150,-38.28 2147.27,-46.08 2152.73,-46.08"/>
+</g>
+<!-- M3&#45;&gt;M31 -->
+<g id="edge16" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M2299,-82.8C2299,-82.8 2299,-44.95 2299,-44.95"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="2301.73,-44.95 2299,-37.15 2296.27,-44.95 2301.73,-44.95"/>
+</g>
+<!-- M3&#45;&gt;M32 -->
+<g id="edge17" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M2362.5,-82.8C2362.5,-58.64 2362.5,-19 2362.5,-19 2362.5,-19 2380.66,-19 2380.66,-19"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="2380.66,-21.73 2388.46,-19 2380.66,-16.27 2380.66,-21.73"/>
+</g>
+<!-- M4&#45;&gt;M41 -->
+<g id="edge18" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M2599,-82.8C2599,-82.8 2599,-44.95 2599,-44.95"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="2601.73,-44.95 2599,-37.15 2596.27,-44.95 2601.73,-44.95"/>
+</g>
+<!-- M4&#45;&gt;M42 -->
+<g id="edge19" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M2651.21,-101C2699.55,-101 2764,-101 2764,-101 2764,-101 2764,-45 2764,-45"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="2766.73,-45 2764,-37.2 2761.27,-45 2766.73,-45"/>
+</g>
+<!-- ROOT -->
+<g id="node1" class="node">
+
+<path fill="#eaf7ef" stroke="#61a87d" stroke-width="1.45" d="M2073,-200C2073,-200 1999,-200 1999,-200 1993,-200 1987,-194 1987,-188 1987,-188 1987,-176 1987,-176 1987,-170 1993,-164 1999,-164 1999,-164 2073,-164 2073,-164 2079,-164 2085,-170 2085,-176 2085,-176 2085,-188 2085,-188 2085,-194 2079,-200 2073,-200"/>
+<text text-anchor="middle" x="2036" y="-178.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">nav2_monitor</text>
+</g>
+<!-- M1 -->
+<g id="node2" class="node">
+
+<path fill="#eaf7ef" stroke="#61a87d" stroke-width="1.45" d="M613,-119C613,-119 453,-119 453,-119 447,-119 441,-113 441,-107 441,-107 441,-95 441,-95 441,-89 447,-83 453,-83 453,-83 613,-83 613,-83 619,-83 625,-89 625,-95 625,-95 625,-107 625,-107 625,-113 619,-119 613,-119"/>
+<text text-anchor="middle" x="533" y="-97.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">Nav2MonitorAggregatorNode</text>
+</g>
+<!-- M2 -->
+<g id="node3" class="node">
+
+<path fill="#fff1ec" stroke="#d26a56" stroke-width="1.45" d="M1810,-119C1810,-119 1738,-119 1738,-119 1732,-119 1726,-113 1726,-107 1726,-107 1726,-95 1726,-95 1726,-89 1732,-83 1738,-83 1738,-83 1810,-83 1810,-83 1816,-83 1822,-89 1822,-95 1822,-95 1822,-107 1822,-107 1822,-113 1816,-119 1810,-119"/>
+<text text-anchor="middle" x="1774" y="-97.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#7c2f25">FaultDetector</text>
+</g>
+<!-- M3 -->
+<g id="node4" class="node">
+
+<path fill="#eaf7ef" stroke="#61a87d" stroke-width="1.45" d="M2356.5,-119C2356.5,-119 2241.5,-119 2241.5,-119 2235.5,-119 2229.5,-113 2229.5,-107 2229.5,-107 2229.5,-95 2229.5,-95 2229.5,-89 2235.5,-83 2241.5,-83 2241.5,-83 2356.5,-83 2356.5,-83 2362.5,-83 2368.5,-89 2368.5,-95 2368.5,-95 2368.5,-107 2368.5,-107 2368.5,-113 2362.5,-119 2356.5,-119"/>
+<text text-anchor="middle" x="2299" y="-97.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">VehicleStatusMonitor</text>
+</g>
+<!-- M4 -->
+<g id="node5" class="node">
+
+<path fill="#eaf7ef" stroke="#61a87d" stroke-width="1.45" d="M2639,-119C2639,-119 2559,-119 2559,-119 2553,-119 2547,-113 2547,-107 2547,-107 2547,-95 2547,-95 2547,-89 2553,-83 2559,-83 2559,-83 2639,-83 2639,-83 2645,-83 2651,-89 2651,-95 2651,-95 2651,-107 2651,-107 2651,-113 2645,-119 2639,-119"/>
+<text text-anchor="middle" x="2599" y="-97.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">SystemMonitor</text>
+</g>
+<!-- M11 -->
+<g id="node6" class="node">
+
+<path fill="#f1efff" stroke="#8d7ed3" stroke-width="1.45" d="M78,-38C78,-38 12,-38 12,-38 6,-38 0,-32 0,-26 0,-26 0,-12 0,-12 0,-6 6,0 12,0 12,0 78,0 78,0 84,0 90,-6 90,-12 90,-12 90,-26 90,-26 90,-32 84,-38 78,-38"/>
+<text text-anchor="middle" x="45" y="-22.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#463a88">拓扑扫描</text>
+<text text-anchor="middle" x="45" y="-9.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#463a88">节点/话题/TF</text>
+</g>
+<!-- M12 -->
+<g id="node7" class="node">
+
+<path fill="#eaf7ef" stroke="#61a87d" stroke-width="1.45" d="M251.5,-38C251.5,-38 134.5,-38 134.5,-38 128.5,-38 122.5,-32 122.5,-26 122.5,-26 122.5,-12 122.5,-12 122.5,-6 128.5,0 134.5,0 134.5,0 251.5,0 251.5,0 257.5,0 263.5,-6 263.5,-12 263.5,-12 263.5,-26 263.5,-26 263.5,-32 257.5,-38 251.5,-38"/>
+<text text-anchor="middle" x="193" y="-22.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">状态发布</text>
+<text text-anchor="middle" x="193" y="-9.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">/nav2_monitor/status</text>
+</g>
+<!-- M13 -->
+<g id="node8" class="node">
+
+<path fill="#fff1ec" stroke="#d26a56" stroke-width="1.45" d="M488.5,-38C488.5,-38 307.5,-38 307.5,-38 301.5,-38 295.5,-32 295.5,-26 295.5,-26 295.5,-12 295.5,-12 295.5,-6 301.5,0 307.5,0 307.5,0 488.5,0 488.5,0 494.5,0 500.5,-6 500.5,-12 500.5,-12 500.5,-26 500.5,-26 500.5,-32 494.5,-38 488.5,-38"/>
+<text text-anchor="middle" x="398" y="-22.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#7c2f25">事件与动作执行</text>
+<text text-anchor="middle" x="398" y="-9.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#7c2f25">fault_event/nodemanager/safety</text>
+</g>
+<!-- M14 -->
+<g id="node9" class="node">
+
+<path fill="#f1efff" stroke="#8d7ed3" stroke-width="1.45" d="M789.5,-38C789.5,-38 544.5,-38 544.5,-38 538.5,-38 532.5,-32 532.5,-26 532.5,-26 532.5,-12 532.5,-12 532.5,-6 538.5,0 544.5,0 544.5,0 789.5,0 789.5,0 795.5,0 801.5,-6 801.5,-12 801.5,-12 801.5,-26 801.5,-26 801.5,-32 795.5,-38 789.5,-38"/>
+<text text-anchor="middle" x="667" y="-22.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#463a88">动作冷却抑制</text>
+<text text-anchor="middle" x="667" y="-9.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#463a88">safety_cooldown / nodemanager_cooldown</text>
+</g>
+<!-- M15 -->
+<g id="node10" class="node">
+
+<path fill="#edf6ff" stroke="#6ba2d7" stroke-width="1.45" d="M1178.5,-38C1178.5,-38 845.5,-38 845.5,-38 839.5,-38 833.5,-32 833.5,-26 833.5,-26 833.5,-12 833.5,-12 833.5,-6 839.5,0 845.5,0 845.5,0 1178.5,0 1178.5,0 1184.5,0 1190.5,-6 1190.5,-12 1190.5,-12 1190.5,-26 1190.5,-26 1190.5,-32 1184.5,-38 1178.5,-38"/>
+<text text-anchor="middle" x="1012" y="-22.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#265b89">输入接入</text>
+<text text-anchor="middle" x="1012" y="-9.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#265b89">algorithm_feedback + topic_states + command/moto/odom</text>
+</g>
+<!-- M21 -->
+<g id="node11" class="node">
+
+<path fill="#f1efff" stroke="#8d7ed3" stroke-width="1.45" d="M1301.5,-38C1301.5,-38 1234.5,-38 1234.5,-38 1228.5,-38 1222.5,-32 1222.5,-26 1222.5,-26 1222.5,-12 1222.5,-12 1222.5,-6 1228.5,0 1234.5,0 1234.5,0 1301.5,0 1301.5,0 1307.5,0 1313.5,-6 1313.5,-12 1313.5,-12 1313.5,-26 1313.5,-26 1313.5,-32 1307.5,-38 1301.5,-38"/>
+<text text-anchor="middle" x="1268" y="-22.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#463a88">节点存活判断</text>
+<text text-anchor="middle" x="1268" y="-9.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#463a88">快速路径</text>
+</g>
+<!-- M22 -->
+<g id="node12" class="node">
+
+<path fill="#fff6db" stroke="#d2a235" stroke-width="1.45" d="M1490,-37C1490,-37 1358,-37 1358,-37 1352,-37 1346,-31 1346,-25 1346,-25 1346,-13 1346,-13 1346,-7 1352,-1 1358,-1 1358,-1 1490,-1 1490,-1 1496,-1 1502,-7 1502,-13 1502,-13 1502,-25 1502,-25 1502,-31 1496,-37 1490,-37"/>
+<text text-anchor="middle" x="1424" y="-15.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#6c4d00">feedback_rules 阈值判断</text>
+</g>
+<!-- M23 -->
+<g id="node13" class="node">
+
+<path fill="#fff6db" stroke="#d2a235" stroke-width="1.45" d="M1664,-37C1664,-37 1546,-37 1546,-37 1540,-37 1534,-31 1534,-25 1534,-25 1534,-13 1534,-13 1534,-7 1540,-1 1546,-1 1546,-1 1664,-1 1664,-1 1670,-1 1676,-7 1676,-13 1676,-13 1676,-25 1676,-25 1676,-31 1670,-37 1664,-37"/>
+<text text-anchor="middle" x="1605" y="-15.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#6c4d00">legacy topics 频率判断</text>
+</g>
+<!-- M24 -->
+<g id="node14" class="node">
+
+<path fill="#fff6db" stroke="#d2a235" stroke-width="1.45" d="M1827.5,-38C1827.5,-38 1720.5,-38 1720.5,-38 1714.5,-38 1708.5,-32 1708.5,-26 1708.5,-26 1708.5,-12 1708.5,-12 1708.5,-6 1714.5,0 1720.5,0 1720.5,0 1827.5,0 1827.5,0 1833.5,0 1839.5,-6 1839.5,-12 1839.5,-12 1839.5,-26 1839.5,-26 1839.5,-32 1833.5,-38 1827.5,-38"/>
+<text text-anchor="middle" x="1774" y="-22.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#6c4d00">小车状态判断检测</text>
+<text text-anchor="middle" x="1774" y="-9.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#6c4d00">vehicle_state_judge</text>
+</g>
+<!-- M25 -->
+<g id="node15" class="node">
+
+<path fill="#ffffff" stroke="#86b6a3" stroke-width="1.45" d="M2046.5,-38C2046.5,-38 1883.5,-38 1883.5,-38 1877.5,-38 1871.5,-32 1871.5,-26 1871.5,-26 1871.5,-12 1871.5,-12 1871.5,-6 1877.5,0 1883.5,0 1883.5,0 2046.5,0 2046.5,0 2052.5,0 2058.5,-6 2058.5,-12 2058.5,-12 2058.5,-26 2058.5,-26 2058.5,-32 2052.5,-38 2046.5,-38"/>
+<text text-anchor="middle" x="1965" y="-22.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f2a2c">连续计数防误报</text>
+<text text-anchor="middle" x="1965" y="-9.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f2a2c">trigger_count / recover_count</text>
+</g>
+<!-- M26 -->
+<g id="node16" class="node">
+
+<path fill="#edf6ff" stroke="#6ba2d7" stroke-width="1.45" d="M2197,-38C2197,-38 2103,-38 2103,-38 2097,-38 2091,-32 2091,-26 2091,-26 2091,-12 2091,-12 2091,-6 2097,0 2103,0 2103,0 2197,0 2197,0 2203,0 2209,-6 2209,-12 2209,-12 2209,-26 2209,-26 2209,-32 2203,-38 2197,-38"/>
+<text text-anchor="middle" x="2150" y="-22.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#265b89">监控目标导出</text>
+<text text-anchor="middle" x="2150" y="-9.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#265b89">聚合 nodes/topics</text>
+</g>
+<!-- M31 -->
+<g id="node17" class="node">
+
+<path fill="#eaf7ef" stroke="#61a87d" stroke-width="1.45" d="M2344.5,-37C2344.5,-37 2253.5,-37 2253.5,-37 2247.5,-37 2241.5,-31 2241.5,-25 2241.5,-25 2241.5,-13 2241.5,-13 2241.5,-7 2247.5,-1 2253.5,-1 2253.5,-1 2344.5,-1 2344.5,-1 2350.5,-1 2356.5,-7 2356.5,-13 2356.5,-13 2356.5,-25 2356.5,-25 2356.5,-31 2350.5,-37 2344.5,-37"/>
+<text text-anchor="middle" x="2299" y="-15.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">导航状态文件解析</text>
+</g>
+<!-- M32 -->
+<g id="node18" class="node">
+
+<path fill="#eaf7ef" stroke="#61a87d" stroke-width="1.45" d="M2491.5,-37C2491.5,-37 2400.5,-37 2400.5,-37 2394.5,-37 2388.5,-31 2388.5,-25 2388.5,-25 2388.5,-13 2388.5,-13 2388.5,-7 2394.5,-1 2400.5,-1 2400.5,-1 2491.5,-1 2491.5,-1 2497.5,-1 2503.5,-7 2503.5,-13 2503.5,-13 2503.5,-25 2503.5,-25 2503.5,-31 2497.5,-37 2491.5,-37"/>
+<text text-anchor="middle" x="2446" y="-15.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">小车状态字段输出</text>
+</g>
+<!-- M41 -->
+<g id="node19" class="node">
+
+<path fill="#ffffff" stroke="#86b6a3" stroke-width="1.45" d="M2650.5,-37C2650.5,-37 2547.5,-37 2547.5,-37 2541.5,-37 2535.5,-31 2535.5,-25 2535.5,-25 2535.5,-13 2535.5,-13 2535.5,-7 2541.5,-1 2547.5,-1 2547.5,-1 2650.5,-1 2650.5,-1 2656.5,-1 2662.5,-7 2662.5,-13 2662.5,-13 2662.5,-25 2662.5,-25 2662.5,-31 2656.5,-37 2650.5,-37"/>
+<text text-anchor="middle" x="2599" y="-15.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f2a2c">CPU/内存/磁盘/温度</text>
+</g>
+<!-- M42 -->
+<g id="node20" class="node">
+
+<path fill="#ffffff" stroke="#86b6a3" stroke-width="1.45" d="M2821.5,-37C2821.5,-37 2706.5,-37 2706.5,-37 2700.5,-37 2694.5,-31 2694.5,-25 2694.5,-25 2694.5,-13 2694.5,-13 2694.5,-7 2700.5,-1 2706.5,-1 2706.5,-1 2821.5,-1 2821.5,-1 2827.5,-1 2833.5,-7 2833.5,-13 2833.5,-13 2833.5,-25 2833.5,-25 2833.5,-31 2827.5,-37 2821.5,-37"/>
+<text text-anchor="middle" x="2764" y="-15.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f2a2c">GPU 使用率/温度/显存</text>
+</g>
+</g>
+</svg>
+</div>
+      <div class="meta">本文档已统一为 HTML 形式，便于浏览、打印和后续可视化扩展。</div>
+    </article>
+  </div>
+</body>
+</html>

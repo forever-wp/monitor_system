@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>2026-03-31-drift-status-bridge</title>
+  <style>
+    :root {
+      --bg: #f6f7f8;
+      --paper: #ffffff;
+      --ink: #1f2a2c;
+      --muted: #5f6f73;
+      --line: #dbe3e6;
+      --brand: #1f6f50;
+      --brand-soft: #e7f3ee;
+      --shadow: 0 10px 28px rgb(31 42 44 / 8%);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: linear-gradient(160deg, #f6f7f8 0%, #edf3f5 100%);
+      font-family: "Noto Sans SC", "Microsoft YaHei", Arial, sans-serif;
+      line-height: 1.72;
+    }
+    .page {
+      width: min(1100px, calc(100% - 28px));
+      margin: 0 auto;
+      padding: 28px 0 48px;
+    }
+    .card {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+      padding: 28px;
+    }
+    h1, h2, h3, h4, h5, h6 { line-height: 1.28; margin: 22px 0 10px; }
+    h1 { margin-top: 6px; font-size: clamp(28px, 4vw, 44px); }
+    h2 { font-size: clamp(21px, 2.7vw, 31px); }
+    h3 { font-size: clamp(18px, 2.1vw, 24px); }
+    p { margin: 10px 0; }
+    code {
+      padding: 2px 6px;
+      border-radius: 6px;
+      background: var(--brand-soft);
+      color: #154933;
+      font-family: "JetBrains Mono", Consolas, monospace;
+      font-size: 0.93em;
+    }
+    pre {
+      margin: 14px 0;
+      padding: 14px;
+      border-radius: 12px;
+      background: #152124;
+      color: #e6f0f2;
+      overflow-x: auto;
+      border: 1px solid #26363a;
+    }
+    pre code {
+      padding: 0;
+      background: transparent;
+      color: inherit;
+      font-size: 0.9em;
+    }
+    ul, ol { padding-left: 22px; margin: 8px 0 14px; }
+    li { margin: 4px 0; }
+    blockquote {
+      margin: 14px 0;
+      padding: 10px 14px;
+      border-left: 4px solid var(--brand);
+      background: var(--brand-soft);
+      color: #1f4f3c;
+    }
+    a { color: #1f5f8c; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .toc {
+      margin-bottom: 18px;
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #f9fcfd;
+    }
+    .toc strong { display: block; margin-bottom: 8px; color: var(--brand); }
+    .toc ul { margin: 0; padding-left: 18px; }
+    .table-wrap {
+      overflow-x: auto;
+      margin: 12px 0;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+    }
+    table { border-collapse: collapse; width: 100%; min-width: 520px; }
+    th, td {
+      border-bottom: 1px solid var(--line);
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+    thead th {
+      color: var(--brand);
+      background: var(--brand-soft);
+    }
+    tbody tr:last-child td { border-bottom: none; }
+    .meta {
+      margin-top: 20px;
+      color: var(--muted);
+      font-size: 13px;
+      border-top: 1px dashed var(--line);
+      padding-top: 12px;
+    }
+    @media (max-width: 720px) {
+      .card { padding: 20px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <article class="card">
+      <aside class="toc"><strong>目录</strong><ul><li><a href="#drift-status-bridge-implementation-plan">Drift Status Bridge Implementation Plan</a></li><li><a href="#task-1-add-failing-bridge-layout-assertions">Task 1: Add failing bridge layout assertions</a></li><li><a href="#task-2-add-driftstatus-bridge-spec">Task 2: Add `/drift_status` bridge spec</a></li><li><a href="#task-3-add-light-lm-feedback-rules">Task 3: Add `light-lm` feedback rules</a></li><li><a href="#task-4-update-docs">Task 4: Update docs</a></li></ul></aside>
+<h1 id="drift-status-bridge-implementation-plan">Drift Status Bridge Implementation Plan</h1>
+<blockquote><strong>For agentic workers:</strong> REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (<code>- [ ]</code>) syntax for tracking.</blockquote>
+<p><strong>Goal:</strong> Add a <code>/drift_status</code> PoseStamped bridge into <code>light-lm</code> and expose separate drift feedback rules.</p>
+<p><strong>Architecture:</strong> Extend the existing config-driven bridge spec instead of creating a new node, then wire <code>light-lm</code> feedback rules through the existing <code>nav2_monitor</code> fault detector configuration. Keep runtime OTA files and mirrored package config files aligned.</p>
+<p><strong>Tech Stack:</strong> ROS 2, YAML config, pytest, gtest-backed config validation</p>
+<p>---</p>
+<h3 id="task-1-add-failing-bridge-layout-assertions">Task 1: Add failing bridge layout assertions</h3>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Modify: <code>src/bridge/test/test_monitor_ota_layout.py</code></li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 1: Write failing assertions for <code>/drift_status</code></strong></li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 2: Run bridge tests and verify failure</strong></li>
+</ul>
+<h3 id="task-2-add-driftstatus-bridge-spec">Task 2: Add <code>/drift_status</code> bridge spec</h3>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Modify: <code>config/Monitor/bridge/generic_multi_bridge_spec.yaml</code></li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 1: Add the new <code>PoseStamped</code> bridge entry</strong></li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 2: Re-run bridge tests and verify pass</strong></li>
+</ul>
+<h3 id="task-3-add-light-lm-feedback-rules">Task 3: Add <code>light-lm</code> feedback rules</h3>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Modify: <code>config/Monitor/nav2_monitor/fault_detector_config.yaml</code></li>
+</ul>
+<ul>
+<li>Modify: <code>config/Monitor/nav2_monitor/profiles/fault_detector_todoor.yaml</code></li>
+</ul>
+<ul>
+<li>Modify: <code>config/Monitor/nav2_monitor/profiles/fault_detector_elevator.yaml</code></li>
+</ul>
+<ul>
+<li>Modify: <code>config/Monitor/nav2_monitor/profiles/fault_detector_reverse.yaml</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/config/fault_detector_config.yaml</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/config/profiles/fault_detector_todoor.yaml</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/config/profiles/fault_detector_elevator.yaml</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/config/profiles/fault_detector_reverse.yaml</code></li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 1: Add independent <code>drift_state</code> and <code>drift_delta_norm</code> rules under <code>light-lm</code></strong></li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 2: Run nav2_monitor tests and verify pass</strong></li>
+</ul>
+<h3 id="task-4-update-docs">Task 4: Update docs</h3>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Modify: <code>src/nav2_monitor/README.md</code></li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 1: Document <code>/drift_status</code> bridge and <code>light-lm</code> feedback rules</strong></li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 2: Re-run targeted verification</strong></li>
+</ul>
+<p>Plan complete and saved to <code>docs/superpowers/plans/2026-03-31-drift-status-bridge.html</code>. Ready to execute.</p>
+      <div class="meta">本文档已统一为 HTML 形式，便于浏览、打印和后续可视化扩展。</div>
+    </article>
+  </div>
+</body>
+</html>

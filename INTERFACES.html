@@ -1,0 +1,1824 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>INTERFACES</title>
+  <style>
+    :root {
+      --bg: #f6f7f8;
+      --paper: #ffffff;
+      --ink: #1f2a2c;
+      --muted: #5f6f73;
+      --line: #dbe3e6;
+      --brand: #1f6f50;
+      --brand-soft: #e7f3ee;
+      --shadow: 0 10px 28px rgb(31 42 44 / 8%);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: linear-gradient(160deg, #f6f7f8 0%, #edf3f5 100%);
+      font-family: "Noto Sans SC", "Microsoft YaHei", Arial, sans-serif;
+      line-height: 1.72;
+    }
+    .page {
+      width: min(1100px, calc(100% - 28px));
+      margin: 0 auto;
+      padding: 28px 0 48px;
+    }
+    .card {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+      padding: 28px;
+    }
+    h1, h2, h3, h4, h5, h6 { line-height: 1.28; margin: 22px 0 10px; }
+    h1 { margin-top: 6px; font-size: clamp(28px, 4vw, 44px); }
+    h2 { font-size: clamp(21px, 2.7vw, 31px); }
+    h3 { font-size: clamp(18px, 2.1vw, 24px); }
+    p { margin: 10px 0; }
+    code {
+      padding: 2px 6px;
+      border-radius: 6px;
+      background: var(--brand-soft);
+      color: #154933;
+      font-family: "JetBrains Mono", Consolas, monospace;
+      font-size: 0.93em;
+    }
+    pre {
+      margin: 14px 0;
+      padding: 14px;
+      border-radius: 12px;
+      background: #152124;
+      color: #e6f0f2;
+      overflow-x: auto;
+      border: 1px solid #26363a;
+    }
+    pre code {
+      padding: 0;
+      background: transparent;
+      color: inherit;
+      font-size: 0.9em;
+    }
+    ul, ol { padding-left: 22px; margin: 8px 0 14px; }
+    li { margin: 4px 0; }
+    blockquote {
+      margin: 14px 0;
+      padding: 10px 14px;
+      border-left: 4px solid var(--brand);
+      background: var(--brand-soft);
+      color: #1f4f3c;
+    }
+    a { color: #1f5f8c; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .toc {
+      margin-bottom: 18px;
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #f9fcfd;
+    }
+    .toc strong { display: block; margin-bottom: 8px; color: var(--brand); }
+    .toc ul { margin: 0; padding-left: 18px; }
+    .table-wrap {
+      overflow-x: auto;
+      margin: 12px 0;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+    }
+    table { border-collapse: collapse; width: 100%; min-width: 520px; }
+    th, td {
+      border-bottom: 1px solid var(--line);
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+    thead th {
+      color: var(--brand);
+      background: var(--brand-soft);
+    }
+    tbody tr:last-child td { border-bottom: none; }
+    .meta {
+      margin-top: 20px;
+      color: var(--muted);
+      font-size: 13px;
+      border-top: 1px dashed var(--line);
+      padding-top: 12px;
+    }
+    @media (max-width: 720px) {
+      .card { padding: 20px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <article class="card">
+      <aside class="toc"><strong>目录</strong><ul><li><a href="#worktree-external-interfaces">Worktree External Interfaces</a></li><li><a href="#1-总体链路">1. 总体链路</a></li><li><a href="#2-algorithm-feedback-adapter">2. Algorithm Feedback Adapter</a></li><li><a href="#21-角色">2.1 角色</a></li><li><a href="#22-启动与配置入口">2.2 启动与配置入口</a></li><li><a href="#23-对外接口">2.3 对外接口</a></li><li><a href="#algorithmfeedbackadapternode">`algorithm_feedback_adapter_node`</a></li><li><a href="#algorithmfeedbackadaptercppnode">`algorithm_feedback_adapter_cpp_node`</a></li><li><a href="#24-输出消息">2.4 输出消息</a></li><li><a href="#25-示例适配">2.5 示例适配</a></li><li><a href="#26-示例">2.6 示例</a></li><li><a href="#algorithmfeedbackadapter-规则-yaml-示例">algorithm_feedback_adapter 规则 YAML 示例</a></li><li><a href="#algorithmfeedbackadapter-输出示例">algorithm_feedback_adapter 输出示例</a></li><li><a href="#3-nav2monitor">3. nav2_monitor</a></li><li><a href="#31-topic-frequency-monitor">3.1 Topic Frequency Monitor</a></li><li><a href="#32-vehicle-state-judge">3.2 Vehicle State Judge</a></li><li><a href="#33-algorithm-feedback-monitor">3.3 Algorithm Feedback Monitor</a></li><li><a href="#34-collision-monitor">3.4 Collision Monitor</a></li><li><a href="#35-battery-monitor">3.5 Battery Monitor</a></li><li><a href="#36-aggregator-角色">3.6 Aggregator 角色</a></li><li><a href="#37-启动与配置入口">3.7 启动与配置入口</a></li><li><a href="#38-固定输入接口">3.8 固定输入接口</a></li><li><a href="#39-原始数据归属">3.9 原始数据归属</a></li><li><a href="#310-对外输出接口">3.10 对外输出接口</a></li><li><a href="#38-输出消息定义">3.8 输出消息定义</a></li><li><a href="#nav2monitormsgmonitorstatus">`nav2_monitor/msg/MonitorStatus`</a></li><li><a href="#nav2monitormsgfaultevent">`nav2_monitor/msg/FaultEvent`</a></li><li><a href="#nav2monitormsgsafetycmd">`nav2_monitor/msg/SafetyCmd`</a></li><li><a href="#37-json-输出协议">3.7 JSON 输出协议</a></li><li><a href="#nodemanagercmd">`/nodemanager/cmd`</a></li><li><a href="#nav2monitorreporterheartbeatjson">`/nav2_monitor/reporter/heartbeat_json`</a></li><li><a href="#nav2monitorreportereventjson">`/nav2_monitor/reporter/event_json`</a></li><li><a href="#38-关键参数接口">3.8 关键参数接口</a></li><li><a href="#39-运行时可变接口">3.9 运行时可变接口</a></li><li><a href="#310-无接口项">3.10 无接口项</a></li><li><a href="#311-示例">3.11 示例</a></li><li><a href="#统一反馈输入示例">统一反馈输入示例</a></li><li><a href="#监控状态查看示例">监控状态查看示例</a></li><li><a href="#故障事件查看示例">故障事件查看示例</a></li><li><a href="#安全动作输出示例">安全动作输出示例</a></li><li><a href="#节点管理器-json-输出示例">节点管理器 JSON 输出示例</a></li><li><a href="#心跳-json-输出示例">心跳 JSON 输出示例</a></li><li><a href="#4-safetyemergencyexecutor">4. safety_emergency_executor</a></li><li><a href="#41-角色">4.1 角色</a></li><li><a href="#42-启动与配置入口">4.2 启动与配置入口</a></li><li><a href="#43-输入接口">4.3 输入接口</a></li><li><a href="#44-输出接口">4.4 输出接口</a></li><li><a href="#45-控制源切换接口">4.5 控制源切换接口</a></li><li><a href="#46-command-json-协议">4.6 `/command` JSON 协议</a></li><li><a href="#47-pressure-json-协议">4.7 `/pressure_` JSON 协议</a></li><li><a href="#48-安全动作语义">4.8 安全动作语义</a></li><li><a href="#49-关键参数接口">4.9 关键参数接口</a></li><li><a href="#410-运行时可变接口">4.10 运行时可变接口</a></li><li><a href="#411-无接口项">4.11 无接口项</a></li><li><a href="#412-示例">4.12 示例</a></li><li><a href="#查询当前控制源">查询当前控制源</a></li><li><a href="#切换控制源到-remote">切换控制源到 remote</a></li><li><a href="#查看当前控制源状态-topic">查看当前控制源状态 topic</a></li><li><a href="#下发-remote-速度指令">下发 remote 速度指令</a></li><li><a href="#查看最终-command">查看最终 `/command`</a></li><li><a href="#下发带扩展控制字段的-remote-速度指令">下发带扩展控制字段的 remote 速度指令</a></li><li><a href="#下发减速安全动作">下发减速安全动作</a></li><li><a href="#动态更新底盘参数字段">动态更新底盘参数字段</a></li><li><a href="#5-包间调用关系">5. 包间调用关系</a></li><li><a href="#51-algorithmfeedbackadapter---nav2monitor">5.1 algorithm_feedback_adapter -&gt; nav2_monitor</a></li><li><a href="#52-nav2monitor---safetyemergencyexecutor">5.2 nav2_monitor -&gt; safety_emergency_executor</a></li><li><a href="#53-safetyemergencyexecutor---chassis">5.3 safety_emergency_executor -&gt; chassis</a></li><li><a href="#6-当前接口注意事项">6. 当前接口注意事项</a></li></ul></aside>
+<h1 id="worktree-external-interfaces">Worktree External Interfaces</h1>
+<p>本文件汇总当前 worktree 中对外接口面：</p>
+<ul>
+<li><code>algorithm_feedback_adapter</code></li>
+</ul>
+<ul>
+<li><code>nav2_monitor</code></li>
+</ul>
+<ul>
+<li><code>topic_frequency_monitor</code></li>
+</ul>
+<ul>
+<li><code>vehicle_state_judge</code></li>
+</ul>
+<ul>
+<li><code>node_tf_monitor</code></li>
+</ul>
+<ul>
+<li><code>battery_monitor</code></li>
+</ul>
+<ul>
+<li><code>algorithm_feedback_monitor</code></li>
+</ul>
+<ul>
+<li><code>collision_monitor</code></li>
+</ul>
+<ul>
+<li><code>safety_emergency_executor</code></li>
+</ul>
+<p>不包含 <code>master_interfaces</code> 协议包说明。</p>
+<h2 id="1-总体链路">1. 总体链路</h2>
+<p>当前对外主链路如下：</p>
+<p><code>业务 topic -&gt; algorithm_feedback_adapter -&gt; /nav2_monitor/algorithm_feedback -&gt; algorithm_feedback_monitor -&gt; /monitor/feedback_state -&gt; nav2_monitor_aggregator -&gt; /safety_system/cmd -&gt; safety_emergency_executor -&gt; /command</code></p>
+<p>补充链路：</p>
+<ul>
+<li><code>nav2_monitor_aggregator</code> 对外发布状态、故障事件、JSON 上报、节点管理器请求和安全动作</li>
+</ul>
+<ul>
+<li><code>topic_frequency_monitor</code> 独立统计高频 watch topic，并发布 <code>/monitor/topic_states</code></li>
+</ul>
+<ul>
+<li><code>vehicle_state_judge</code> 独立发布 <code>/monitor/vehicle_state</code> 和人工介入提醒</li>
+</ul>
+<ul>
+<li><code>collision_monitor</code> 独立处理碰撞/TTC、<code>/navigation_mode</code> 切换和 TTC marker</li>
+</ul>
+<ul>
+<li><code>safety_emergency_executor</code> 同时接收多路速度源，并通过标准 ROS 2 参数服务切换当前控制源</li>
+</ul>
+<h2 id="2-algorithm-feedback-adapter">2. Algorithm Feedback Adapter</h2>
+<h3 id="21-角色">2.1 角色</h3>
+<p><code>algorithm_feedback_adapter</code> 负责把业务侧原始 ROS 消息统一转换成 <code>nav2_monitor/msg/AlgorithmFeedback</code>。</p>
+<p>当前有两个对外节点：</p>
+<ul>
+<li><code>algorithm_feedback_adapter_node</code></li>
+</ul>
+<ul>
+<li>主实现</li>
+</ul>
+<ul>
+<li>多 topic</li>
+</ul>
+<ul>
+<li>配置驱动</li>
+</ul>
+<ul>
+<li><code>algorithm_feedback_adapter_cpp_node</code></li>
+</ul>
+<ul>
+<li>强类型电池反馈适配实现</li>
+</ul>
+<h3 id="22-启动与配置入口">2.2 启动与配置入口</h3>
+<ul>
+<li>包文档：</li>
+</ul>
+<ul>
+<li><code>src/algorithm_feedback_adapter/README.md</code></li>
+</ul>
+<ul>
+<li>Python 节点参数：</li>
+</ul>
+<ul>
+<li><code>src/algorithm_feedback_adapter/config/algorithm_feedback_adapter_params.yaml</code></li>
+</ul>
+<ul>
+<li>C++ 节点参数：</li>
+</ul>
+<ul>
+<li><code>src/algorithm_feedback_adapter/config/algorithm_feedback_adapter_cpp_params.yaml</code></li>
+</ul>
+<ul>
+<li>Python 规格示例：</li>
+</ul>
+<ul>
+<li><code>src/algorithm_feedback_adapter/config/examples/algorithm_feedback_adapter_spec.yaml</code></li>
+</ul>
+<h3 id="23-对外接口">2.3 对外接口</h3>
+<h4 id="algorithmfeedbackadapternode"><code>algorithm_feedback_adapter_node</code></h4>
+<p>节点名：</p>
+<ul>
+<li><code>algorithm_feedback_adapter_node</code></li>
+</ul>
+<p>参数：</p>
+<ul>
+<li><code>spec_file</code></li>
+</ul>
+<ul>
+<li>默认值：<code>config/examples/algorithm_feedback_adapter_spec.yaml</code></li>
+</ul>
+<ul>
+<li>作用：指定适配规则 YAML</li>
+</ul>
+<p>接口特征：</p>
+<ul>
+<li>无自定义 service</li>
+</ul>
+<ul>
+<li>无 action</li>
+</ul>
+<ul>
+<li>输入 topic 和输出 topic 完全由 <code>spec_file</code> 决定</li>
+</ul>
+<p>单条适配规则必须包含：</p>
+<ul>
+<li><code>id</code></li>
+</ul>
+<ul>
+<li><code>message_type</code></li>
+</ul>
+<ul>
+<li><code>input_topic</code></li>
+</ul>
+<ul>
+<li><code>output_topic</code></li>
+</ul>
+<ul>
+<li><code>module_name</code></li>
+</ul>
+<ul>
+<li><code>topic_name</code></li>
+</ul>
+<ul>
+<li><code>metrics</code></li>
+</ul>
+<p>每个 <code>metrics</code> 条目必须包含：</p>
+<ul>
+<li><code>name</code></li>
+</ul>
+<ul>
+<li><code>field</code></li>
+</ul>
+<p>可选字段：</p>
+<ul>
+<li><code>valid_field</code></li>
+</ul>
+<ul>
+<li><code>valid_default</code></li>
+</ul>
+<h4 id="algorithmfeedbackadaptercppnode"><code>algorithm_feedback_adapter_cpp_node</code></h4>
+<p>节点名：</p>
+<ul>
+<li><code>algorithm_feedback_adapter_cpp_node</code></li>
+</ul>
+<p>参数：</p>
+<ul>
+<li><code>input_topic</code></li>
+</ul>
+<ul>
+<li><code>output_topic</code></li>
+</ul>
+<ul>
+<li><code>module_name</code></li>
+</ul>
+<ul>
+<li><code>topic_name</code></li>
+</ul>
+<p>默认示例：</p>
+<ul>
+<li>输入：<code>/battery_state</code></li>
+</ul>
+<ul>
+<li>输出：<code>/nav2_monitor/algorithm_feedback</code></li>
+</ul>
+<h3 id="24-输出消息">2.4 输出消息</h3>
+<p>统一输出消息类型：</p>
+<ul>
+<li><code>nav2_monitor/msg/AlgorithmFeedback</code></li>
+</ul>
+<p>字段：</p>
+<ul>
+<li><code>stamp</code></li>
+</ul>
+<ul>
+<li><code>module_name</code></li>
+</ul>
+<ul>
+<li><code>topic_name</code></li>
+</ul>
+<ul>
+<li><code>metric_name</code></li>
+</ul>
+<ul>
+<li><code>value</code></li>
+</ul>
+<ul>
+<li><code>valid</code></li>
+</ul>
+<p>含义：</p>
+<ul>
+<li><code>module_name</code>：反馈所属模块</li>
+</ul>
+<ul>
+<li><code>topic_name</code>：原始业务 topic 名</li>
+</ul>
+<ul>
+<li><code>metric_name</code>：单个指标名</li>
+</ul>
+<ul>
+<li><code>value</code>：数值</li>
+</ul>
+<ul>
+<li><code>valid</code>：该指标本次是否有效</li>
+</ul>
+<h3 id="25-示例适配">2.5 示例适配</h3>
+<p>当前示例适配：</p>
+<ul>
+<li>输入 topic：<code>/battery_state</code></li>
+</ul>
+<ul>
+<li>输出 topic：<code>/nav2_monitor/algorithm_feedback</code></li>
+</ul>
+<ul>
+<li>输出指标：</li>
+</ul>
+<ul>
+<li><code>battery_percentage</code></li>
+</ul>
+<ul>
+<li><code>battery_temperature</code></li>
+</ul>
+<ul>
+<li><code>battery_voltage</code></li>
+</ul>
+<h3 id="26-示例">2.6 示例</h3>
+<h4 id="algorithmfeedbackadapter-规则-yaml-示例">algorithm_feedback_adapter 规则 YAML 示例</h4>
+<pre><code class="language-yaml">
+bridges:
+  - id: battery
+    message_type: &quot;sensor_msgs/msg/BatteryState&quot;
+    input_topic: &quot;/battery_state&quot;
+    output_topic: &quot;/nav2_monitor/algorithm_feedback&quot;
+    module_name: &quot;battery_node&quot;
+    topic_name: &quot;/battery_state&quot;
+    metrics:
+      - name: &quot;battery_percentage&quot;
+        field: &quot;percentage&quot;
+        valid_field: &quot;present&quot;
+      - name: &quot;battery_temperature&quot;
+        field: &quot;temperature&quot;
+        valid_field: &quot;present&quot;
+</code></pre>
+<h4 id="algorithmfeedbackadapter-输出示例">algorithm_feedback_adapter 输出示例</h4>
+<p>当 <code>/battery_state</code> 来了一帧：</p>
+<pre><code class="language-text">
+percentage: 0.86
+temperature: 28.5
+present: true
+</code></pre>
+<p>适配后会发布两条 <code>AlgorithmFeedback</code>，效果类似：</p>
+<pre><code class="language-yaml">
+stamp:
+  sec: 1710000000
+  nanosec: 0
+module_name: battery_node
+topic_name: /battery_state
+metric_name: battery_percentage
+value: 0.86
+valid: true
+</code></pre>
+<pre><code class="language-yaml">
+stamp:
+  sec: 1710000000
+  nanosec: 0
+module_name: battery_node
+topic_name: /battery_state
+metric_name: battery_temperature
+value: 28.5
+valid: true
+</code></pre>
+<h2 id="3-nav2monitor">3. nav2_monitor</h2>
+<h3 id="31-topic-frequency-monitor">3.1 Topic Frequency Monitor</h3>
+<p><code>topic_frequency_monitor_node</code> 是独立高频 topic 频率监测节点，用于把 <code>/livox/imu</code>、点云、雷达、里程计等 watch topic 的接收频率从主监控进程中剥离。</p>
+<p>监控清单来自当前 <code>fault_config</code> 的 <code>modules[].watch_topics</code>。节点订阅 <code>/monitor/config_profile</code> 后会随任务 profile 自动重载清单。只有配置 <code>min_hz &gt; 0</code> 的 topic 才会订阅数据流并计算频率；未配置频率阈值的 topic 只检查 publisher 是否存在，避免对大流量 topic 产生额外 CPU 开销。</p>
+<p>启动与配置：</p>
+<ul>
+<li>启动文件：<code>src/nav2_monitor/launch/topic_frequency_monitor.launch.py</code></li>
+</ul>
+<ul>
+<li><code>/opt</code> 配置：<code>/opt/ry/config/Monitor/nav2_monitor/topic_frequency_monitor_params.yaml</code></li>
+</ul>
+<ul>
+<li>包内默认配置：<code>src/nav2_monitor/config/topic_frequency_monitor_params.yaml</code></li>
+</ul>
+<p>状态输出接口：</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Topic</th><th>Type</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td><code>/monitor/topic_states</code></td><td><code>std_msgs/msg/String</code></td><td>所有被监测 topic 的频率、新鲜度、是否有数据的 JSON 快照</td></tr>
+</tbody></table></div>
+<p>同步输入接口：</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Topic</th><th>Type</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td><code>/monitor/config_profile</code></td><td><code>std_msgs/msg/String</code></td><td>聚合器广播的当前任务 profile，频率节点订阅后自动重建 watch topic 清单</td></tr>
+</tbody></table></div>
+<p>JSON 字段：</p>
+<ul>
+<li><code>stamp</code>：状态发布时间，单位秒</li>
+</ul>
+<ul>
+<li><code>source_module</code>：固定为 <code>topic_frequency_monitor</code></li>
+</ul>
+<ul>
+<li><code>items[].topic</code>：被监测 topic 名</li>
+</ul>
+<ul>
+<li><code>items[].type</code>：ROS 消息类型</li>
+</ul>
+<ul>
+<li><code>items[].frequency_required</code>：是否需要订阅数据并计算频率</li>
+</ul>
+<ul>
+<li><code>items[].type_discovered</code>：消息类型是否已从配置或 ROS graph 获取</li>
+</ul>
+<ul>
+<li><code>items[].has_publisher</code>：当前 graph 中是否存在发布者</li>
+</ul>
+<ul>
+<li><code>items[].has_data</code>：是否至少收到过有效数据</li>
+</ul>
+<ul>
+<li><code>items[].stale</code>：是否超过 idle timeout</li>
+</ul>
+<ul>
+<li><code>items[].low_frequency</code>：未 stale 时，频率是否低于 <code>min_hz</code></li>
+</ul>
+<ul>
+<li><code>items[].frequency_hz</code>：滚动窗口接收频率</li>
+</ul>
+<ul>
+<li><code>items[].min_hz</code>：最低期望频率</li>
+</ul>
+<ul>
+<li><code>items[].age_s</code>：距离最后一帧的时间，未收到过时为 <code>-1</code></li>
+</ul>
+<ul>
+<li><code>items[].idle_timeout_s</code>：数据源超时阈值</li>
+</ul>
+<p><code>nav2_monitor_aggregator</code> 固定消费该输出，不再直连高频 watch topic。</p>
+<h3 id="32-vehicle-state-judge">3.2 Vehicle State Judge</h3>
+<p><code>vehicle_state_judge_node</code> 是独立小车状态判断节点，用于把“有速度指令但车不动 / 无速度指令但车仍移动 / 数据源缺失”从主监控进程中拆出。</p>
+<p>启动与配置：</p>
+<ul>
+<li>启动文件：<code>src/nav2_monitor/launch/vehicle_state_judge.launch.py</code></li>
+</ul>
+<ul>
+<li><code>/opt</code> 配置：<code>/opt/ry/config/Monitor/nav2_monitor/vehicle_state_judge_params.yaml</code></li>
+</ul>
+<ul>
+<li>判断规则：复用 <code>/opt/ry/config/Monitor/nav2_monitor/fault_detector_config.yaml</code> 中的 <code>vehicle_state_judge</code> 段</li>
+</ul>
+<p>输出接口：</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Topic</th><th>Type</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td><code>/monitor/vehicle_state</code></td><td><code>std_msgs/msg/String</code></td><td>小车状态判断 JSON 快照</td></tr>
+<tr><td><code>/nav2_monitor/human_intervention</code></td><td><code>std_msgs/msg/String</code></td><td>异常边沿触发的人工介入提醒 JSON</td></tr>
+</tbody></table></div>
+<p><code>/monitor/vehicle_state</code> 关键字段：</p>
+<ul>
+<li><code>source_module</code>：固定为 <code>vehicle_state_judge</code></li>
+</ul>
+<ul>
+<li><code>state</code> / <code>healthy</code> / <code>summary</code>：当前状态摘要</li>
+</ul>
+<ul>
+<li><code>command_received</code> / <code>command_fresh</code> / <code>command_has_speed</code> / <code>command_speed</code></li>
+</ul>
+<ul>
+<li><code>motion_detected</code></li>
+</ul>
+<ul>
+<li><code>imu_fresh</code> / <code>imu_motion</code> / <code>imu_speed_estimate</code> / <code>imu_yaw_rate</code></li>
+</ul>
+<ul>
+<li><code>odom_fresh</code> / <code>odom_motion</code> / <code>odom_speed</code></li>
+</ul>
+<ul>
+<li><code>moto_fresh</code> / <code>moto_valid</code> / <code>moto_motion</code></li>
+</ul>
+<ul>
+<li><code>faults[]</code>：当前激活的小车状态故障</li>
+</ul>
+<h3 id="33-algorithm-feedback-monitor">3.3 Algorithm Feedback Monitor</h3>
+<p><code>algorithm_feedback_monitor_node</code> 是独立算法反馈判断节点，订阅 adapter 输出的 <code>AlgorithmFeedback</code>，按 <code>fault_config</code> 中的 <code>feedback_rules</code> 生成标准状态。</p>
+<p>启动与配置：</p>
+<ul>
+<li>启动文件：<code>src/nav2_monitor/launch/algorithm_feedback_monitor.launch.py</code></li>
+</ul>
+<ul>
+<li><code>/opt</code> 配置：<code>/opt/ry/config/Monitor/nav2_monitor/algorithm_feedback_monitor_params.yaml</code></li>
+</ul>
+<p>输出接口：</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Topic</th><th>Type</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td><code>/monitor/feedback_state</code></td><td><code>std_msgs/msg/String</code></td><td>算法反馈规则状态 JSON，包含 <code>faults[]</code></td></tr>
+</tbody></table></div>
+<h3 id="34-collision-monitor">3.4 Collision Monitor</h3>
+<p><code>collision_monitor_node</code> 是独立碰撞/TTC 判断节点，订阅体素、scan、点云、超声波、预测速度和控制源状态，独立输出碰撞状态与导航控制器模式。</p>
+<p>启动与配置：</p>
+<ul>
+<li>启动文件：<code>src/nav2_monitor/launch/collision_monitor.launch.py</code></li>
+</ul>
+<ul>
+<li><code>/opt</code> 配置：<code>/opt/ry/config/Monitor/nav2_monitor/collision_monitor_params.yaml</code></li>
+</ul>
+<p>输出接口：</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Topic</th><th>Type</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td><code>/monitor/collision_state</code></td><td><code>std_msgs/msg/String</code></td><td>碰撞/TTC 状态 JSON，包含 <code>faults[]</code> 和当前 <code>navigation_mode</code></td></tr>
+<tr><td><code>/navigation_mode</code></td><td><code>std_msgs/msg/String</code></td><td>导航控制器模式，<code>FAST</code> / <code>SAFE</code></td></tr>
+<tr><td><code>/nav2_monitor/collision_ttc_markers</code></td><td><code>visualization_msgs/msg/MarkerArray</code></td><td>TTC 可视化 marker</td></tr>
+</tbody></table></div>
+<h3 id="35-battery-monitor">3.5 Battery Monitor</h3>
+<p><code>battery_monitor_node</code> 是独立电池状态节点，订阅 <code>/battery_state</code> 并输出标准状态。</p>
+<p>输出接口：</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Topic</th><th>Type</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td><code>/monitor/battery_state</code></td><td><code>std_msgs/msg/String</code></td><td>电池数据新鲜度、温度、电量 JSON</td></tr>
+</tbody></table></div>
+<h3 id="36-aggregator-角色">3.6 Aggregator 角色</h3>
+<p><code>nav2_monitor_aggregator</code> 是轻量状态聚合、故障事件、安全仲裁与本机输出节点。</p>
+<p>它负责：</p>
+<ul>
+<li>消费独立模块输出的标准状态</li>
+</ul>
+<ul>
+<li>汇总节点、topic、TF、电池、小车状态、算法反馈、碰撞状态</li>
+</ul>
+<ul>
+<li>进行故障边沿事件发布与安全动作仲裁</li>
+</ul>
+<ul>
+<li>发布故障事件</li>
+</ul>
+<ul>
+<li>下发安全动作</li>
+</ul>
+<ul>
+<li>发布上报 JSON</li>
+</ul>
+<h3 id="37-启动与配置入口">3.7 启动与配置入口</h3>
+<ul>
+<li>启动文件：</li>
+</ul>
+<ul>
+<li><code>src/nav2_monitor/launch/nav2_monitor.launch.py</code></li>
+</ul>
+<ul>
+<li><code>src/nav2_monitor/launch/nav2_monitor_aggregator.launch.py</code></li>
+</ul>
+<ul>
+<li>主参数文件：</li>
+</ul>
+<ul>
+<li><code>src/nav2_monitor/config/nav2_monitor_params.yaml</code></li>
+</ul>
+<ul>
+<li>功能文档：</li>
+</ul>
+<ul>
+<li><code>src/nav2_monitor/README.md</code></li>
+</ul>
+<ul>
+<li>架构文档：</li>
+</ul>
+<ul>
+<li><code>src/nav2_monitor/docs/architecture.html</code></li>
+</ul>
+<ul>
+<li><code>src/nav2_monitor/docs/architecture_diagrams.html</code></li>
+</ul>
+<p>节点名：</p>
+<ul>
+<li><code>nav2_monitor_aggregator</code></li>
+</ul>
+<h3 id="38-固定输入接口">3.8 固定输入接口</h3>
+<p>固定订阅输入：</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Topic</th><th>Type</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td><code>/monitor/topic_states</code></td><td><code>std_msgs/msg/String</code></td><td>来自 topic_frequency_monitor_node</td></tr>
+<tr><td><code>/monitor/vehicle_state</code></td><td><code>std_msgs/msg/String</code></td><td>来自 vehicle_state_judge_node</td></tr>
+<tr><td><code>/monitor/node_tf_state</code></td><td><code>std_msgs/msg/String</code></td><td>来自 node_tf_monitor_node</td></tr>
+<tr><td><code>/monitor/battery_state</code></td><td><code>std_msgs/msg/String</code></td><td>来自 battery_monitor_node</td></tr>
+<tr><td><code>/monitor/feedback_state</code></td><td><code>std_msgs/msg/String</code></td><td>来自 algorithm_feedback_monitor_node</td></tr>
+<tr><td><code>/monitor/collision_state</code></td><td><code>std_msgs/msg/String</code></td><td>来自 collision_monitor_node</td></tr>
+<tr><td><code>/task_status_code</code></td><td><code>master_interfaces/msg/TaskStatus</code></td><td>外层任务状态码输入，用于任务配置切换</td></tr>
+</tbody></table></div>
+<h3 id="39-原始数据归属">3.9 原始数据归属</h3>
+<p>新架构下，aggregator 不再订阅高频原始传感器。以下原始输入由独立模块处理，aggregator 只消费对应 <code>/monitor/*_state</code> 低频状态：</p>
+<div class="table-wrap"><table>
+<thead><tr><th>接口类型</th><th>来源</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td><code>watch_topics</code></td><td><code>fault_detector_config.yaml</code> 或 fallback 参数</td><td>直接监控的真实 ROS topic</td></tr>
+<tr><td><code>command_topic</code></td><td><code>collision/chassis config</code></td><td>被监控的最终控制命令，一般为 <code>/command</code></td></tr>
+<tr><td><code>moto_topic</code></td><td><code>collision/chassis config</code></td><td>电机反馈 topic</td></tr>
+<tr><td><code>odom_topic</code></td><td><code>collision/chassis config</code></td><td>底盘/定位里程计</td></tr>
+<tr><td><code>imu_topic</code></td><td><code>collision/chassis config</code></td><td>IMU 真值输入</td></tr>
+<tr><td><code>prediction_speed_topic</code></td><td>碰撞检测配置</td><td>TTC / approach 预测速度</td></tr>
+<tr><td><code>scan_topic</code></td><td>碰撞检测配置</td><td><code>sensor_msgs/msg/LaserScan</code></td></tr>
+<tr><td><code>pointcloud_topic</code></td><td>碰撞检测配置</td><td><code>sensor_msgs/msg/PointCloud2</code></td></tr>
+<tr><td><code>ultrasonic_topic</code></td><td>碰撞检测配置</td><td><code>std_msgs/msg/String</code>，8 路超声波 JSON</td></tr>
+</tbody></table></div>
+<p>说明：</p>
+<ul>
+<li>默认部署和当前实现均使用独立模块处理这些原始输入。</li>
+</ul>
+<ul>
+<li><code>nav2_monitor_aggregator</code> 只消费 <code>/monitor/*_state</code> 低频状态。</li>
+</ul>
+<h3 id="310-对外输出接口">3.10 对外输出接口</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Topic</th><th>Type</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td><code>/nav2_monitor/status</code></td><td><code>nav2_monitor/msg/MonitorStatus</code></td><td>周期状态总览</td></tr>
+<tr><td><code>/nav2_monitor/fault_event</code></td><td><code>nav2_monitor/msg/FaultEvent</code></td><td>故障触发/恢复边沿事件</td></tr>
+<tr><td><code>/nodemanager/cmd</code></td><td><code>std_msgs/msg/String</code></td><td>节点管理器命令 JSON</td></tr>
+<tr><td><code>/safety_system/cmd</code></td><td><code>nav2_monitor/msg/SafetyCmd</code></td><td>安全执行命令</td></tr>
+<tr><td><code>/nav2_monitor/human_intervention</code></td><td><code>std_msgs/msg/String</code></td><td>小车状态异常人工介入提醒 JSON</td></tr>
+<tr><td><code>/nav2_monitor/reporter/heartbeat_json</code></td><td><code>std_msgs/msg/String</code></td><td>心跳 JSON</td></tr>
+<tr><td><code>/nav2_monitor/reporter/event_json</code></td><td><code>std_msgs/msg/String</code></td><td>事件 JSON</td></tr>
+<tr><td><code>collision_detection.zones[*].polygon_pub_topic</code></td><td><code>geometry_msgs/msg/PolygonStamped</code></td><td>碰撞区可视化</td></tr>
+</tbody></table></div>
+<p>说明：</p>
+<ul>
+<li><code>/nav2_monitor/status</code> 是固定 topic，目前不是参数化输出</li>
+</ul>
+<ul>
+<li><code>/nodemanager/cmd</code> 当前真实输出是 JSON 字符串，不是 <code>SupervisorCmd.msg</code>（历史兼容名称）</li>
+</ul>
+<ul>
+<li>碰撞区可视化 topic 名由 zone 配置动态决定</li>
+</ul>
+<h3 id="38-输出消息定义">3.8 输出消息定义</h3>
+<h4 id="nav2monitormsgmonitorstatus"><code>nav2_monitor/msg/MonitorStatus</code></h4>
+<p>字段分组：</p>
+<ul>
+<li>总状态：</li>
+</ul>
+<ul>
+<li><code>all_ok</code></li>
+</ul>
+<ul>
+<li>节点监控：</li>
+</ul>
+<ul>
+<li><code>monitored_nodes</code></li>
+</ul>
+<ul>
+<li><code>active_nodes</code></li>
+</ul>
+<ul>
+<li><code>timeout_nodes</code></li>
+</ul>
+<ul>
+<li>topic 监控：</li>
+</ul>
+<ul>
+<li><code>monitored_topics</code></li>
+</ul>
+<ul>
+<li><code>active_topics</code></li>
+</ul>
+<ul>
+<li><code>inactive_topics</code></li>
+</ul>
+<ul>
+<li><code>topic_frequencies</code></li>
+</ul>
+<ul>
+<li>系统资源：</li>
+</ul>
+<ul>
+<li><code>cpu_usage</code></li>
+</ul>
+<ul>
+<li><code>mem_usage</code></li>
+</ul>
+<ul>
+<li><code>disk_usage</code></li>
+</ul>
+<ul>
+<li><code>cpu_temp</code></li>
+</ul>
+<ul>
+<li><code>gpu_usage</code></li>
+</ul>
+<ul>
+<li><code>gpu_temp</code></li>
+</ul>
+<ul>
+<li><code>gpu_mem_usage</code></li>
+</ul>
+<ul>
+<li>车辆导航状态：</li>
+</ul>
+<ul>
+<li><code>vehicle_status_valid</code></li>
+</ul>
+<ul>
+<li><code>vehicle_navigation_active</code></li>
+</ul>
+<ul>
+<li><code>vehicle_navigation_succeeded</code></li>
+</ul>
+<ul>
+<li><code>vehicle_progress_percentage</code></li>
+</ul>
+<ul>
+<li><code>vehicle_simple_status</code></li>
+</ul>
+<ul>
+<li><code>vehicle_error_message</code></li>
+</ul>
+<ul>
+<li>电池：</li>
+</ul>
+<ul>
+<li><code>battery_temperature</code></li>
+</ul>
+<ul>
+<li><code>battery_percentage</code></li>
+</ul>
+<ul>
+<li>TF：</li>
+</ul>
+<ul>
+<li><code>monitored_transforms</code></li>
+</ul>
+<ul>
+<li><code>available_transforms</code></li>
+</ul>
+<ul>
+<li><code>stale_transforms</code></li>
+</ul>
+<ul>
+<li><code>transform_latencies_ms</code></li>
+</ul>
+<ul>
+<li>预留：</li>
+</ul>
+<ul>
+<li><code>topic_latencies_ms</code></li>
+</ul>
+<h4 id="nav2monitormsgfaultevent"><code>nav2_monitor/msg/FaultEvent</code></h4>
+<p>字段：</p>
+<ul>
+<li><code>stamp</code></li>
+</ul>
+<ul>
+<li><code>module_name</code></li>
+</ul>
+<ul>
+<li><code>fault_level</code></li>
+</ul>
+<ul>
+<li><code>action</code></li>
+</ul>
+<ul>
+<li><code>edge</code></li>
+</ul>
+<ul>
+<li><code>reason</code></li>
+</ul>
+<p>常量：</p>
+<ul>
+<li><code>fault_level</code></li>
+</ul>
+<ul>
+<li><code>NORMAL=0</code></li>
+</ul>
+<ul>
+<li><code>WARNING=1</code></li>
+</ul>
+<ul>
+<li><code>ERROR=2</code></li>
+</ul>
+<ul>
+<li><code>CRITICAL=3</code></li>
+</ul>
+<ul>
+<li><code>action</code></li>
+</ul>
+<ul>
+<li><code>NONE=0</code></li>
+</ul>
+<ul>
+<li><code>NODEMANAGER=1（SUPERVISOR=1 为兼容别名）</code></li>
+</ul>
+<ul>
+<li><code>SAFETY_SYSTEM=2</code></li>
+</ul>
+<ul>
+<li><code>edge</code></li>
+</ul>
+<ul>
+<li><code>EDGE_NONE=0</code></li>
+</ul>
+<ul>
+<li><code>EDGE_TRIGGER=1</code></li>
+</ul>
+<ul>
+<li><code>EDGE_RECOVER=2</code></li>
+</ul>
+<h4 id="nav2monitormsgsafetycmd"><code>nav2_monitor/msg/SafetyCmd</code></h4>
+<p>字段：</p>
+<ul>
+<li><code>action</code></li>
+</ul>
+<ul>
+<li><code>slow_down_percentage</code></li>
+</ul>
+<ul>
+<li><code>reason</code></li>
+</ul>
+<p>常量：</p>
+<ul>
+<li><code>SLOW_DOWN=1</code></li>
+</ul>
+<ul>
+<li><code>SOFT_STOP=2</code></li>
+</ul>
+<ul>
+<li><code>EMERGENCY_STOP=3</code></li>
+</ul>
+<ul>
+<li><code>RESUME=4</code></li>
+</ul>
+<h3 id="37-json-输出协议">3.7 JSON 输出协议</h3>
+<h4 id="nodemanagercmd"><code>/nodemanager/cmd</code></h4>
+<p>类型：</p>
+<ul>
+<li><code>std_msgs/msg/String</code></li>
+</ul>
+<p>JSON 结构：</p>
+<pre><code class="language-json">
+{
+  &quot;module_name&quot;: &quot;navigation&quot;,
+  &quot;nodes_to_restart&quot;: [],
+  &quot;reason&quot;: &quot;Node inactive&quot;
+}
+</code></pre>
+<p>字段：</p>
+<ul>
+<li><code>module_name</code></li>
+</ul>
+<ul>
+<li><code>nodes_to_restart</code></li>
+</ul>
+<ul>
+<li><code>reason</code></li>
+</ul>
+<h4 id="nav2monitorreporterheartbeatjson"><code>/nav2_monitor/reporter/heartbeat_json</code></h4>
+<p>类型：</p>
+<ul>
+<li><code>std_msgs/msg/String</code></li>
+</ul>
+<p>JSON 顶层字段：</p>
+<ul>
+<li><code>timestamp</code></li>
+</ul>
+<ul>
+<li><code>all_ok</code></li>
+</ul>
+<ul>
+<li><code>system</code></li>
+</ul>
+<ul>
+<li><code>battery</code></li>
+</ul>
+<ul>
+<li><code>navigation</code></li>
+</ul>
+<ul>
+<li><code>summary</code></li>
+</ul>
+<p><code>system</code> 包含：</p>
+<ul>
+<li><code>cpu_usage</code></li>
+</ul>
+<ul>
+<li><code>mem_usage</code></li>
+</ul>
+<ul>
+<li><code>disk_usage</code></li>
+</ul>
+<ul>
+<li><code>cpu_temp</code></li>
+</ul>
+<ul>
+<li><code>gpu_usage</code></li>
+</ul>
+<ul>
+<li><code>gpu_temp</code></li>
+</ul>
+<ul>
+<li><code>gpu_mem_usage</code></li>
+</ul>
+<p><code>battery</code> 包含：</p>
+<ul>
+<li><code>temperature</code></li>
+</ul>
+<ul>
+<li><code>percentage</code></li>
+</ul>
+<p><code>navigation</code> 包含：</p>
+<ul>
+<li><code>status_valid</code></li>
+</ul>
+<ul>
+<li><code>active</code></li>
+</ul>
+<ul>
+<li><code>succeeded</code></li>
+</ul>
+<ul>
+<li><code>progress_percentage</code></li>
+</ul>
+<ul>
+<li><code>simple_status</code></li>
+</ul>
+<ul>
+<li><code>error_message</code></li>
+</ul>
+<p><code>summary</code> 包含：</p>
+<ul>
+<li><code>active_nodes</code></li>
+</ul>
+<ul>
+<li><code>timeout_nodes</code></li>
+</ul>
+<ul>
+<li><code>active_topics</code></li>
+</ul>
+<ul>
+<li><code>inactive_topics</code></li>
+</ul>
+<h4 id="nav2monitorreportereventjson"><code>/nav2_monitor/reporter/event_json</code></h4>
+<p>类型：</p>
+<ul>
+<li><code>std_msgs/msg/String</code></li>
+</ul>
+<p>JSON 顶层字段：</p>
+<ul>
+<li><code>timestamp</code></li>
+</ul>
+<ul>
+<li><code>edge</code></li>
+</ul>
+<ul>
+<li><code>fault_type</code></li>
+</ul>
+<ul>
+<li><code>fault_module</code></li>
+</ul>
+<ul>
+<li><code>fault_level</code></li>
+</ul>
+<ul>
+<li><code>fault_message</code></li>
+</ul>
+<ul>
+<li><code>measure_execution</code></li>
+</ul>
+<p><code>measure_execution</code> 包含：</p>
+<ul>
+<li><code>action_type</code></li>
+</ul>
+<ul>
+<li><code>nodemanager</code></li>
+</ul>
+<ul>
+<li><code>safety</code></li>
+</ul>
+<ul>
+<li><code>details</code></li>
+</ul>
+<p>其中：</p>
+<ul>
+<li><code>nodemanager.matched</code></li>
+</ul>
+<ul>
+<li><code>nodemanager.module_name</code></li>
+</ul>
+<ul>
+<li><code>nodemanager.nodes_to_restart_count</code></li>
+</ul>
+<ul>
+<li><code>safety.matched</code></li>
+</ul>
+<ul>
+<li><code>safety.action</code></li>
+</ul>
+<ul>
+<li><code>safety.slow_down_percentage</code></li>
+</ul>
+<ul>
+<li><code>safety.reason</code></li>
+</ul>
+<h3 id="38-关键参数接口">3.8 关键参数接口</h3>
+<p>常用关键参数：</p>
+<ul>
+<li><code>timeout</code></li>
+</ul>
+<ul>
+<li><code>scan_rate</code></li>
+</ul>
+<ul>
+<li><code>check_rate</code></li>
+</ul>
+<ul>
+<li><code>safety_cooldown_s</code></li>
+</ul>
+<ul>
+<li><code>nodemanager_cooldown_s</code></li>
+</ul>
+<ul>
+<li><code>topic_states_topic</code></li>
+</ul>
+<ul>
+<li><code>vehicle_state_topic</code></li>
+</ul>
+<ul>
+<li><code>vehicle_state_timeout_s</code></li>
+</ul>
+<ul>
+<li><code>node_tf_state_topic</code></li>
+</ul>
+<ul>
+<li><code>node_tf_state_timeout_s</code></li>
+</ul>
+<ul>
+<li><code>monitor_battery_state_topic</code></li>
+</ul>
+<ul>
+<li><code>monitor_battery_state_timeout_s</code></li>
+</ul>
+<ul>
+<li><code>feedback_state_topic</code></li>
+</ul>
+<ul>
+<li><code>feedback_state_timeout_s</code></li>
+</ul>
+<ul>
+<li><code>collision_state_topic</code></li>
+</ul>
+<ul>
+<li><code>collision_state_timeout_s</code></li>
+</ul>
+<ul>
+<li><code>fault_event_topic</code></li>
+</ul>
+<ul>
+<li><code>nodemanager_cmd_topic</code></li>
+</ul>
+<ul>
+<li><code>safety_cmd_topic</code></li>
+</ul>
+<ul>
+<li><code>human_intervention_topic</code></li>
+</ul>
+<ul>
+<li><code>reporter.heartbeat_json_topic</code></li>
+</ul>
+<ul>
+<li><code>reporter.event_json_topic</code></li>
+</ul>
+<ul>
+<li><code>reporter.cmd_correlation_window_s</code></li>
+</ul>
+<ul>
+<li><code>fault_config</code></li>
+</ul>
+<ul>
+<li><code>fault_config_reload_enabled</code></li>
+</ul>
+<ul>
+<li><code>current_nav_task</code></li>
+</ul>
+<ul>
+<li><code>task_status_topic</code></li>
+</ul>
+<ul>
+<li><code>task_status_code_mappings.*</code></li>
+</ul>
+<ul>
+<li><code>task_fault_configs.*</code></li>
+</ul>
+<ul>
+<li><code>target_nodes</code></li>
+</ul>
+<ul>
+<li><code>watch_topics</code></li>
+</ul>
+<ul>
+<li><code>target_transforms</code></li>
+</ul>
+<h3 id="39-运行时可变接口">3.9 运行时可变接口</h3>
+<p><code>nav2_monitor</code> 支持通过标准 ROS 2 参数机制动态修改以下外部行为：</p>
+<ul>
+<li><code>target_nodes</code></li>
+</ul>
+<ul>
+<li><code>watch_topics</code></li>
+</ul>
+<ul>
+<li><code>fault_config</code></li>
+</ul>
+<ul>
+<li><code>current_nav_task</code></li>
+</ul>
+<ul>
+<li><code>task_status_topic</code></li>
+</ul>
+<ul>
+<li><code>task_status_code_mappings.*</code></li>
+</ul>
+<ul>
+<li><code>task_fault_configs.*</code></li>
+</ul>
+<ul>
+<li><code>fault_config_reload_enabled</code></li>
+</ul>
+<ul>
+<li><code>target_transforms</code></li>
+</ul>
+<ul>
+<li><code>timeout</code></li>
+</ul>
+<ul>
+<li><code>safety_cooldown_s</code></li>
+</ul>
+<ul>
+<li><code>nodemanager_cooldown_s</code></li>
+</ul>
+<ul>
+<li><code>vehicle_state_timeout_s</code></li>
+</ul>
+<ul>
+<li><code>node_tf_state_timeout_s</code></li>
+</ul>
+<ul>
+<li><code>monitor_battery_state_timeout_s</code></li>
+</ul>
+<ul>
+<li><code>feedback_state_timeout_s</code></li>
+</ul>
+<ul>
+<li><code>collision_state_timeout_s</code></li>
+</ul>
+<p>说明：</p>
+<ul>
+<li>当监控目标来自 <code>fault_config modules</code> 时，<code>target_nodes</code> 和 <code>watch_topics</code> 更新会被忽略</li>
+</ul>
+<ul>
+<li><code>current_nav_task</code> 更新会触发任务级故障配置切换</li>
+</ul>
+<ul>
+<li><code>task_status_topic</code> 更新会重建订阅</li>
+</ul>
+<h3 id="310-无接口项">3.10 无接口项</h3>
+<p>当前 <code>nav2_monitor</code>：</p>
+<ul>
+<li>无自定义 service</li>
+</ul>
+<ul>
+<li>无 action server / action client 对外接口</li>
+</ul>
+<h3 id="311-示例">3.11 示例</h3>
+<h4 id="统一反馈输入示例">统一反馈输入示例</h4>
+<p>向 <code>nav2_monitor</code> 注入一条统一反馈：</p>
+<pre><code class="language-bash">
+ros2 topic pub /nav2_monitor/algorithm_feedback nav2_monitor/msg/AlgorithmFeedback \
+  &quot;{module_name: navigation, topic_name: /controller/feedback, metric_name: tracking_error, value: 0.95, valid: true}&quot;
+</code></pre>
+<h4 id="监控状态查看示例">监控状态查看示例</h4>
+<pre><code class="language-bash">
+ros2 topic echo /nav2_monitor/status
+</code></pre>
+<p>典型输出字段会包含：</p>
+<pre><code class="language-yaml">
+all_ok: true
+active_nodes:
+- controller_server
+- planner_server
+active_topics:
+- /battery_state
+- /livox/imu
+battery_percentage: 0.86
+vehicle_navigation_active: true
+</code></pre>
+<h4 id="故障事件查看示例">故障事件查看示例</h4>
+<pre><code class="language-bash">
+ros2 topic echo /nav2_monitor/fault_event
+</code></pre>
+<p>典型事件：</p>
+<pre><code class="language-yaml">
+module_name: navigation
+fault_level: 2
+action: 2
+edge: 1
+reason: &quot;Node inactive&quot;
+</code></pre>
+<h4 id="安全动作输出示例">安全动作输出示例</h4>
+<pre><code class="language-bash">
+ros2 topic echo /safety_system/cmd
+</code></pre>
+<p>典型输出：</p>
+<pre><code class="language-yaml">
+action: 1
+slow_down_percentage: 50.0
+reason: &quot;Collision risk&quot;
+</code></pre>
+<h4 id="节点管理器-json-输出示例">节点管理器 JSON 输出示例</h4>
+<pre><code class="language-bash">
+ros2 topic echo /nodemanager/cmd
+</code></pre>
+<p>典型内容：</p>
+<pre><code class="language-json">
+{&quot;module_name&quot;:&quot;navigation&quot;,&quot;nodes_to_restart&quot;:[],&quot;reason&quot;:&quot;Node inactive&quot;}
+</code></pre>
+<h4 id="心跳-json-输出示例">心跳 JSON 输出示例</h4>
+<pre><code class="language-bash">
+ros2 topic echo /nav2_monitor/reporter/heartbeat_json
+</code></pre>
+<p>典型内容：</p>
+<pre><code class="language-json">
+{
+  &quot;timestamp&quot;:&quot;1710000000.123&quot;,
+  &quot;all_ok&quot;:true,
+  &quot;system&quot;:{&quot;cpu_usage&quot;:12.3,&quot;mem_usage&quot;:41.0,&quot;disk_usage&quot;:52.1,&quot;cpu_temp&quot;:48.0,&quot;gpu_usage&quot;:-1,&quot;gpu_temp&quot;:-1,&quot;gpu_mem_usage&quot;:-1},
+  &quot;battery&quot;:{&quot;temperature&quot;:28.5,&quot;percentage&quot;:0.86},
+  &quot;navigation&quot;:{&quot;status_valid&quot;:true,&quot;active&quot;:true,&quot;succeeded&quot;:false,&quot;progress_percentage&quot;:0.42,&quot;simple_status&quot;:&quot;RUNNING&quot;,&quot;error_message&quot;:&quot;&quot;},
+  &quot;summary&quot;:{&quot;active_nodes&quot;:12,&quot;timeout_nodes&quot;:0,&quot;active_topics&quot;:18,&quot;inactive_topics&quot;:0}
+}
+</code></pre>
+<h2 id="4-safetyemergencyexecutor">4. safety_emergency_executor</h2>
+<h3 id="41-角色">4.1 角色</h3>
+<p><code>safety_emergency_executor</code> 负责：</p>
+<ul>
+<li>接收安全动作</li>
+</ul>
+<ul>
+<li>接收多路速度控制源</li>
+</ul>
+<ul>
+<li>选通当前激活控制源</li>
+</ul>
+<ul>
+<li>对输出执行减速、缓停、急停、恢复</li>
+</ul>
+<ul>
+<li>输出底盘 JSON 控制命令</li>
+</ul>
+<h3 id="42-启动与配置入口">4.2 启动与配置入口</h3>
+<ul>
+<li>启动文件：</li>
+</ul>
+<ul>
+<li><code>src/safety_emergency_executor/launch/safety_emergency_executor.launch.py</code></li>
+</ul>
+<ul>
+<li>参数文件：</li>
+</ul>
+<ul>
+<li><code>src/safety_emergency_executor/config/safety_emergency_executor_params.yaml</code></li>
+</ul>
+<ul>
+<li>Monitor 目录镜像参数：</li>
+</ul>
+<ul>
+<li><code>config/Monitor/safety_emergency_executor/safety_emergency_executor_params.yaml</code></li>
+</ul>
+<ul>
+<li>包文档：</li>
+</ul>
+<ul>
+<li><code>src/safety_emergency_executor/README.md</code></li>
+</ul>
+<p>节点名：</p>
+<ul>
+<li><code>safety_emergency_executor</code></li>
+</ul>
+<h3 id="43-输入接口">4.3 输入接口</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Topic</th><th>Type</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td><code>/safety_system/cmd</code></td><td><code>nav2_monitor/msg/SafetyCmd</code></td><td>安全动作输入</td></tr>
+<tr><td><code>/cmd_vel</code></td><td><code>geometry_msgs/msg/Twist</code></td><td>导航速度</td></tr>
+<tr><td><code>/cmd_vel_miniapp</code></td><td><code>geometry_msgs/msg/Twist</code></td><td>小程序速度</td></tr>
+<tr><td><code>/cmd_vel_remote</code></td><td><code>geometry_msgs/msg/Twist</code></td><td>远程驾驶速度</td></tr>
+<tr><td><code>/cmd_vel_other</code></td><td><code>geometry_msgs/msg/Twist</code></td><td>其他来源速度</td></tr>
+<tr><td><code>/pressure_</code></td><td><code>std_msgs/msg/String</code></td><td>动态更新 <code>acc/press/place/ulock</code> 的 JSON</td></tr>
+<tr><td><code>/acc_</code></td><td><code>std_msgs/msg/Int32</code></td><td>动态覆盖 <code>acc</code></td></tr>
+<tr><td><code>/odom_base</code></td><td><code>nav_msgs/msg/Odometry</code></td><td>轮速里程计</td></tr>
+<tr><td><code>/odom</code></td><td><code>nav_msgs/msg/Odometry</code></td><td>定位里程计</td></tr>
+<tr><td><code>/livox/imu</code></td><td><code>sensor_msgs/msg/Imu</code></td><td>IMU</td></tr>
+</tbody></table></div>
+<p>说明：</p>
+<ul>
+<li>同一时间只允许一个速度源进入输出链路</li>
+</ul>
+<ul>
+<li>非激活源直接丢弃</li>
+</ul>
+<ul>
+<li>激活源停发时不补零、不保留最后一帧</li>
+</ul>
+<ul>
+<li>小程序、远程驾驶、其他外部源可选启用 <code>Twist</code> 扩展字段复用</li>
+</ul>
+<ul>
+<li><code>linear.x -&gt; speed</code></li>
+</ul>
+<ul>
+<li><code>angular.z -&gt; angle</code></li>
+</ul>
+<ul>
+<li><code>linear.y -&gt; press</code></li>
+</ul>
+<ul>
+<li><code>linear.z -&gt; acc</code></li>
+</ul>
+<ul>
+<li><code>angular.x -&gt; place</code></li>
+</ul>
+<ul>
+<li><code>angular.y -&gt; ulock</code></li>
+</ul>
+<ul>
+<li>仅当至少一个辅助轴非零时，才会把辅助轴解释为扩展控制字段；否则继续使用默认参数或 <code>/pressure_</code>、<code>/acc_</code> 动态值</li>
+</ul>
+<h3 id="44-输出接口">4.4 输出接口</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Topic</th><th>Type</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td><code>/command</code></td><td><code>std_msgs/msg/String</code></td><td>最终输出到底盘的 JSON 命令</td></tr>
+<tr><td><code>/control_source_state</code></td><td><code>std_msgs/msg/String</code></td><td>当前激活控制源状态</td></tr>
+</tbody></table></div>
+<p>说明：</p>
+<ul>
+<li><code>/control_source_state</code> 用于被动发布当前模式</li>
+</ul>
+<ul>
+<li>该 topic 采用 <code>transient_local + reliable</code>，后加入订阅者也可拿到最近状态</li>
+</ul>
+<h3 id="45-控制源切换接口">4.5 控制源切换接口</h3>
+<p>当前不使用自定义 service。</p>
+<p>控制源切换方式：</p>
+<ul>
+<li>使用 ROS 2 标准参数服务设置 <code>active_control_source</code></li>
+</ul>
+<ul>
+<li>使用 ROS 2 标准参数服务查询 <code>active_control_source</code></li>
+</ul>
+<p>可选值：</p>
+<ul>
+<li><code>navigation</code></li>
+</ul>
+<ul>
+<li><code>miniapp</code></li>
+</ul>
+<ul>
+<li><code>remote</code></li>
+</ul>
+<ul>
+<li><code>other</code></li>
+</ul>
+<p>默认值：</p>
+<ul>
+<li><code>navigation</code></li>
+</ul>
+<p>说明：</p>
+<ul>
+<li><code>control_source_auto_preempt_enabled</code> 目前仅为预留开关，自动抢占未启用</li>
+</ul>
+<ul>
+<li>扩展字段开关默认值：</li>
+</ul>
+<ul>
+<li><code>navigation=false</code></li>
+</ul>
+<ul>
+<li><code>miniapp=true</code></li>
+</ul>
+<ul>
+<li><code>remote=true</code></li>
+</ul>
+<ul>
+<li><code>other=true</code></li>
+</ul>
+<p>控制源切换示例：</p>
+<ol>
+<li>使用 <code>ros2 param</code> 查询当前控制源</li>
+</ol>
+<pre><code class="language-bash">
+ros2 param get /safety_emergency_executor active_control_source
+</code></pre>
+<p>示例输出：</p>
+<pre><code class="language-text">
+String value is: navigation
+</code></pre>
+<ol>
+<li>使用 <code>ros2 param</code> 切换到 <code>remote</code></li>
+</ol>
+<pre><code class="language-bash">
+ros2 param set /safety_emergency_executor active_control_source remote
+</code></pre>
+<p>示例输出：</p>
+<pre><code class="language-text">
+Set parameter successful: ok
+</code></pre>
+<ol>
+<li>直接调用标准参数服务查询</li>
+</ol>
+<pre><code class="language-bash">
+ros2 service call /safety_emergency_executor/get_parameters \
+  rcl_interfaces/srv/GetParameters \
+  &quot;{names: [&#x27;active_control_source&#x27;]}&quot;
+</code></pre>
+<p>示例输出：</p>
+<pre><code class="language-yaml">
+values:
+- type: 4
+  string_value: remote
+</code></pre>
+<ol>
+<li>直接调用标准参数服务切换</li>
+</ol>
+<pre><code class="language-bash">
+ros2 service call /safety_emergency_executor/set_parameters \
+  rcl_interfaces/srv/SetParameters \
+  &quot;{parameters: [{name: &#x27;active_control_source&#x27;, value: {type: 4, string_value: &#x27;miniapp&#x27;}}]}&quot;
+</code></pre>
+<p>示例输出：</p>
+<pre><code class="language-yaml">
+results:
+- successful: true
+  reason: ok
+</code></pre>
+<h3 id="46-command-json-协议">4.6 <code>/command</code> JSON 协议</h3>
+<p>类型：</p>
+<ul>
+<li><code>std_msgs/msg/String</code></li>
+</ul>
+<p>JSON 字段：</p>
+<ul>
+<li><code>speed</code></li>
+</ul>
+<ul>
+<li><code>angle</code></li>
+</ul>
+<ul>
+<li><code>acc</code></li>
+</ul>
+<ul>
+<li><code>press</code></li>
+</ul>
+<ul>
+<li><code>place</code></li>
+</ul>
+<ul>
+<li><code>ulock</code></li>
+</ul>
+<p>示例：</p>
+<pre><code class="language-json">
+{
+  &quot;speed&quot;: 0.5,
+  &quot;angle&quot;: 0.2,
+  &quot;acc&quot;: 2000,
+  &quot;press&quot;: 1400,
+  &quot;place&quot;: -1,
+  &quot;ulock&quot;: -1
+}
+</code></pre>
+<p>说明：</p>
+<ul>
+<li><code>speed</code> 由 <code>Twist.linear.x</code> 转换</li>
+</ul>
+<ul>
+<li><code>angle</code> 由 <code>Twist.angular.z</code> 转换</li>
+</ul>
+<ul>
+<li><code>speed</code> 和 <code>angle</code> 按两位小数四舍五入后输出</li>
+</ul>
+<ul>
+<li><code>acc</code>、<code>press</code>、<code>place</code>、<code>ulock</code> 默认来自静态参数或动态更新</li>
+</ul>
+<ul>
+<li>若当前激活源启用了扩展字段解析，且收到的 <code>Twist</code> 至少一个辅助轴非零，则：</li>
+</ul>
+<ul>
+<li><code>press</code> 取 <code>linear.y</code></li>
+</ul>
+<ul>
+<li><code>acc</code> 取 <code>linear.z</code></li>
+</ul>
+<ul>
+<li><code>place</code> 取 <code>angular.x</code></li>
+</ul>
+<ul>
+<li><code>ulock</code> 取 <code>angular.y</code></li>
+</ul>
+<ul>
+<li>此时 <code>press</code> 直接按上层输入透传，不再经过自动调压</li>
+</ul>
+<h3 id="47-pressure-json-协议">4.7 <code>/pressure_</code> JSON 协议</h3>
+<p>类型：</p>
+<ul>
+<li><code>std_msgs/msg/String</code></li>
+</ul>
+<p>支持字段：</p>
+<ul>
+<li><code>acc</code></li>
+</ul>
+<ul>
+<li><code>press</code></li>
+</ul>
+<ul>
+<li><code>place</code></li>
+</ul>
+<ul>
+<li><code>ulock</code></li>
+</ul>
+<p>示例：</p>
+<pre><code class="language-json">
+{
+  &quot;acc&quot;: 1500,
+  &quot;press&quot;: 950,
+  &quot;place&quot;: 2,
+  &quot;ulock&quot;: 3
+}
+</code></pre>
+<h3 id="48-安全动作语义">4.8 安全动作语义</h3>
+<p>输入消息类型：</p>
+<ul>
+<li><code>nav2_monitor/msg/SafetyCmd</code></li>
+</ul>
+<p>动作语义：</p>
+<ul>
+<li><code>SLOW_DOWN</code></li>
+</ul>
+<ul>
+<li>优先使用消息内 <code>slow_down_percentage</code></li>
+</ul>
+<ul>
+<li>未给出时回退到本地参数 <code>slow_down_percentage</code></li>
+</ul>
+<ul>
+<li><code>SOFT_STOP</code></li>
+</ul>
+<ul>
+<li>速度与转角都截断到 <code>0</code></li>
+</ul>
+<ul>
+<li><code>EMERGENCY_STOP</code></li>
+</ul>
+<ul>
+<li>禁止继续透传</li>
+</ul>
+<ul>
+<li>直接发布制动序列到 <code>/command</code></li>
+</ul>
+<ul>
+<li><code>RESUME</code></li>
+</ul>
+<ul>
+<li>清除安全限制</li>
+</ul>
+<ul>
+<li>恢复正常透传</li>
+</ul>
+<h3 id="49-关键参数接口">4.9 关键参数接口</h3>
+<p>关键参数：</p>
+<ul>
+<li><code>safety_cmd_topic</code></li>
+</ul>
+<ul>
+<li><code>command_output_topic</code></li>
+</ul>
+<ul>
+<li><code>cmd_vel_navigation_topic</code></li>
+</ul>
+<ul>
+<li><code>cmd_vel_miniapp_topic</code></li>
+</ul>
+<ul>
+<li><code>cmd_vel_remote_topic</code></li>
+</ul>
+<ul>
+<li><code>cmd_vel_other_topic</code></li>
+</ul>
+<ul>
+<li><code>control_source_state_topic</code></li>
+</ul>
+<ul>
+<li><code>active_control_source</code></li>
+</ul>
+<ul>
+<li><code>control_source_auto_preempt_enabled</code></li>
+</ul>
+<ul>
+<li><code>cmd_vel_navigation_extended_fields_enabled</code></li>
+</ul>
+<ul>
+<li><code>cmd_vel_miniapp_extended_fields_enabled</code></li>
+</ul>
+<ul>
+<li><code>cmd_vel_remote_extended_fields_enabled</code></li>
+</ul>
+<ul>
+<li><code>cmd_vel_other_extended_fields_enabled</code></li>
+</ul>
+<ul>
+<li><code>pressure_update_topic</code></li>
+</ul>
+<ul>
+<li><code>acc_update_topic</code></li>
+</ul>
+<ul>
+<li><code>wheel_odom_topic</code></li>
+</ul>
+<ul>
+<li><code>loc_odom_topic</code></li>
+</ul>
+<ul>
+<li><code>imu_topic</code></li>
+</ul>
+<ul>
+<li><code>acc_</code></li>
+</ul>
+<ul>
+<li><code>press_</code></li>
+</ul>
+<ul>
+<li><code>place_</code></li>
+</ul>
+<ul>
+<li><code>ulock_</code></li>
+</ul>
+<ul>
+<li><code>auto_pressure.*</code></li>
+</ul>
+<ul>
+<li><code>slow_down_percentage</code></li>
+</ul>
+<ul>
+<li><code>brake_*</code></li>
+</ul>
+<h3 id="410-运行时可变接口">4.10 运行时可变接口</h3>
+<p>当前支持通过标准参数服务动态切换：</p>
+<ul>
+<li><code>active_control_source</code></li>
+</ul>
+<h3 id="411-无接口项">4.11 无接口项</h3>
+<p>当前 <code>safety_emergency_executor</code>：</p>
+<ul>
+<li>无自定义 service</li>
+</ul>
+<ul>
+<li>无 action server / action client 对外接口</li>
+</ul>
+<h3 id="412-示例">4.12 示例</h3>
+<h4 id="查询当前控制源">查询当前控制源</h4>
+<pre><code class="language-bash">
+ros2 param get /safety_emergency_executor active_control_source
+</code></pre>
+<p>示例输出：</p>
+<pre><code class="language-text">
+String value is: navigation
+</code></pre>
+<h4 id="切换控制源到-remote">切换控制源到 remote</h4>
+<pre><code class="language-bash">
+ros2 param set /safety_emergency_executor active_control_source remote
+</code></pre>
+<p>示例输出：</p>
+<pre><code class="language-text">
+Set parameter successful: ok
+</code></pre>
+<h4 id="查看当前控制源状态-topic">查看当前控制源状态 topic</h4>
+<pre><code class="language-bash">
+ros2 topic echo /control_source_state
+</code></pre>
+<p>示例输出：</p>
+<pre><code class="language-text">
+data: remote
+</code></pre>
+<h4 id="下发-remote-速度指令">下发 remote 速度指令</h4>
+<pre><code class="language-bash">
+ros2 topic pub /cmd_vel_remote geometry_msgs/msg/Twist \
+  &quot;{linear: {x: 1.0}, angular: {z: 0.4}}&quot;
+</code></pre>
+<h4 id="查看最终-command">查看最终 <code>/command</code></h4>
+<pre><code class="language-bash">
+ros2 topic echo /command
+</code></pre>
+<p>未叠加安全动作时，典型输出：</p>
+<pre><code class="language-json">
+{&quot;speed&quot;:1.0,&quot;angle&quot;:0.4,&quot;acc&quot;:2000,&quot;press&quot;:1400,&quot;place&quot;:-1,&quot;ulock&quot;:-1}
+</code></pre>
+<h4 id="下发带扩展控制字段的-remote-速度指令">下发带扩展控制字段的 remote 速度指令</h4>
+<pre><code class="language-bash">
+ros2 topic pub /cmd_vel_remote geometry_msgs/msg/Twist \
+  &quot;{linear: {x: 1.0, y: 950.0, z: 1500.0}, angular: {x: 2.0, y: 0.0, z: 0.4}}&quot;
+</code></pre>
+<p>典型输出：</p>
+<pre><code class="language-json">
+{&quot;speed&quot;:1.0,&quot;angle&quot;:0.4,&quot;acc&quot;:1500,&quot;press&quot;:950,&quot;place&quot;:2,&quot;ulock&quot;:0}
+</code></pre>
+<h4 id="下发减速安全动作">下发减速安全动作</h4>
+<pre><code class="language-bash">
+ros2 topic pub /safety_system/cmd nav2_monitor/msg/SafetyCmd \
+  &quot;{action: 1, slow_down_percentage: 50.0, reason: &#x27;smoke&#x27;}&quot;
+</code></pre>
+<p>随后再发送同样的 remote 速度，<code>/command</code> 典型输出会变成：</p>
+<pre><code class="language-json">
+{&quot;speed&quot;:0.5,&quot;angle&quot;:0.2,&quot;acc&quot;:2000,&quot;press&quot;:1400,&quot;place&quot;:-1,&quot;ulock&quot;:-1}
+</code></pre>
+<h4 id="动态更新底盘参数字段">动态更新底盘参数字段</h4>
+<pre><code class="language-bash">
+ros2 topic pub /pressure_ std_msgs/msg/String \
+  &#x27;{data: &quot;{\&quot;press\&quot;:950,\&quot;place\&quot;:2,\&quot;ulock\&quot;:3}&quot;}&#x27;
+</code></pre>
+<p>随后输出示例：</p>
+<pre><code class="language-json">
+{&quot;speed&quot;:0.5,&quot;angle&quot;:0.2,&quot;acc&quot;:2000,&quot;press&quot;:950,&quot;place&quot;:2,&quot;ulock&quot;:3}
+</code></pre>
+<h2 id="5-包间调用关系">5. 包间调用关系</h2>
+<h3 id="51-algorithmfeedbackadapter---nav2monitor">5.1 algorithm_feedback_adapter -&gt; nav2_monitor</h3>
+<p>适配输出：</p>
+<ul>
+<li><code>nav2_monitor/msg/AlgorithmFeedback</code></li>
+</ul>
+<p>关键字段关联：</p>
+<ul>
+<li><code>AlgorithmFeedback.topic_name</code> 对应 <code>feedback_rules.source_topic</code></li>
+</ul>
+<ul>
+<li><code>AlgorithmFeedback.metric_name</code> 对应 <code>feedback_rules.metric_name</code></li>
+</ul>
+<h3 id="52-nav2monitor---safetyemergencyexecutor">5.2 nav2_monitor -&gt; safety_emergency_executor</h3>
+<p>安全动作输出：</p>
+<ul>
+<li><code>/safety_system/cmd</code></li>
+</ul>
+<p>消息类型：</p>
+<ul>
+<li><code>nav2_monitor/msg/SafetyCmd</code></li>
+</ul>
+<h3 id="53-safetyemergencyexecutor---chassis">5.3 safety_emergency_executor -&gt; chassis</h3>
+<p>最终底盘输出：</p>
+<ul>
+<li><code>/command</code></li>
+</ul>
+<p>消息类型：</p>
+<ul>
+<li><code>std_msgs/msg/String</code></li>
+</ul>
+<p>载荷：</p>
+<ul>
+<li>底盘 JSON 控制命令</li>
+</ul>
+<h2 id="6-当前接口注意事项">6. 当前接口注意事项</h2>
+<ul>
+<li><code>nav2_monitor</code> 中定义了 <code>SupervisorCmd.msg</code>（历史兼容名称），但当前真实对外输出仍是 <code>/nodemanager/cmd</code> 的 JSON 字符串</li>
+</ul>
+<ul>
+<li><code>safety_emergency_executor</code> 当前控制源切换完全依赖标准参数服务，不提供自定义 service</li>
+</ul>
+<ul>
+<li><code>algorithm_feedback_adapter_node</code> 的对外 topic 集合不是固定的，最终以 <code>spec_file</code> 为准</li>
+</ul>
+<ul>
+<li><code>nav2_monitor</code> 的动态监控 topic、碰撞输入和碰撞区发布 topic 最终以当前 <code>fault_config</code> 为准</li>
+</ul>
+      <div class="meta">本文档已统一为 HTML 形式，便于浏览、打印和后续可视化扩展。</div>
+    </article>
+  </div>
+</body>
+</html>

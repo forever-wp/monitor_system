@@ -2,7 +2,7 @@
 
 Sparse voxel obstacle fusion package for collision detection.
 
-项目级数据链路见 [项目架构与数据链路](../../docs/project_architecture.md)。
+项目级数据链路见 [项目架构与数据链路](../../docs/project_architecture.html)。
 
 Runtime config follows the Monitor OTA layout and should use the deployed `/opt/ry` file as
 the single source of truth on robot.

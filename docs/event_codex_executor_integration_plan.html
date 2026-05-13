@@ -1,0 +1,956 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>事件法典仲裁与事件执行层整合计划</title>
+  <style>
+    :root {
+      --bg: #f2efe8;
+      --paper: #fffaf0;
+      --paper-2: #fff4d8;
+      --ink: #1e2623;
+      --muted: #68756f;
+      --line: #d8cdbb;
+      --green: #1f6f50;
+      --green-soft: #deeee5;
+      --blue: #2f6690;
+      --blue-soft: #e1edf6;
+      --gold: #95680f;
+      --gold-soft: #f8e8b9;
+      --red: #9d3d2f;
+      --red-soft: #f5dfd8;
+      --violet: #58468f;
+      --violet-soft: #ebe7fb;
+      --shadow: 0 18px 48px rgb(43 34 19 / 13%);
+      --radius: 22px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 8% 7%, rgb(248 232 185 / 72%), transparent 24%),
+        radial-gradient(circle at 86% 12%, rgb(225 237 246 / 86%), transparent 28%),
+        linear-gradient(135deg, #f2efe8 0%, #e9f1ec 100%);
+      font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+      line-height: 1.72;
+    }
+
+    a {
+      color: var(--green);
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    code {
+      padding: 2px 6px;
+      border-radius: 7px;
+      background: rgb(31 111 80 / 10%);
+      color: #174934;
+      font-family: "JetBrains Mono", Consolas, monospace;
+      font-size: 0.92em;
+    }
+
+    pre {
+      margin: 14px 0 0;
+      padding: 18px;
+      border-radius: 18px;
+      overflow-x: auto;
+      color: #e8f4ee;
+      background: #15231f;
+      border: 1px solid rgb(255 255 255 / 8%);
+      box-shadow: inset 0 0 0 1px rgb(255 255 255 / 3%);
+    }
+
+    pre code {
+      padding: 0;
+      color: inherit;
+      background: transparent;
+    }
+
+    .page {
+      width: min(1240px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 34px 0 72px;
+    }
+
+    .hero {
+      position: relative;
+      overflow: hidden;
+      padding: 42px;
+      border: 1px solid rgb(216 205 187 / 88%);
+      border-radius: 32px;
+      background:
+        linear-gradient(135deg, rgb(255 250 240 / 96%), rgb(255 244 216 / 88%)),
+        var(--paper);
+      box-shadow: var(--shadow);
+    }
+
+    .hero::after {
+      content: "";
+      position: absolute;
+      right: -90px;
+      top: -95px;
+      width: 285px;
+      height: 285px;
+      border-radius: 50%;
+      background: rgb(31 111 80 / 12%);
+    }
+
+    .badge {
+      display: inline-flex;
+      gap: 8px;
+      align-items: center;
+      padding: 6px 12px;
+      border: 1px solid rgb(31 111 80 / 18%);
+      border-radius: 999px;
+      color: var(--green);
+      background: var(--green-soft);
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: .02em;
+    }
+
+    h1 {
+      max-width: 980px;
+      margin: 18px 0 12px;
+      font-size: clamp(34px, 5vw, 62px);
+      line-height: 1.06;
+      letter-spacing: -0.05em;
+    }
+
+    h2 {
+      margin: 0 0 14px;
+      font-size: clamp(24px, 3vw, 36px);
+      line-height: 1.18;
+      letter-spacing: -0.03em;
+    }
+
+    h3 {
+      margin: 0 0 8px;
+      font-size: 20px;
+    }
+
+    p {
+      margin: 0 0 12px;
+    }
+
+    .lead {
+      max-width: 930px;
+      color: var(--muted);
+      font-size: 19px;
+    }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 24px;
+    }
+
+    .metric {
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgb(255 255 255 / 58%);
+    }
+
+    .metric strong {
+      display: block;
+      color: var(--green);
+      font-size: 24px;
+      line-height: 1.1;
+    }
+
+    .metric span {
+      display: block;
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 270px minmax(0, 1fr);
+      gap: 24px;
+      margin-top: 28px;
+    }
+
+    .toc {
+      position: sticky;
+      top: 18px;
+      align-self: start;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgb(255 250 240 / 90%);
+      box-shadow: 0 12px 28px rgb(48 38 22 / 8%);
+    }
+
+    .toc strong {
+      display: block;
+      margin-bottom: 10px;
+      color: var(--ink);
+      font-size: 15px;
+    }
+
+    .toc a {
+      display: block;
+      padding: 7px 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .content {
+      display: grid;
+      gap: 24px;
+    }
+
+    .section {
+      padding: 28px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgb(255 250 240 / 94%);
+      box-shadow: 0 14px 34px rgb(48 38 22 / 8%);
+    }
+
+    .callout {
+      margin-top: 16px;
+      padding: 16px 18px;
+      border-left: 5px solid var(--green);
+      border-radius: 16px;
+      background: var(--green-soft);
+    }
+
+    .warning {
+      border-left-color: var(--red);
+      background: var(--red-soft);
+    }
+
+    .grid-2,
+    .grid-3,
+    .grid-4 {
+      display: grid;
+      gap: 14px;
+      margin-top: 16px;
+    }
+
+    .grid-2 {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .grid-3 {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .grid-4 {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .card {
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: #fff;
+    }
+
+    .card b {
+      display: block;
+      margin-bottom: 7px;
+      color: var(--green);
+    }
+
+    .card.blue {
+      background: var(--blue-soft);
+      border-color: rgb(47 102 144 / 26%);
+    }
+
+    .card.gold {
+      background: var(--gold-soft);
+      border-color: rgb(149 104 15 / 25%);
+    }
+
+    .card.red {
+      background: var(--red-soft);
+      border-color: rgb(157 61 47 / 24%);
+    }
+
+    .card.violet {
+      background: var(--violet-soft);
+      border-color: rgb(88 70 143 / 24%);
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      margin: 0 6px 6px 0;
+      padding: 4px 9px;
+      border-radius: 999px;
+      background: #fff;
+      border: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .diagram {
+      margin-top: 18px;
+      padding: 20px;
+      border: 1px solid #cfe0d8;
+      border-radius: 22px;
+      background:
+        radial-gradient(circle at 10% 8%, rgb(255 255 255 / 90%), transparent 30%),
+        linear-gradient(135deg, #fbfefd 0%, #eef7f3 100%);
+      overflow-x: auto;
+      box-shadow: 0 12px 26px rgb(31 42 44 / 7%);
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 14px;
+      color: #5b6c67;
+      font-size: 12px;
+    }
+
+    .legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: rgb(255 255 255 / 72%);
+      border: 1px solid #d6e5df;
+    }
+
+    .dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(168px, 1fr));
+      gap: 12px;
+      min-width: 920px;
+      align-items: stretch;
+    }
+
+    .flow.three {
+      grid-template-columns: repeat(3, minmax(220px, 1fr));
+      min-width: 760px;
+    }
+
+    .flow-node {
+      position: relative;
+      padding: 16px;
+      border-radius: 18px;
+      border: 1.5px solid #86b6a3;
+      background: #fff;
+      min-height: 124px;
+    }
+
+    .flow-node::after {
+      content: "->";
+      position: absolute;
+      right: -22px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--green);
+      font-weight: 900;
+      font-size: 18px;
+    }
+
+    .flow-node:last-child::after {
+      content: "";
+    }
+
+    .flow-node strong {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 16px;
+    }
+
+    .flow-node small {
+      display: block;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+
+    .flow-node.input {
+      background: var(--blue-soft);
+      border-color: #6ba2d7;
+    }
+
+    .flow-node.policy {
+      background: var(--gold-soft);
+      border-color: #d2a235;
+    }
+
+    .flow-node.exec {
+      background: var(--violet-soft);
+      border-color: #8d7ed3;
+    }
+
+    .flow-node.report {
+      background: var(--green-soft);
+      border-color: #61a87d;
+    }
+
+    .swimlane {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      min-width: 780px;
+    }
+
+    .lane {
+      padding: 16px;
+      border: 1px dashed rgb(96 112 106 / 45%);
+      border-radius: 18px;
+      background: rgb(255 255 255 / 62%);
+    }
+
+    .lane h3 {
+      color: var(--green);
+    }
+
+    .lane .card {
+      margin-top: 10px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      overflow: hidden;
+      border-radius: 16px;
+      background: #fff;
+      margin-top: 14px;
+    }
+
+    th,
+    td {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      color: var(--green);
+      background: var(--green-soft);
+      white-space: nowrap;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .timeline {
+      display: grid;
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .step {
+      display: grid;
+      grid-template-columns: 92px minmax(0, 1fr);
+      gap: 14px;
+      align-items: start;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: #fff;
+    }
+
+    .step .num {
+      display: grid;
+      place-items: center;
+      min-height: 50px;
+      border-radius: 14px;
+      color: var(--green);
+      background: var(--green-soft);
+      font-weight: 900;
+    }
+
+    .footer {
+      margin-top: 24px;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    @media (max-width: 980px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+
+      .toc {
+        position: static;
+      }
+
+      .hero-grid,
+      .grid-2,
+      .grid-3,
+      .grid-4 {
+        grid-template-columns: 1fr;
+      }
+
+      .hero,
+      .section {
+        padding: 24px;
+      }
+    }
+
+    @media print {
+      body {
+        background: #fff;
+      }
+
+      .page {
+        width: 100%;
+        padding: 0;
+      }
+
+      .toc {
+        display: none;
+      }
+
+      .layout {
+        display: block;
+      }
+
+      .hero,
+      .section {
+        box-shadow: none;
+        break-inside: avoid;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="hero">
+      <span class="badge">monitor_system / 事件法典架构计划</span>
+      <h1>事件法典仲裁与事件执行层整合计划</h1>
+      <p class="lead">
+        本页是后续实现的总蓝图：把旧的“判断器 + 故障动作”模式升级为“事件发现器 + 法典仲裁 + 事件执行层 + 上报器”。目标是让所有执行都可仲裁、可追踪、可恢复，同时保证软端 nodemanager 与硬件 safety 执行永远独立可靠。
+      </p>
+      <div class="hero-grid">
+        <div class="metric"><strong>1</strong><span>唯一执行决策入口：事件仲裁器</span></div>
+        <div class="metric"><strong>2</strong><span>事件执行层双通道：nodemanager + safety</span></div>
+        <div class="metric"><strong>4</strong><span>核心对象：EventFact / CodexRule / ExecutionPlan / ExecutionResult</span></div>
+        <div class="metric"><strong>0</strong><span>事件发现器直接执行次数必须为零</span></div>
+      </div>
+    </header>
+
+    <div class="layout">
+      <nav class="toc">
+        <strong>页面导航</strong>
+        <a href="#summary">1. 总体结论</a>
+        <a href="#architecture">2. 架构主链路</a>
+        <a href="#renaming">3. 命名与边界修正</a>
+        <a href="#roles">4. 模块职责</a>
+        <a href="#contracts">5. 核心数据契约</a>
+        <a href="#codex">6. 法典规则</a>
+        <a href="#arbiter">7. 事件仲裁器</a>
+        <a href="#executor">8. 事件执行层</a>
+        <a href="#reporter">9. 上报器</a>
+        <a href="#interfaces">10. Topic 与配置</a>
+        <a href="#migration">11. 实施阶段</a>
+        <a href="#testing">12. 测试验收</a>
+        <a href="#risks">13. 风险与约束</a>
+      </nav>
+
+      <main class="content">
+        <section id="summary" class="section">
+          <h2>1. 总体结论</h2>
+          <p>本次设计的核心不是新增一个更大的“控制中心”，而是把职责切开：事件发现器只发现事实，事件仲裁器按法典统一认定并下发最终审判结果，事件执行层独立执行，最终由上报器统一对外表达。</p>
+          <div class="callout">
+            设计红线：基础事件不能绕过法典直接执行；事件仲裁器不能接管具体执行细节；上报逻辑不能反向影响事件执行层。角色比喻是：事件仲裁器是法院，只下发最终判决；事件执行层是警察，负责执行判决。
+          </div>
+          <div class="grid-4">
+            <div class="card blue"><b>事件发现器</b><p>只发布事实，不判断最终处置，不发执行命令。</p></div>
+            <div class="card gold"><b>事件仲裁器</b><p>法典规则匹配、组合升级、交叉仲裁、恢复降级。</p></div>
+            <div class="card violet"><b>事件执行层</b><p>合并软端 nodemanager 与硬件 safety 两条执行通道。</p></div>
+            <div class="card"><b>上报器</b><p>统一输出法典触发、执行结果、人工接管建议。</p></div>
+          </div>
+          <div class="callout">
+            事件生命周期定义：事件发生即为错误开始，事件结束即为恢复结束。恢复不是另一条“反向命令”，而是事件从 active 变为 inactive 后，事件仲裁器基于剩余事实集重新下发最终判决。
+          </div>
+        </section>
+
+        <section id="architecture" class="section">
+          <h2>2. 架构主链路</h2>
+          <p>新链路以当前事实集为输入，以执行结果和上报载荷为输出。执行层与上报器并行消费仲裁结果，互不阻塞。</p>
+          <div class="diagram">
+            <div class="legend">
+              <span><i class="dot" style="background:#6ba2d7"></i>输入 / 事实</span>
+              <span><i class="dot" style="background:#d2a235"></i>法典 / 仲裁</span>
+              <span><i class="dot" style="background:#8d7ed3"></i>执行</span>
+              <span><i class="dot" style="background:#61a87d"></i>上报 / 反馈</span>
+            </div>
+            <div class="flow">
+              <div class="flow-node input">
+                <strong>事件发现器</strong>
+                <small>topic 频率、碰撞、小车状态、算法反馈、电池等模块只发现事实。</small>
+              </div>
+              <div class="flow-node input">
+                <strong>事件事实集</strong>
+                <small><code>active_events</code> 快照，按 <code>event_key</code> 去重并维护生命周期。</small>
+              </div>
+              <div class="flow-node policy">
+                <strong>事件仲裁器</strong>
+                <small>法典规则匹配、组合策略、交叉优先级、恢复状态机。</small>
+              </div>
+              <div class="flow-node exec">
+                <strong>事件执行层</strong>
+                <small>软端 <code>nodemanager</code> + 硬件 <code>safety</code> 独立执行。</small>
+              </div>
+              <div class="flow-node report">
+                <strong>上报器</strong>
+                <small>触犯法典信息、执行结果、人工接管建议、上下文快照。</small>
+              </div>
+            </div>
+          </div>
+          <pre><code>EventDiscoverers -> EventFactStore -> EventArbiter -> Verdict / ExecutionPlan
+                                           |                  |
+                                           |                  +-> EventExecutor -> /safety_system/cmd
+                                           |                                      -> /nodemanager/cmd
+                                           |                                      -> ExecutionResult
+                                           +---------------------> Reporter -> JSON topics</code></pre>
+        </section>
+
+        <section id="renaming" class="section">
+          <h2>3. 命名与边界修正</h2>
+          <p>这部分是后续代码、配置、文档需要统一的语言。命名先统一，后续实现才不会继续产生歧义。</p>
+          <table>
+            <thead>
+              <tr><th>旧说法</th><th>新说法</th><th>修正原因</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>判断器</td><td>事件发现器</td><td>它只能发现事实，不能直接认定最终错误或执行动作。</td></tr>
+              <tr><td>基础错误 / 基础故障</td><td>事件事实</td><td>事件 active 即错误开始，事件 inactive 即恢复结束；是否需要执行由法典决定。</td></tr>
+              <tr><td>组合故障仲裁</td><td>事件仲裁器</td><td>不只处理组合故障，也处理单事件、恢复、人工接管和最终审判结果。</td></tr>
+              <tr><td>硬件端事件执行层</td><td>事件执行层</td><td>执行层同时包含软端 nodemanager 和硬件 safety，两者统一归口。</td></tr>
+              <tr><td>安全执行上报 / 人工介入单独上报</td><td>上报器</td><td>上报统一包含法典触发信息、执行结果和人工接管建议。</td></tr>
+            </tbody>
+          </table>
+          <div class="callout warning">
+            控制源切换不归事件仲裁器直接接管。它属于 <code>safety_emergency_executor</code> 内部能力，事件仲裁器最多提供执行计划上下文。
+          </div>
+        </section>
+
+        <section id="roles" class="section">
+          <h2>4. 模块职责</h2>
+          <div class="swimlane">
+            <div class="lane">
+              <h3>发现与仲裁侧</h3>
+              <div class="card blue"><b>topic_frequency_monitor</b><p>输出 topic 是否存在、是否有数据、频率是否低于阈值。</p></div>
+              <div class="card blue"><b>collision_monitor</b><p>输出碰撞区域、TTC、障碍事件是否 active。</p></div>
+              <div class="card blue"><b>vehicle_state_judge</b><p>输出小车运动状态事实，不直接申请人工介入。</p></div>
+              <div class="card blue"><b>algorithm_feedback_monitor</b><p>输出算法反馈事实，不携带执行命令。</p></div>
+              <div class="card gold"><b>event_arbiter</b><p>唯一的故障认定、法典命中、组合恢复和执行计划生成入口。</p></div>
+            </div>
+            <div class="lane">
+              <h3>执行与上报侧</h3>
+              <div class="card violet"><b>event_executor / nodemanager 通道</b><p>接收最终判决后发布 <code>/nodemanager/cmd</code>，负责节点重启、模块降级、模块恢复、执行 ACK。</p></div>
+              <div class="card violet"><b>event_executor / safety 通道</b><p>接收最终判决后发布 <code>/safety_system/cmd</code>，负责减速、缓停、急停、恢复、控制源内部策略、底盘输出。</p></div>
+              <div class="card"><b>reporter</b><p>统一上报法典触发、执行结果、人工接管建议和上下文证据。</p></div>
+              <div class="card"><b>外部云端/MQTT模块</b><p>订阅 reporter 输出，不直接依赖发现器或执行层内部状态。</p></div>
+            </div>
+          </div>
+        </section>
+
+        <section id="contracts" class="section">
+          <h2>5. 核心数据契约</h2>
+          <p>建议先在内部 C++ 结构中落地，后续如需要跨进程隔离，再逐步消息化。</p>
+          <div class="grid-2">
+            <div class="card blue">
+              <b>EventFact</b>
+              <p>事件发现器输出的事实状态；事件发生即错误开始，事件结束即恢复结束。</p>
+              <pre><code>event_key: "collision.zone.emergency"
+active: true
+source: "collision_monitor"
+severity_hint: "critical"
+stamp: 1770000000.123
+ttl_s: 0.5
+evidence: { zone: "front", ttc_s: 0.35 }</code></pre>
+            </div>
+            <div class="card gold">
+              <b>CodexRule</b>
+              <p>法典规则，决定事实组合是否构成处置条件。</p>
+              <pre><code>rule_id: "collision_emergency_stop"
+priority: 100
+when_all:
+  - "collision.zone.emergency"
+enter_hold_s: 0.0
+clear_hold_s: 0.3
+execution_level: "critical"</code></pre>
+            </div>
+            <div class="card violet">
+              <b>Verdict / ExecutionPlan</b>
+              <p>事件仲裁器输出的唯一最终审判结果，交由事件执行层执行。</p>
+              <pre><code>plan_id: "plan-20260513-001"
+rule_ids: ["collision_emergency_stop"]
+targets: ["safety"]
+safety_action: "EMERGENCY_STOP"
+nodemanager_action: "NONE"
+manual_takeover: true</code></pre>
+            </div>
+            <div class="card">
+              <b>ExecutionResult</b>
+              <p>事件执行层反馈的执行结果。</p>
+              <pre><code>plan_id: "plan-20260513-001"
+target: "safety"
+accepted: true
+executed: true
+latched: true
+reason: "emergency stop command sent"</code></pre>
+            </div>
+          </div>
+        </section>
+
+        <section id="codex" class="section">
+          <h2>6. 法典规则</h2>
+          <p>法典是事件仲裁器的判断依据。单事件、组合事件、人工接管、软硬执行都应在法典中表达，而不是散落在各发现器里。</p>
+          <pre><code>event_codex_rules:
+  - rule_id: "collision_and_vehicle_abnormal"
+    name: "碰撞风险叠加底盘反馈异常"
+    priority: 120
+    when_all:
+      - event_key: "collision.zone.active"
+      - event_key: "vehicle.motion.unexpected"
+    enter_hold_s: 0.05
+    clear_hold_s: 0.5
+    min_hold_s: 1.0
+    execution_plan:
+      targets: ["safety", "nodemanager"]
+      safety:
+        action: "EMERGENCY_STOP"
+      nodemanager:
+        action: "RESTART_MODULE"
+        module_keys: ["chassis_driver"]
+    report_policy:
+      human_takeover: true
+      severity: "critical"
+      reason: "collision risk with abnormal chassis feedback"</code></pre>
+          <table>
+            <thead>
+              <tr><th>规则能力</th><th>说明</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>when_all</code></td><td>全部事件事实 active 才命中。</td></tr>
+              <tr><td><code>when_any</code></td><td>至少一个事件事实 active 即命中。</td></tr>
+              <tr><td><code>min_match_count</code></td><td>满足一定数量的事件集合，用于柔性组合策略。</td></tr>
+              <tr><td><code>enter_hold_s</code></td><td>进入确认，过滤瞬时抖动。</td></tr>
+              <tr><td><code>clear_hold_s</code></td><td>事件结束确认，确认通过即视为恢复结束，避免边缘反复跳变。</td></tr>
+              <tr><td><code>min_hold_s</code></td><td>最小保持，保证执行层有足够时间完成动作。</td></tr>
+              <tr><td><code>execution_plan</code></td><td>定义目标执行通道和意图，不直接描述底层执行细节。</td></tr>
+              <tr><td><code>report_policy</code></td><td>定义上报严重等级、人工接管建议和展示原因。</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section id="arbiter" class="section">
+          <h2>7. 事件仲裁器</h2>
+          <p>事件仲裁器每轮基于当前 <code>active_events</code> 快照重新计算，而不是只处理边沿事件。事件 active 表示错误开始，事件 inactive 表示恢复结束；仲裁器只根据当前仍然 active 的事件重新下发最终判决。</p>
+          <div class="diagram">
+            <div class="flow three">
+              <div class="flow-node input">
+                <strong>收集事实</strong>
+                <small>过滤过期事实，按 <code>event_key</code> 建立 active set，并维护事件生命周期。</small>
+              </div>
+              <div class="flow-node policy">
+                <strong>匹配法典</strong>
+                <small>计算候选规则，维护 pending / active / clearing 状态。</small>
+              </div>
+              <div class="flow-node exec">
+                <strong>输出计划</strong>
+                <small>根据赢家规则生成唯一 <code>Verdict / ExecutionPlan</code>，只交给事件执行层。</small>
+              </div>
+            </div>
+          </div>
+          <table>
+            <thead>
+              <tr><th>场景</th><th>仲裁行为</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>单事件出现</td><td>也必须命中单事件法典规则后才生成执行计划。</td></tr>
+              <tr><td>多个事件逐步出现</td><td>先按当前事实集执行，满足组合后升级为组合计划。</td></tr>
+              <tr><td>多个事件同批出现</td><td>直接匹配组合规则，避免先输出一堆单项动作。</td></tr>
+              <tr><td>组合规则交叉</td><td>按 <code>priority -> execution_level -> matched_count -> active_prefer -> rule_id</code> 稳定选赢家。</td></tr>
+              <tr><td>事件结束</td><td>事件 inactive 即恢复结束；随后重新仲裁剩余 active 事实集，而不是简单发送旧错误恢复。</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section id="executor" class="section">
+          <h2>8. 事件执行层</h2>
+          <p>事件执行层是执行边界，不是判断边界。它负责把执行计划转换为真实动作，并回传执行结果。软端和硬件通道统一归口，但内部必须保持独立。</p>
+          <div class="grid-2">
+            <div class="card violet">
+              <b>软端通道：nodemanager</b>
+              <p>负责模块重启、节点管理、模块降级、模块恢复、节点执行结果 ACK。</p>
+              <span class="tag">/nodemanager/cmd</span>
+              <span class="tag">cooldown</span>
+              <span class="tag">multi-key merge</span>
+            </div>
+            <div class="card violet">
+              <b>硬件通道：safety</b>
+              <p>负责减速、缓停、急停、恢复、控制源内部策略、最终底盘 <code>/command</code> 输出。</p>
+              <span class="tag">/safety_system/cmd</span>
+              <span class="tag">latched stop</span>
+              <span class="tag">control source internal</span>
+            </div>
+          </div>
+          <div class="callout">
+            事件执行层必须保证幂等、锁存、超时、冷却时间、ACK 和执行反馈。即使上报器异常，已经进入执行层的安全动作也不能被影响。
+          </div>
+        </section>
+
+        <section id="reporter" class="section">
+          <h2>9. 上报器</h2>
+          <p>人工接管上报统一并入上报器。发现器不直接申请人工介入，执行层不直接对外解释原因，上报器负责把法典触发和执行结果组织成外部可读消息。</p>
+          <table>
+            <thead>
+              <tr><th>上报内容</th><th>来源</th><th>说明</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>触犯法典信息</td><td>事件仲裁器</td><td>规则 ID、规则名称、触发事件集、严重等级、原因。</td></tr>
+              <tr><td>执行计划</td><td>事件仲裁器</td><td>计划 ID、目标通道、安全动作、节点动作、人工接管建议。</td></tr>
+              <tr><td>执行结果</td><td>事件执行层</td><td>ACK、执行成功/失败、锁存状态、失败原因。</td></tr>
+              <tr><td>上下文快照</td><td>事件事实集</td><td>速度指令、底盘反馈、碰撞状态、topic 健康状态等证据。</td></tr>
+            </tbody>
+          </table>
+          <pre><code>{
+  "event_type": "codex_rule_triggered",
+  "rule_id": "collision_and_vehicle_abnormal",
+  "severity": "critical",
+  "manual_takeover": true,
+  "execution": {
+    "plan_id": "plan-20260513-001",
+    "targets": ["safety", "nodemanager"],
+    "results": [
+      {"target": "safety", "executed": true, "latched": true},
+      {"target": "nodemanager", "accepted": true, "executed": false}
+    ]
+  }
+}</code></pre>
+        </section>
+
+        <section id="interfaces" class="section">
+          <h2>10. Topic 与配置</h2>
+          <p>第一阶段需要明确执行链路方向：事件仲裁器不直接发布 <code>/safety_system/cmd</code> 或 <code>/nodemanager/cmd</code>。它只发布最终审判结果给事件执行层；事件执行层再负责应急措施执行和 nodemanager 命令发布。</p>
+          <table>
+            <thead>
+              <tr><th>接口</th><th>阶段</th><th>语义</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>/monitor/*_state</code></td><td>保留并收敛</td><td>事件发现器输出事实状态。</td></tr>
+              <tr><td><code>/nav2_monitor/status</code></td><td>保留</td><td>系统周期状态，后续应包含事件事实摘要和法典状态。</td></tr>
+              <tr><td><code>/nav2_monitor/fault_event</code></td><td>语义更新</td><td>从旧故障边沿逐步演进为法典触发事件。</td></tr>
+              <tr><td><code>/event_executor/verdict</code></td><td>建议新增</td><td>事件仲裁器输出的最终审判结果，事件执行层唯一输入。</td></tr>
+              <tr><td><code>/safety_system/cmd</code></td><td>保留</td><td>事件执行层硬件通道输出，不能由事件仲裁器直发。</td></tr>
+              <tr><td><code>/nodemanager/cmd</code></td><td>保留</td><td>事件执行层软端通道输出，不能由事件仲裁器直发。</td></tr>
+              <tr><td><code>/event_executor/plan</code></td><td>兼容命名</td><td>如果使用 plan 命名，也必须表达“最终判决”，语义等同 <code>/event_executor/verdict</code>。</td></tr>
+              <tr><td><code>/nav2_monitor/reporter/event_json</code></td><td>保留并增强</td><td>上报器输出法典触发 + 执行结果。</td></tr>
+              <tr><td><code>/nav2_monitor/reporter/human_takeover_json</code></td><td>建议新增</td><td>人工接管建议统一出口。</td></tr>
+            </tbody>
+          </table>
+          <div class="callout">
+            配置继续统一到 <code>/opt/ry/config/Monitor/</code>。仓库内 <code>config/Monitor/</code> 作为运行配置镜像，用于版本管理和审查。
+          </div>
+        </section>
+
+        <section id="migration" class="section">
+          <h2>11. 实施阶段</h2>
+          <div class="timeline">
+            <div class="step">
+              <div class="num">阶段 1</div>
+              <div><h3>文档与术语统一</h3><p>更新 README、项目架构、接口说明、组合策略页，统一为事件发现器、事件仲裁器、事件执行层、上报器。</p></div>
+            </div>
+            <div class="step">
+              <div class="num">阶段 2</div>
+              <div><h3>数据结构落地</h3><p>新增或重构 <code>EventFact</code>、<code>CodexRule</code>、<code>Verdict/ExecutionPlan</code>、<code>ExecutionResult</code> 内部结构。</p></div>
+            </div>
+            <div class="step">
+              <div class="num">阶段 3</div>
+              <div><h3>发现器改造</h3><p>各判断器只输出事实 active / inactive。active 表示错误开始，inactive 表示恢复结束；移除直接执行、直接恢复和直接人工接管上报。</p></div>
+            </div>
+            <div class="step">
+              <div class="num">阶段 4</div>
+              <div><h3>事件仲裁器实现</h3><p>基于 active event 快照匹配法典，处理组合、交叉优先级、恢复状态机和唯一执行计划。</p></div>
+            </div>
+            <div class="step">
+              <div class="num">阶段 5</div>
+              <div><h3>事件执行层整合</h3><p>把 nodemanager 与 safety 归入事件执行层双通道，由事件执行层发布 <code>/nodemanager/cmd</code> 和 <code>/safety_system/cmd</code>，统一 ACK、冷却、锁存和执行结果。</p></div>
+            </div>
+            <div class="step">
+              <div class="num">阶段 6</div>
+              <div><h3>上报器整合</h3><p>人工接管、法典触发、执行结果、上下文快照全部通过上报器输出。</p></div>
+            </div>
+            <div class="step">
+              <div class="num">阶段 7</div>
+              <div><h3>实机验证</h3><p>用仿真事件和真实 topic 验证发现、仲裁、执行、反馈、上报完整闭环。</p></div>
+            </div>
+          </div>
+        </section>
+
+        <section id="testing" class="section">
+          <h2>12. 测试验收</h2>
+          <table>
+            <thead>
+              <tr><th>测试类型</th><th>覆盖内容</th><th>通过标准</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>单事件测试</td><td>单个事件 active / inactive</td><td>只有命中法典后才输出执行计划。</td></tr>
+              <tr><td>组合测试</td><td>A+B、B+C、A+B+C</td><td>组合规则优先级稳定，执行计划唯一。</td></tr>
+              <tr><td>逐步出现</td><td>A 先出现，B 后出现</td><td>先按 A 仲裁，满足 A+B 后升级组合计划。</td></tr>
+              <tr><td>同批出现</td><td>A+B 同一周期出现</td><td>直接进入组合规则，不输出多条单项执行。</td></tr>
+              <tr><td>恢复降级</td><td>B 事件结束，A 仍 active</td><td>B 的恢复已随事件结束完成，系统重新基于剩余事实集仲裁，不乱发恢复命令。</td></tr>
+              <tr><td>执行失败</td><td>safety 或 nodemanager 拒绝/超时</td><td>上报器包含执行失败原因，执行层状态不丢失。</td></tr>
+              <tr><td>高负载</td><td>CPU 满载、topic 抖动</td><td>事件执行层不被上报器或发现器阻塞。</td></tr>
+            </tbody>
+          </table>
+          <pre><code>env ROS_DOMAIN_ID=66 ros2 topic echo /nav2_monitor/status
+env ROS_DOMAIN_ID=66 ros2 topic echo /safety_system/cmd
+env ROS_DOMAIN_ID=66 ros2 topic echo /nodemanager/cmd
+env ROS_DOMAIN_ID=66 ros2 topic echo /nav2_monitor/reporter/event_json</code></pre>
+        </section>
+
+        <section id="risks" class="section">
+          <h2>13. 风险与约束</h2>
+          <div class="grid-2">
+            <div class="card red"><b>迁移期双语义风险</b><p>旧 <code>FaultInfo</code> 与新 <code>EventFact</code> 并存时，必须明确谁有执行权。迁移期也不能允许旧路径直接执行。</p></div>
+            <div class="card red"><b>执行层被误耦合风险</b><p>上报器、仲裁器、发现器都不能在执行层内部加入阻塞逻辑，执行必须永远独立。</p></div>
+            <div class="card gold"><b>规则膨胀风险</b><p>法典规则会增长，需要规则命名、分组、优先级和审查流程，避免后期难维护。</p></div>
+            <div class="card gold"><b>恢复语义风险</b><p>事件结束即恢复结束。恢复不是反向执行旧动作，而是基于当前仍 active 的事实集重新计算执行计划。</p></div>
+          </div>
+          <div class="callout">
+            最终验收标准：事件发现器只发现事实；所有执行均由法典仲裁产生；事件执行层软硬通道独立可靠；上报器统一表达触发原因、执行结果和人工接管建议。
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <footer class="footer">
+      本页面作为后续实现与评审的主计划页；历史设计页保留上下文，新实现以本页边界为准。
+    </footer>
+  </div>
+</body>
+</html>

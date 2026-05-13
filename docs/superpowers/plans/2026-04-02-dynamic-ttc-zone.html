@@ -1,0 +1,764 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>2026-04-02-dynamic-ttc-zone</title>
+  <style>
+    :root {
+      --bg: #f6f7f8;
+      --paper: #ffffff;
+      --ink: #1f2a2c;
+      --muted: #5f6f73;
+      --line: #dbe3e6;
+      --brand: #1f6f50;
+      --brand-soft: #e7f3ee;
+      --shadow: 0 10px 28px rgb(31 42 44 / 8%);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: linear-gradient(160deg, #f6f7f8 0%, #edf3f5 100%);
+      font-family: "Noto Sans SC", "Microsoft YaHei", Arial, sans-serif;
+      line-height: 1.72;
+    }
+    .page {
+      width: min(1100px, calc(100% - 28px));
+      margin: 0 auto;
+      padding: 28px 0 48px;
+    }
+    .card {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+      padding: 28px;
+    }
+    h1, h2, h3, h4, h5, h6 { line-height: 1.28; margin: 22px 0 10px; }
+    h1 { margin-top: 6px; font-size: clamp(28px, 4vw, 44px); }
+    h2 { font-size: clamp(21px, 2.7vw, 31px); }
+    h3 { font-size: clamp(18px, 2.1vw, 24px); }
+    p { margin: 10px 0; }
+    code {
+      padding: 2px 6px;
+      border-radius: 6px;
+      background: var(--brand-soft);
+      color: #154933;
+      font-family: "JetBrains Mono", Consolas, monospace;
+      font-size: 0.93em;
+    }
+    pre {
+      margin: 14px 0;
+      padding: 14px;
+      border-radius: 12px;
+      background: #152124;
+      color: #e6f0f2;
+      overflow-x: auto;
+      border: 1px solid #26363a;
+    }
+    pre code {
+      padding: 0;
+      background: transparent;
+      color: inherit;
+      font-size: 0.9em;
+    }
+    ul, ol { padding-left: 22px; margin: 8px 0 14px; }
+    li { margin: 4px 0; }
+    blockquote {
+      margin: 14px 0;
+      padding: 10px 14px;
+      border-left: 4px solid var(--brand);
+      background: var(--brand-soft);
+      color: #1f4f3c;
+    }
+    a { color: #1f5f8c; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .toc {
+      margin-bottom: 18px;
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #f9fcfd;
+    }
+    .toc strong { display: block; margin-bottom: 8px; color: var(--brand); }
+    .toc ul { margin: 0; padding-left: 18px; }
+    .table-wrap {
+      overflow-x: auto;
+      margin: 12px 0;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+    }
+    table { border-collapse: collapse; width: 100%; min-width: 520px; }
+    th, td {
+      border-bottom: 1px solid var(--line);
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+    thead th {
+      color: var(--brand);
+      background: var(--brand-soft);
+    }
+    tbody tr:last-child td { border-bottom: none; }
+    .meta {
+      margin-top: 20px;
+      color: var(--muted);
+      font-size: 13px;
+      border-top: 1px dashed var(--line);
+      padding-top: 12px;
+    }
+    @media (max-width: 720px) {
+      .card { padding: 20px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <article class="card">
+      <aside class="toc"><strong>目录</strong><ul><li><a href="#dynamic-ttc-zone-implementation-plan">Dynamic TTC Zone Implementation Plan</a></li><li><a href="#file-map">File Map</a></li><li><a href="#chunk-1-schema-and-parsing">Chunk 1: Schema And Parsing</a></li><li><a href="#task-1-protect-the-current-baseline-and-add-ttc-parsing-coverage">Task 1: Protect The Current Baseline And Add TTC Parsing Coverage</a></li><li><a href="#chunk-2-dynamic-ttc-evaluation">Chunk 2: Dynamic TTC Evaluation</a></li><li><a href="#task-2-replace-static-approach-gating-with-dynamic-corridor-filtering">Task 2: Replace Static Approach Gating With Dynamic Corridor Filtering</a></li><li><a href="#task-3-extend-ttc-visualization-to-show-dynamic-corridor">Task 3: Extend TTC Visualization To Show Dynamic Corridor</a></li><li><a href="#chunk-3-configs-docs-and-verification">Chunk 3: Configs, Docs, And Verification</a></li><li><a href="#task-4-migrate-repo-configs-and-mirrors-from-approach-to-ttc">Task 4: Migrate Repo Configs And Mirrors From Approach To TTC</a></li><li><a href="#task-5-update-docs-and-run-end-to-end-verification">Task 5: Update Docs And Run End-To-End Verification</a></li></ul></aside>
+<h1 id="dynamic-ttc-zone-implementation-plan">Dynamic TTC Zone Implementation Plan</h1>
+<blockquote><strong>For agentic workers:</strong> REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (<code>- [ ]</code>) syntax for tracking.</blockquote>
+<p><strong>Goal:</strong> Replace static <code>approach</code> polygons with lightweight dynamic TTC zones that directly trigger safety actions while preserving near-field hard zones and the current TTC preview behavior.</p>
+<p><strong>Architecture:</strong> Extend the collision config schema with a canonical <code>model: "ttc"</code> rule and runtime parameters for horizon, corridor margin, and candidate downsampling. Reuse the existing footprint-based trajectory TTC math, but replace the outer candidate stage with a dynamic corridor built from sampled prediction motion. Treat the current uncommitted TTC preview fixes in this worktree as the baseline; do not revert them while implementing the dynamic TTC migration.</p>
+<p><strong>Tech Stack:</strong> C++17, ROS 2 Humble, <code>rclcpp</code>, <code>yaml-cpp</code>, <code>visualization_msgs</code>, <code>geometry_msgs</code>, <code>ament_cmake_gtest</code>, <code>pytest</code></p>
+<p>---</p>
+<h2 id="file-map">File Map</h2>
+<ul>
+<li>Modify: <code>src/nav2_monitor/include/nav2_monitor/fault_detector.hpp</code></li>
+</ul>
+<ul>
+<li>Add the canonical TTC model enum and per-zone TTC runtime fields.</li>
+</ul>
+<ul>
+<li>Extend TTC visualization state with dynamic corridor geometry.</li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/src/fault_detector.cpp</code></li>
+</ul>
+<ul>
+<li>Parse <code>model: "ttc"</code> and alias legacy <code>model: "approach"</code> to TTC with a warning.</li>
+</ul>
+<ul>
+<li>Parse <code>ttc_horizon_s</code>, <code>corridor_margin</code>, and <code>candidate_downsample_resolution</code>.</li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/include/nav2_monitor/collision_evaluator.hpp</code></li>
+</ul>
+<ul>
+<li>Declare helpers for bounding-radius computation, centerline sampling, corridor filtering, candidate downsampling, and visualization capture.</li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/src/collision_evaluator.cpp</code></li>
+</ul>
+<ul>
+<li>Replace static <code>approach.points</code> gating with dynamic TTC corridor filtering.</li>
+</ul>
+<ul>
+<li>Preserve the current “moving without hit still shows trajectory” visualization behavior.</li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/include/nav2_monitor/nav2_monitor_node.hpp</code></li>
+</ul>
+<ul>
+<li>Add any new marker helper declarations needed for corridor rendering.</li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/src/nav2_monitor_node.cpp</code></li>
+</ul>
+<ul>
+<li>Publish TTC corridor markers.</li>
+</ul>
+<ul>
+<li>Stop treating TTC rules as static polygon publishers.</li>
+</ul>
+<ul>
+<li>Keep zero-stamp marker behavior for RViz TF stability.</li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/test/test_fault_detector.cpp</code></li>
+</ul>
+<ul>
+<li>Add parser and evaluator tests for the new TTC model.</li>
+</ul>
+<ul>
+<li>Rename TTC-related expectations from <code>front_approach/rear_approach</code> to <code>front_ttc/rear_ttc</code>.</li>
+</ul>
+<ul>
+<li>Modify: <code>src/bridge/test/test_monitor_ota_layout.py</code></li>
+</ul>
+<ul>
+<li>Assert the OTA config bundle now uses TTC rule names and dynamic TTC fields.</li>
+</ul>
+<ul>
+<li>Modify: <code>config/Monitor/nav2_monitor/fault_detector_config.yaml</code></li>
+</ul>
+<ul>
+<li>Migrate repo OTA source config from <code>approach</code> to <code>ttc</code>.</li>
+</ul>
+<ul>
+<li>Modify: <code>config/Monitor/nav2_monitor/profiles/fault_detector_reverse.yaml</code></li>
+</ul>
+<ul>
+<li>Modify: <code>config/Monitor/nav2_monitor/profiles/fault_detector_elevator.yaml</code></li>
+</ul>
+<ul>
+<li>Modify: <code>config/Monitor/nav2_monitor/profiles/fault_detector_todoor.yaml</code></li>
+</ul>
+<ul>
+<li>Mirror the TTC migration across all profiles.</li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/config/fault_detector_config.yaml</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/config/profiles/fault_detector_reverse.yaml</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/config/profiles/fault_detector_elevator.yaml</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/config/profiles/fault_detector_todoor.yaml</code></li>
+</ul>
+<ul>
+<li>Keep the package-local mirror synchronized with <code>config/Monitor</code>.</li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/README.md</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/docs/architecture.html</code></li>
+</ul>
+<ul>
+<li>Update docs to describe dynamic TTC zones, near-field hard zones, and RViz corridor visualization.</li>
+</ul>
+<h2 id="chunk-1-schema-and-parsing">Chunk 1: Schema And Parsing</h2>
+<h3 id="task-1-protect-the-current-baseline-and-add-ttc-parsing-coverage">Task 1: Protect The Current Baseline And Add TTC Parsing Coverage</h3>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Modify: <code>src/nav2_monitor/test/test_fault_detector.cpp</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/bridge/test/test_monitor_ota_layout.py</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/include/nav2_monitor/fault_detector.hpp</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/src/fault_detector.cpp</code></li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 1: Write failing tests for the canonical TTC schema</strong></li>
+</ul>
+<p>Add focused parser tests in <code>src/nav2_monitor/test/test_fault_detector.cpp</code>:</p>
+<pre><code class="language-cpp">
+TEST_F(FaultDetectorTest, CollisionDetectionParsesDynamicTtcModel)
+{
+  const std::string config_text = R&quot;(
+collision_detection:
+  enabled: 1
+  footprint_points: [-0.3, -0.2, -0.3, 0.2, 0.3, 0.2, 0.3, -0.2]
+  zones:
+    - name: &quot;front_ttc&quot;
+      model: &quot;ttc&quot;
+      motion_direction: &quot;forward&quot;
+      time_before_collision: 3.0
+      ttc_horizon_s: 3.5
+      corridor_margin: 0.10
+      candidate_downsample_resolution: 0.08
+modules:
+  - name: &quot;dummy&quot;
+    supervisor: 0
+    safety_system: 0
+)&quot;;
+  // Expect cfg.zones[0].model == CollisionModelType::TTC and fields parsed.
+}
+</code></pre>
+<p>Add a static config test in <code>src/bridge/test/test_monitor_ota_layout.py</code>:</p>
+<pre><code class="language-python">
+def test_dynamic_ttc_defaults_exist_in_monitor_bundle():
+    config = repo_root / &quot;config/Monitor/nav2_monitor/fault_detector_config.yaml&quot;
+    data = yaml.safe_load(config.read_text())
+    ttc_zone = next(zone for zone in data[&quot;collision_detection&quot;][&quot;zones&quot;] if zone[&quot;name&quot;] == &quot;front_ttc&quot;)
+    assert ttc_zone[&quot;model&quot;] == &quot;ttc&quot;
+    assert &quot;ttc_horizon_s&quot; in ttc_zone
+    assert &quot;corridor_margin&quot; in ttc_zone
+    assert &quot;candidate_downsample_resolution&quot; in ttc_zone
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 2: Run the targeted tests to verify they fail</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-bash">
+source /opt/ros/humble/setup.bash &amp;&amp; source install/setup.bash &amp;&amp; export ROS_LOG_DIR=/tmp/ros_logs &amp;&amp; colcon test --packages-select nav2_monitor --event-handlers console_direct+ --ctest-args -R test_fault_detector
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li><code>CollisionDetectionParsesDynamicTtcModel</code> fails because <code>model: "ttc"</code> is not parsed yet.</li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-bash">
+source /opt/ros/humble/setup.bash &amp;&amp; source install/setup.bash &amp;&amp; export ROS_LOG_DIR=/tmp/ros_logs &amp;&amp; colcon test --packages-select bridge --event-handlers console_direct+ --ctest-args -R test_monitor_ota_layout
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>the new bundle assertion fails because configs still use <code>front_approach/rear_approach</code>.</li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 3: Implement minimal schema support</strong></li>
+</ul>
+<p>Update <code>src/nav2_monitor/include/nav2_monitor/fault_detector.hpp</code>:</p>
+<pre><code class="language-cpp">
+enum class CollisionModelType
+{
+  ZONE = 0,
+  TTC = 1
+};
+
+struct CollisionZoneConfig
+{
+  // ...
+  double ttc_horizon_s{0.0};
+  double corridor_margin{0.10};
+  double candidate_downsample_resolution{0.08};
+};
+</code></pre>
+<p>Update <code>src/nav2_monitor/src/fault_detector.cpp</code>:</p>
+<pre><code class="language-cpp">
+if (zone_node[&quot;model&quot;]) {
+  const auto model = to_lower(zone_node[&quot;model&quot;].as&lt;std::string&gt;());
+  if (model == &quot;ttc&quot;) {
+    zone.model = CollisionModelType::TTC;
+  } else if (model == &quot;approach&quot;) {
+    zone.model = CollisionModelType::TTC;
+    RCLCPP_WARN(node_-&gt;get_logger(), &quot;[collision_detection][%s] model=approach is deprecated; use model=ttc&quot;, zone.name.c_str());
+  }
+}
+
+if (zone_node[&quot;ttc_horizon_s&quot;]) {
+  zone.ttc_horizon_s = std::max(0.0, zone_node[&quot;ttc_horizon_s&quot;].as&lt;double&gt;());
+}
+if (zone_node[&quot;corridor_margin&quot;]) {
+  zone.corridor_margin = std::max(0.0, zone_node[&quot;corridor_margin&quot;].as&lt;double&gt;());
+}
+if (zone_node[&quot;candidate_downsample_resolution&quot;]) {
+  zone.candidate_downsample_resolution = std::max(0.01, zone_node[&quot;candidate_downsample_resolution&quot;].as&lt;double&gt;());
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 4: Re-run the targeted tests and make them pass</strong></li>
+</ul>
+<p>Run the same <code>nav2_monitor</code> and <code>bridge</code> test commands.</p>
+<p>Expected:</p>
+<ul>
+<li>parser test passes</li>
+</ul>
+<ul>
+<li>bundle test may still fail on config names until config migration task; keep only the parser assertion enabled in this step if needed</li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 5: Commit the schema-only change</strong></li>
+</ul>
+<pre><code class="language-bash">
+git add src/nav2_monitor/include/nav2_monitor/fault_detector.hpp src/nav2_monitor/src/fault_detector.cpp src/nav2_monitor/test/test_fault_detector.cpp
+git commit -m &quot;feat(nav2_monitor): parse dynamic ttc config&quot;
+</code></pre>
+<h2 id="chunk-2-dynamic-ttc-evaluation">Chunk 2: Dynamic TTC Evaluation</h2>
+<h3 id="task-2-replace-static-approach-gating-with-dynamic-corridor-filtering">Task 2: Replace Static Approach Gating With Dynamic Corridor Filtering</h3>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Modify: <code>src/nav2_monitor/include/nav2_monitor/collision_evaluator.hpp</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/src/collision_evaluator.cpp</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/test/test_fault_detector.cpp</code></li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 1: Write failing evaluator tests for dynamic TTC behavior</strong></li>
+</ul>
+<p>Add tests in <code>src/nav2_monitor/test/test_fault_detector.cpp</code> that no longer provide <code>points</code> on the TTC zone:</p>
+<pre><code class="language-cpp">
+TEST_F(FaultDetectorTest, CollisionDetectionTtcTriggersWithoutStaticPolygon)
+{
+  const std::string config_text = R&quot;(
+multi_value_judge:
+  trigger_count: 1
+  recover_count: 1
+collision_detection:
+  enabled: 1
+  source_timeout_s: 1.0
+  footprint_points: [-0.37, -0.28, -0.37, 0.28, 0.37, 0.28, 0.37, -0.28]
+  zones:
+    - name: &quot;front_ttc&quot;
+      model: &quot;ttc&quot;
+      motion_direction: &quot;forward&quot;
+      time_before_collision: 1.0
+      ttc_horizon_s: 1.5
+      corridor_margin: 0.10
+      candidate_downsample_resolution: 0.08
+      actions: [&quot;safety_system&quot;]
+modules:
+  - name: &quot;dummy&quot;
+    supervisor: 0
+    safety_system: 0
+)&quot;;
+  // Set prediction motion forward and a collision point near the forward trajectory.
+  // Expect one fault with zone=front_ttc.
+}
+</code></pre>
+<p>Add a negative test:</p>
+<pre><code class="language-cpp">
+TEST_F(FaultDetectorTest, CollisionDetectionTtcSkipsWhenFootprintMissing)
+{
+  // model=ttc with no footprint_points
+  // Expect no faults and no crash.
+}
+</code></pre>
+<p>Add a direction test:</p>
+<pre><code class="language-cpp">
+TEST_F(FaultDetectorTest, CollisionDetectionRearTtcOnlyTriggersWhenReversing)
+{
+  // rear_ttc should ignore forward motion and trigger on reverse motion.
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 2: Run the focused gtest suite and verify failure</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-bash">
+source /opt/ros/humble/setup.bash &amp;&amp; source install/setup.bash &amp;&amp; export ROS_LOG_DIR=/tmp/ros_logs &amp;&amp; colcon test --packages-select nav2_monitor --event-handlers console_direct+ --ctest-args -R test_fault_detector
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>TTC tests fail because evaluator still requires <code>zone.points</code> and <code>CollisionModelType::APPROACH</code>.</li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 3: Implement the dynamic corridor helpers and TTC path</strong></li>
+</ul>
+<p>Extend <code>src/nav2_monitor/include/nav2_monitor/collision_evaluator.hpp</code> with helper declarations:</p>
+<pre><code class="language-cpp">
+static double compute_bounding_radius(const std::vector&lt;CollisionPoint&gt; &amp; footprint);
+static std::vector&lt;CollisionPoint&gt; sample_centerline(
+  double linear_x, double linear_y, double angular_z, double horizon_s, double dt);
+static std::vector&lt;CollisionPoint&gt; collect_ttc_candidate_points(
+  const std::vector&lt;CollisionPoint&gt; &amp; points,
+  const std::vector&lt;CollisionPoint&gt; &amp; centerline,
+  double corridor_radius);
+static std::vector&lt;CollisionPoint&gt; downsample_candidate_points(
+  const std::vector&lt;CollisionPoint&gt; &amp; points,
+  double resolution);
+</code></pre>
+<p>Implement in <code>src/nav2_monitor/src/collision_evaluator.cpp</code>:</p>
+<pre><code class="language-cpp">
+const bool is_ttc_zone = zone.model == CollisionModelType::TTC;
+if (is_ttc_zone &amp;&amp; current_speed &gt; 1e-3) {
+  const double active_horizon = std::max({
+    zone.ttc_horizon_s,
+    zone.time_before_collision,
+    zone.recover_time_before_collision,
+  });
+  const auto centerline = sample_centerline(
+    chassis_state.prediction_linear_x,
+    chassis_state.prediction_linear_y,
+    chassis_state.prediction_angular_z,
+    active_horizon,
+    zone.simulation_time_step);
+  const double corridor_radius =
+    compute_bounding_radius(cfg.footprint_points) + zone.corridor_margin;
+  const auto corridor_candidates = collect_ttc_candidate_points(points, centerline, corridor_radius);
+  const auto ttc_candidates = downsample_candidate_points(
+    corridor_candidates, zone.candidate_downsample_resolution);
+  // Run estimate_trajectory_collision_time() on ttc_candidates.
+}
+</code></pre>
+<p>Rules:</p>
+<ul>
+<li>No static <code>zone.points</code> requirement for TTC.</li>
+</ul>
+<ul>
+<li>If <code>cfg.footprint_points.empty()</code>, skip the TTC rule and log once per evaluation.</li>
+</ul>
+<ul>
+<li>Keep <code>zone_matches_motion_direction()</code> for TTC rules too.</li>
+</ul>
+<ul>
+<li>Preserve the current uncommitted “moving without hit still shows trajectory” preview behavior.</li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 4: Re-run the focused gtests and make them pass</strong></li>
+</ul>
+<p>Run the same <code>nav2_monitor</code> test command.</p>
+<p>Expected:</p>
+<ul>
+<li>TTC-without-polygon test passes</li>
+</ul>
+<ul>
+<li>missing-footprint test passes</li>
+</ul>
+<ul>
+<li>reverse TTC direction test passes</li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 5: Commit the evaluator migration</strong></li>
+</ul>
+<pre><code class="language-bash">
+git add src/nav2_monitor/include/nav2_monitor/collision_evaluator.hpp src/nav2_monitor/src/collision_evaluator.cpp src/nav2_monitor/test/test_fault_detector.cpp
+git commit -m &quot;feat(nav2_monitor): replace approach with dynamic ttc corridor&quot;
+</code></pre>
+<h3 id="task-3-extend-ttc-visualization-to-show-dynamic-corridor">Task 3: Extend TTC Visualization To Show Dynamic Corridor</h3>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Modify: <code>src/nav2_monitor/include/nav2_monitor/fault_detector.hpp</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/include/nav2_monitor/nav2_monitor_node.hpp</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/src/nav2_monitor_node.cpp</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/src/collision_evaluator.cpp</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/test/test_fault_detector.cpp</code></li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 1: Write failing tests for dynamic TTC visualization data</strong></li>
+</ul>
+<p>Add a new visualization assertion:</p>
+<pre><code class="language-cpp">
+TEST_F(FaultDetectorTest, CollisionDetectionTtcVisualizationCapturesDynamicCorridor)
+{
+  // model=ttc, moving forward, no collision hit
+  // Expect vis.active == true and vis.corridor_outline not empty.
+}
+</code></pre>
+<p>Update the existing snapshot test to expect the new TTC zone name:</p>
+<pre><code class="language-cpp">
+EXPECT_EQ(vis.zone_name, &quot;front_ttc&quot;);
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 2: Run the nav2_monitor test target and verify failure</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-bash">
+source /opt/ros/humble/setup.bash &amp;&amp; source install/setup.bash &amp;&amp; export ROS_LOG_DIR=/tmp/ros_logs &amp;&amp; colcon test --packages-select nav2_monitor --event-handlers console_direct+ --ctest-args -R test_fault_detector
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>corridor visualization assertions fail because no corridor geometry is stored yet.</li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 3: Implement the visualization state and marker updates</strong></li>
+</ul>
+<p>Extend <code>CollisionTtcVisualizationState</code> in <code>src/nav2_monitor/include/nav2_monitor/fault_detector.hpp</code>:</p>
+<pre><code class="language-cpp">
+std::vector&lt;CollisionPoint&gt; corridor_outline;
+</code></pre>
+<p>Populate it in <code>src/nav2_monitor/src/collision_evaluator.cpp</code> from the sampled centerline and corridor radius.</p>
+<p>Update <code>src/nav2_monitor/src/nav2_monitor_node.cpp</code>:</p>
+<pre><code class="language-cpp">
+visualization_msgs::msg::Marker corridor_marker;
+corridor_marker.ns = &quot;collision_ttc_corridor&quot;;
+corridor_marker.type = visualization_msgs::msg::Marker::LINE_STRIP;
+// emit the corridor outline using zero stamp, like the existing markers
+</code></pre>
+<p>Also update <code>configure_collision_monitoring()</code> and <code>publish_collision_zones()</code> so TTC rules are not treated as static polygon publishers:</p>
+<pre><code class="language-cpp">
+if (zone.model == CollisionModelType::TTC) {
+  continue;
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 4: Rebuild and re-run the nav2_monitor tests</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-bash">
+source /opt/ros/humble/setup.bash &amp;&amp; export ROS_LOG_DIR=/tmp/ros_logs &amp;&amp; colcon build --packages-up-to nav2_monitor --cmake-clean-first --event-handlers console_direct+
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>build succeeds</li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-bash">
+source /opt/ros/humble/setup.bash &amp;&amp; source install/setup.bash &amp;&amp; export ROS_LOG_DIR=/tmp/ros_logs &amp;&amp; colcon test --packages-select nav2_monitor --event-handlers console_direct+ --ctest-args -R test_fault_detector
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>visualization tests pass</li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 5: Commit the visualization update</strong></li>
+</ul>
+<pre><code class="language-bash">
+git add src/nav2_monitor/include/nav2_monitor/fault_detector.hpp src/nav2_monitor/include/nav2_monitor/nav2_monitor_node.hpp src/nav2_monitor/src/nav2_monitor_node.cpp src/nav2_monitor/src/collision_evaluator.cpp src/nav2_monitor/test/test_fault_detector.cpp
+git commit -m &quot;feat(nav2_monitor): visualize dynamic ttc corridor&quot;
+</code></pre>
+<h2 id="chunk-3-configs-docs-and-verification">Chunk 3: Configs, Docs, And Verification</h2>
+<h3 id="task-4-migrate-repo-configs-and-mirrors-from-approach-to-ttc">Task 4: Migrate Repo Configs And Mirrors From Approach To TTC</h3>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Modify: <code>config/Monitor/nav2_monitor/fault_detector_config.yaml</code></li>
+</ul>
+<ul>
+<li>Modify: <code>config/Monitor/nav2_monitor/profiles/fault_detector_reverse.yaml</code></li>
+</ul>
+<ul>
+<li>Modify: <code>config/Monitor/nav2_monitor/profiles/fault_detector_elevator.yaml</code></li>
+</ul>
+<ul>
+<li>Modify: <code>config/Monitor/nav2_monitor/profiles/fault_detector_todoor.yaml</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/config/fault_detector_config.yaml</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/config/profiles/fault_detector_reverse.yaml</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/config/profiles/fault_detector_elevator.yaml</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/config/profiles/fault_detector_todoor.yaml</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/bridge/test/test_monitor_ota_layout.py</code></li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 1: Write/update the config layout assertions first</strong></li>
+</ul>
+<p>Update <code>src/bridge/test/test_monitor_ota_layout.py</code> to assert:</p>
+<pre><code class="language-python">
+assert &quot;front_ttc&quot; in zone_names
+assert &quot;front_approach&quot; not in zone_names
+assert &quot;points&quot; not in front_ttc
+assert front_ttc[&quot;model&quot;] == &quot;ttc&quot;
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 2: Run the OTA layout test and verify it fails</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-bash">
+source /opt/ros/humble/setup.bash &amp;&amp; source install/setup.bash &amp;&amp; export ROS_LOG_DIR=/tmp/ros_logs &amp;&amp; colcon test --packages-select bridge --event-handlers console_direct+ --ctest-args -R test_monitor_ota_layout
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>the layout test fails because configs still use <code>front_approach/rear_approach</code>.</li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 3: Migrate the YAML files</strong></li>
+</ul>
+<p>Update the repo OTA source config and every mirrored profile:</p>
+<pre><code class="language-yaml">
+- name: &quot;front_ttc&quot;
+  model: &quot;ttc&quot;
+  motion_direction: &quot;forward&quot;
+  time_before_collision: 3.0
+  recover_time_before_collision: 3.5
+  min_hold_time_s: 0.2
+  ttc_horizon_s: 3.5
+  corridor_margin: 0.10
+  candidate_downsample_resolution: 0.08
+  actions: [&quot;safety_system&quot;]
+</code></pre>
+<p>Rules:</p>
+<ul>
+<li>remove TTC <code>points</code> entirely</li>
+</ul>
+<ul>
+<li>remove TTC <code>polygon_pub_topic</code></li>
+</ul>
+<ul>
+<li>keep <code>front_slow/front_stop/rear_slow/rear_stop</code> unchanged</li>
+</ul>
+<ul>
+<li>make the package-local <code>src/nav2_monitor/config/...</code> files byte-for-byte match <code>config/Monitor/...</code></li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 4: Re-run the OTA layout test and confirm it passes</strong></li>
+</ul>
+<p>Run the same <code>bridge</code> test command.</p>
+<p>Expected:</p>
+<ul>
+<li><code>test_monitor_ota_layout</code> passes</li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 5: Commit the config migration</strong></li>
+</ul>
+<pre><code class="language-bash">
+git add config/Monitor/nav2_monitor/fault_detector_config.yaml config/Monitor/nav2_monitor/profiles/fault_detector_reverse.yaml config/Monitor/nav2_monitor/profiles/fault_detector_elevator.yaml config/Monitor/nav2_monitor/profiles/fault_detector_todoor.yaml src/nav2_monitor/config/fault_detector_config.yaml src/nav2_monitor/config/profiles/fault_detector_reverse.yaml src/nav2_monitor/config/profiles/fault_detector_elevator.yaml src/nav2_monitor/config/profiles/fault_detector_todoor.yaml src/bridge/test/test_monitor_ota_layout.py
+git commit -m &quot;feat(config): migrate collision rules to dynamic ttc&quot;
+</code></pre>
+<h3 id="task-5-update-docs-and-run-end-to-end-verification">Task 5: Update Docs And Run End-To-End Verification</h3>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Modify: <code>src/nav2_monitor/README.md</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/nav2_monitor/docs/architecture.html</code></li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 1: Update user-facing docs</strong></li>
+</ul>
+<p>Document the new canonical model and its role:</p>
+<pre><code class="language-md">
+- `model: &quot;ttc&quot;` uses a runtime-generated corridor from `prediction_motion`
+- `front_slow/front_stop/rear_*` remain static hard-stop polygons
+- `ttc_visualization_enabled` now shows the dynamic corridor in RViz2
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 2: Run full package verification</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-bash">
+source /opt/ros/humble/setup.bash &amp;&amp; export ROS_LOG_DIR=/tmp/ros_logs &amp;&amp; colcon build --packages-up-to nav2_monitor --cmake-clean-first --event-handlers console_direct+
+</code></pre>
+<p>Run:</p>
+<pre><code class="language-bash">
+source /opt/ros/humble/setup.bash &amp;&amp; source install/setup.bash &amp;&amp; export ROS_LOG_DIR=/tmp/ros_logs &amp;&amp; colcon test --packages-select bridge nav2_monitor safety_emergency_executor --event-handlers console_direct+
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>all selected packages pass</li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 3: Refresh the runtime OTA directory</strong></li>
+</ul>
+<p>Sync the validated bundle to the runtime path:</p>
+<pre><code class="language-bash">
+sudo rsync -a config/Monitor/ /opt/ry/config/Monitor/
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li><code>/opt/ry/config/Monitor/nav2_monitor</code> contains the new <code>front_ttc/rear_ttc</code> configs</li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 4: Optional smoke check for RViz marker topic</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-bash">
+source /opt/ros/humble/setup.bash &amp;&amp; source install/setup.bash &amp;&amp; export ROS_LOG_DIR=/tmp/ros_logs &amp;&amp; timeout 6s ros2 run nav2_monitor nav2_monitor_node --ros-args --params-file src/nav2_monitor/config/nav2_monitor_params.yaml
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>node starts without config parsing errors</li>
+</ul>
+<ul>
+<li><code>/nav2_monitor/collision_ttc_markers</code> is advertised when <code>ttc_visualization_enabled</code> is on</li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 5: Commit the docs and final verification result</strong></li>
+</ul>
+<pre><code class="language-bash">
+git add src/nav2_monitor/README.md src/nav2_monitor/docs/architecture.html
+git commit -m &quot;docs(nav2_monitor): document dynamic ttc zones&quot;
+</code></pre>
+      <div class="meta">本文档已统一为 HTML 形式，便于浏览、打印和后续可视化扩展。</div>
+    </article>
+  </div>
+</body>
+</html>

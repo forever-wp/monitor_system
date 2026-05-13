@@ -1,0 +1,655 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>2026-04-07-control-source-routing</title>
+  <style>
+    :root {
+      --bg: #f6f7f8;
+      --paper: #ffffff;
+      --ink: #1f2a2c;
+      --muted: #5f6f73;
+      --line: #dbe3e6;
+      --brand: #1f6f50;
+      --brand-soft: #e7f3ee;
+      --shadow: 0 10px 28px rgb(31 42 44 / 8%);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: linear-gradient(160deg, #f6f7f8 0%, #edf3f5 100%);
+      font-family: "Noto Sans SC", "Microsoft YaHei", Arial, sans-serif;
+      line-height: 1.72;
+    }
+    .page {
+      width: min(1100px, calc(100% - 28px));
+      margin: 0 auto;
+      padding: 28px 0 48px;
+    }
+    .card {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+      padding: 28px;
+    }
+    h1, h2, h3, h4, h5, h6 { line-height: 1.28; margin: 22px 0 10px; }
+    h1 { margin-top: 6px; font-size: clamp(28px, 4vw, 44px); }
+    h2 { font-size: clamp(21px, 2.7vw, 31px); }
+    h3 { font-size: clamp(18px, 2.1vw, 24px); }
+    p { margin: 10px 0; }
+    code {
+      padding: 2px 6px;
+      border-radius: 6px;
+      background: var(--brand-soft);
+      color: #154933;
+      font-family: "JetBrains Mono", Consolas, monospace;
+      font-size: 0.93em;
+    }
+    pre {
+      margin: 14px 0;
+      padding: 14px;
+      border-radius: 12px;
+      background: #152124;
+      color: #e6f0f2;
+      overflow-x: auto;
+      border: 1px solid #26363a;
+    }
+    pre code {
+      padding: 0;
+      background: transparent;
+      color: inherit;
+      font-size: 0.9em;
+    }
+    ul, ol { padding-left: 22px; margin: 8px 0 14px; }
+    li { margin: 4px 0; }
+    blockquote {
+      margin: 14px 0;
+      padding: 10px 14px;
+      border-left: 4px solid var(--brand);
+      background: var(--brand-soft);
+      color: #1f4f3c;
+    }
+    a { color: #1f5f8c; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .toc {
+      margin-bottom: 18px;
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #f9fcfd;
+    }
+    .toc strong { display: block; margin-bottom: 8px; color: var(--brand); }
+    .toc ul { margin: 0; padding-left: 18px; }
+    .table-wrap {
+      overflow-x: auto;
+      margin: 12px 0;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+    }
+    table { border-collapse: collapse; width: 100%; min-width: 520px; }
+    th, td {
+      border-bottom: 1px solid var(--line);
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+    thead th {
+      color: var(--brand);
+      background: var(--brand-soft);
+    }
+    tbody tr:last-child td { border-bottom: none; }
+    .meta {
+      margin-top: 20px;
+      color: var(--muted);
+      font-size: 13px;
+      border-top: 1px dashed var(--line);
+      padding-top: 12px;
+    }
+    @media (max-width: 720px) {
+      .card { padding: 20px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <article class="card">
+      <aside class="toc"><strong>目录</strong><ul><li><a href="#control-source-routing-implementation-plan">Control Source Routing Implementation Plan</a></li><li><a href="#file-map">File Map</a></li><li><a href="#chunk-1-controller-extraction">Chunk 1: Controller Extraction</a></li><li><a href="#task-1-replace-boolean-manual-override-with-a-focused-controller">Task 1: Replace Boolean Manual Override With A Focused Controller</a></li><li><a href="#chunk-2-parameter-driven-routing">Chunk 2: Parameter-Driven Routing</a></li><li><a href="#task-2-add-multi-source-routing-and-parameter-based-switching">Task 2: Add Multi-Source Routing And Parameter-Based Switching</a></li><li><a href="#chunk-3-config-and-documentation-migration">Chunk 3: Config And Documentation Migration</a></li><li><a href="#task-3-migrate-runtime-configuration-and-documentation">Task 3: Migrate Runtime Configuration And Documentation</a></li><li><a href="#chunk-4-end-to-end-verification">Chunk 4: End-To-End Verification</a></li><li><a href="#task-4-run-a-final-focused-verification-pass">Task 4: Run A Final Focused Verification Pass</a></li></ul></aside>
+<h1 id="control-source-routing-implementation-plan">Control Source Routing Implementation Plan</h1>
+<blockquote><strong>For agentic workers:</strong> REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (<code>- [ ]</code>) syntax for tracking.</blockquote>
+<p><strong>Goal:</strong> Upgrade <code>safety_emergency_executor</code> into a multi-source velocity router that only forwards the active control source, uses ROS 2 standard parameter services for source switching/querying, and keeps the existing safety command chain intact.</p>
+<p><strong>Architecture:</strong> Add a focused <code>ControlSourceController</code> plus a node-level parameter callback for <code>active_control_source</code>, then route four separate <code>Twist</code> inputs through the existing <code>VelocityConverter -&gt; PressureAdjuster -&gt; SafetyPolicyExecutor -&gt; /command</code> pipeline only when the source matches the active mode. Replace the old <code>manual_override</code> API surface entirely, publish <code>/control_source_state</code> as the passive mode feed, and rely on the built-in <code>/set_parameters</code> and <code>/get_parameters</code> services instead of custom ROSIDL interfaces.</p>
+<p><strong>Tech Stack:</strong> C++17, ROS 2 Humble, <code>rclcpp</code>, <code>geometry_msgs</code>, <code>std_msgs</code>, <code>nav_msgs</code>, <code>sensor_msgs</code>, <code>ament_cmake_gtest</code>, <code>pytest</code>, <code>colcon</code></p>
+<p>---</p>
+<h2 id="file-map">File Map</h2>
+<ul>
+<li>Create: <code>src/safety_emergency_executor/include/safety_emergency_executor/control_source_controller.hpp</code></li>
+</ul>
+<ul>
+<li>Declare the focused controller that owns source validation and switching semantics.</li>
+</ul>
+<ul>
+<li>Create: <code>src/safety_emergency_executor/src/control_source_controller.cpp</code></li>
+</ul>
+<ul>
+<li>Implement canonical-source validation, current-source storage, and helper responses.</li>
+</ul>
+<ul>
+<li>Delete: <code>src/safety_emergency_executor/include/safety_emergency_executor/external_override_controller.hpp</code></li>
+</ul>
+<ul>
+<li>Remove the old boolean manual-override API surface.</li>
+</ul>
+<ul>
+<li>Delete: <code>src/safety_emergency_executor/src/external_override_controller.cpp</code></li>
+</ul>
+<ul>
+<li>Remove the old manual-override implementation.</li>
+</ul>
+<ul>
+<li>Modify: <code>src/safety_emergency_executor/include/safety_emergency_executor/safety_emergency_executor_node.hpp</code></li>
+</ul>
+<ul>
+<li>Replace manual-override members with control-source state publisher, parameter callback handle, and per-source subscriptions.</li>
+</ul>
+<ul>
+<li>Modify: <code>src/safety_emergency_executor/src/safety_emergency_executor_node.cpp</code></li>
+</ul>
+<ul>
+<li>Add multi-source routing, parameter validation, state publication, and remove old manual-override behavior.</li>
+</ul>
+<ul>
+<li>Modify: <code>src/safety_emergency_executor/CMakeLists.txt</code></li>
+</ul>
+<ul>
+<li>Wire in the new controller/test files and remove obsolete manual-override sources and dependencies.</li>
+</ul>
+<ul>
+<li>Modify: <code>src/safety_emergency_executor/package.xml</code></li>
+</ul>
+<ul>
+<li>Remove <code>std_srvs</code> if it becomes unused after deleting the old manual-override services.</li>
+</ul>
+<ul>
+<li>Modify: <code>src/safety_emergency_executor/README.md</code></li>
+</ul>
+<ul>
+<li>Document the <code>control_source</code> model, parameter-service usage, topics, and migration from <code>manual_override</code>.</li>
+</ul>
+<ul>
+<li>Modify: <code>src/safety_emergency_executor/config/safety_emergency_executor_params.yaml</code></li>
+</ul>
+<ul>
+<li>Keep the package-local example config aligned with the OTA bundle.</li>
+</ul>
+<ul>
+<li>Modify: <code>config/Monitor/safety_emergency_executor/safety_emergency_executor_params.yaml</code></li>
+</ul>
+<ul>
+<li>Change runtime parameters from single-input/manual-override to four inputs plus <code>active_control_source</code>.</li>
+</ul>
+<ul>
+<li>Modify: <code>src/bridge/test/test_monitor_ota_layout.py</code></li>
+</ul>
+<ul>
+<li>Add static assertions for the new OTA config keys and removal of legacy manual-override keys.</li>
+</ul>
+<ul>
+<li>Create: <code>src/safety_emergency_executor/test/test_control_source_controller.cpp</code></li>
+</ul>
+<ul>
+<li>Add focused unit coverage for source validation and switching.</li>
+</ul>
+<ul>
+<li>Create: <code>src/safety_emergency_executor/test/test_control_source_routing.cpp</code></li>
+</ul>
+<ul>
+<li>Add node-level coverage for per-source routing, parameter-service switching, and state publication.</li>
+</ul>
+<ul>
+<li>Modify: <code>src/safety_emergency_executor/test/test_pipeline_components.cpp</code></li>
+</ul>
+<ul>
+<li>Remove manual-override-specific coverage and keep only component tests that still belong here.</li>
+</ul>
+<h2 id="chunk-1-controller-extraction">Chunk 1: Controller Extraction</h2>
+<h3 id="task-1-replace-boolean-manual-override-with-a-focused-controller">Task 1: Replace Boolean Manual Override With A Focused Controller</h3>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Create: <code>src/safety_emergency_executor/include/safety_emergency_executor/control_source_controller.hpp</code></li>
+</ul>
+<ul>
+<li>Create: <code>src/safety_emergency_executor/src/control_source_controller.cpp</code></li>
+</ul>
+<ul>
+<li>Delete: <code>src/safety_emergency_executor/include/safety_emergency_executor/external_override_controller.hpp</code></li>
+</ul>
+<ul>
+<li>Delete: <code>src/safety_emergency_executor/src/external_override_controller.cpp</code></li>
+</ul>
+<ul>
+<li>Create: <code>src/safety_emergency_executor/test/test_control_source_controller.cpp</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/safety_emergency_executor/CMakeLists.txt</code></li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 1: Write the failing controller tests</strong></li>
+</ul>
+<p>Create <code>src/safety_emergency_executor/test/test_control_source_controller.cpp</code>:</p>
+<pre><code class="language-cpp">
+#include &lt;gtest/gtest.h&gt;
+
+#include &quot;safety_emergency_executor/control_source_controller.hpp&quot;
+
+TEST(ControlSourceControllerTest, DefaultsToNavigation)
+{
+  safety_emergency_executor::ControlSourceController controller(&quot;navigation&quot;, false);
+  EXPECT_EQ(controller.active_source(), &quot;navigation&quot;);
+}
+
+TEST(ControlSourceControllerTest, SwitchesBetweenCanonicalSources)
+{
+  safety_emergency_executor::ControlSourceController controller(&quot;navigation&quot;, false);
+  const auto result = controller.set_active_source(&quot;remote&quot;);
+  EXPECT_TRUE(result.success);
+  EXPECT_TRUE(result.changed);
+  EXPECT_EQ(result.active_source, &quot;remote&quot;);
+  EXPECT_EQ(controller.active_source(), &quot;remote&quot;);
+}
+
+TEST(ControlSourceControllerTest, RejectsInvalidSources)
+{
+  safety_emergency_executor::ControlSourceController controller(&quot;navigation&quot;, false);
+  const auto result = controller.set_active_source(&quot;invalid&quot;);
+  EXPECT_FALSE(result.success);
+  EXPECT_FALSE(result.changed);
+  EXPECT_EQ(controller.active_source(), &quot;navigation&quot;);
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 2: Run the targeted test build to verify it fails</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-bash">
+source /opt/ros/humble/setup.bash &amp;&amp; colcon build --packages-select safety_emergency_executor --event-handlers console_direct+
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>build fails because <code>control_source_controller.hpp/.cpp</code> do not exist yet</li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 3: Implement <code>ControlSourceController</code> and remove <code>ExternalOverrideController</code></strong></li>
+</ul>
+<p>Create <code>src/safety_emergency_executor/include/safety_emergency_executor/control_source_controller.hpp</code>:</p>
+<pre><code class="language-cpp">
+struct ControlSourceChange
+{
+  bool success{false};
+  bool changed{false};
+  std::string active_source;
+  std::string message;
+};
+
+class ControlSourceController
+{
+public:
+  explicit ControlSourceController(std::string initial_source, bool auto_preempt_enabled);
+
+  const std::string &amp; active_source() const;
+  bool accepts(const std::string &amp; source) const;
+  ControlSourceChange set_active_source(const std::string &amp; source);
+  static bool is_valid_source(const std::string &amp; source);
+
+private:
+  std::string active_source_;
+  bool auto_preempt_enabled_{false};
+};
+</code></pre>
+<p>Implement canonical-source validation in <code>src/safety_emergency_executor/src/control_source_controller.cpp</code> and remove both <code>external_override_controller.*</code> files from the build.</p>
+<ul>
+<li>[ ] <strong>Step 4: Re-run the targeted tests and make them pass</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-bash">
+source /opt/ros/humble/setup.bash &amp;&amp; colcon build --packages-select safety_emergency_executor --event-handlers console_direct+
+source install/setup.bash &amp;&amp; colcon test --packages-select safety_emergency_executor --event-handlers console_direct+ --ctest-args -R test_control_source_controller
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>package builds successfully</li>
+</ul>
+<ul>
+<li><code>test_control_source_controller</code> passes</li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 5: Commit the controller extraction</strong></li>
+</ul>
+<pre><code class="language-bash">
+git add src/safety_emergency_executor/include/safety_emergency_executor/control_source_controller.hpp src/safety_emergency_executor/src/control_source_controller.cpp src/safety_emergency_executor/test/test_control_source_controller.cpp src/safety_emergency_executor/CMakeLists.txt
+git rm src/safety_emergency_executor/include/safety_emergency_executor/external_override_controller.hpp src/safety_emergency_executor/src/external_override_controller.cpp
+git commit -m &quot;feat(safety_emergency_executor): add control source controller&quot;
+</code></pre>
+<h2 id="chunk-2-parameter-driven-routing">Chunk 2: Parameter-Driven Routing</h2>
+<h3 id="task-2-add-multi-source-routing-and-parameter-based-switching">Task 2: Add Multi-Source Routing And Parameter-Based Switching</h3>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Modify: <code>src/safety_emergency_executor/include/safety_emergency_executor/safety_emergency_executor_node.hpp</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/safety_emergency_executor/src/safety_emergency_executor_node.cpp</code></li>
+</ul>
+<ul>
+<li>Create: <code>src/safety_emergency_executor/test/test_control_source_routing.cpp</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/safety_emergency_executor/CMakeLists.txt</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/safety_emergency_executor/test/test_pipeline_components.cpp</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/safety_emergency_executor/package.xml</code></li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 1: Write the failing routing and parameter-service tests</strong></li>
+</ul>
+<p>Create <code>src/safety_emergency_executor/test/test_control_source_routing.cpp</code> with a dedicated harness:</p>
+<pre><code class="language-cpp">
+class ControlSourceHarness : public rclcpp::Node
+{
+public:
+  ControlSourceHarness()
+  : Node(&quot;control_source_harness&quot;)
+  {
+    navigation_pub_ = create_publisher&lt;geometry_msgs::msg::Twist&gt;(&quot;/test/cmd_vel/navigation&quot;, 20);
+    remote_pub_ = create_publisher&lt;geometry_msgs::msg::Twist&gt;(&quot;/test/cmd_vel/remote&quot;, 20);
+    miniapp_pub_ = create_publisher&lt;geometry_msgs::msg::Twist&gt;(&quot;/test/cmd_vel/miniapp&quot;, 20);
+    other_pub_ = create_publisher&lt;geometry_msgs::msg::Twist&gt;(&quot;/test/cmd_vel/other&quot;, 20);
+    command_sub_ = create_subscription&lt;std_msgs::msg::String&gt;(&quot;/test/command&quot;, 20, ...);
+    state_sub_ = create_subscription&lt;std_msgs::msg::String&gt;(
+      &quot;/test/control_source_state&quot;, rclcpp::QoS(1).transient_local().reliable(), ...);
+    params_client_ = std::make_shared&lt;rclcpp::AsyncParametersClient&gt;(shared_from_this(), &quot;/safety_emergency_executor&quot;);
+  }
+};
+</code></pre>
+<p>Add tests:</p>
+<pre><code class="language-cpp">
+TEST_F(SafetyExecutorRoutingTest, DefaultsToNavigationAndPublishesState)
+TEST_F(SafetyExecutorRoutingTest, OnlyActiveSourceCommandsReachCommandTopic)
+TEST_F(SafetyExecutorRoutingTest, ParameterUpdateSwitchesActiveSource)
+TEST_F(SafetyExecutorRoutingTest, InvalidParameterUpdateIsRejected)
+TEST_F(SafetyExecutorRoutingTest, SwitchingSourceDoesNotPublishSyntheticStop)
+TEST_F(SafetyExecutorRoutingTest, SafetyCommandsStillApplyAfterSwitchingToRemote)
+</code></pre>
+<p>Trim <code>src/safety_emergency_executor/test/test_pipeline_components.cpp</code> so it keeps only reusable component tests (<code>VelocityConverter</code>, <code>PressureAdjuster</code>, <code>SafetyPolicyExecutor</code>) and removes the old manual-override harness.</p>
+<ul>
+<li>[ ] <strong>Step 2: Run the targeted suite and verify it fails</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-bash">
+source /opt/ros/humble/setup.bash &amp;&amp; source install/setup.bash &amp;&amp; colcon test --packages-select safety_emergency_executor --event-handlers console_direct+ --ctest-args -R &quot;test_control_source_routing|test_pipeline_components&quot;
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>the new routing suite fails because the node still subscribes to only one <code>cmd_vel</code> topic and does not validate <code>active_control_source</code></li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 3: Implement parameter-driven routing in the node</strong></li>
+</ul>
+<p>Update <code>src/safety_emergency_executor/include/safety_emergency_executor/safety_emergency_executor_node.hpp</code>:</p>
+<pre><code class="language-cpp">
+void on_cmd_vel(const std::string &amp; source, const geometry_msgs::msg::Twist::SharedPtr msg);
+void publish_control_source_state();
+rcl_interfaces::msg::SetParametersResult on_parameter_update(
+  const std::vector&lt;rclcpp::Parameter&gt; &amp; parameters);
+
+std::unordered_map&lt;std::string, rclcpp::Subscription&lt;geometry_msgs::msg::Twist&gt;::SharedPtr&gt; cmd_vel_subscriptions_;
+rclcpp::Publisher&lt;std_msgs::msg::String&gt;::SharedPtr control_source_state_pub_;
+OnSetParametersCallbackHandle::SharedPtr parameter_callback_handle_;
+ControlSourceController control_source_controller_;
+</code></pre>
+<p>Update <code>src/safety_emergency_executor/src/safety_emergency_executor_node.cpp</code>:</p>
+<pre><code class="language-cpp">
+const auto active_control_source = declare_parameter&lt;std::string&gt;(&quot;active_control_source&quot;, &quot;navigation&quot;);
+const auto navigation_topic = declare_parameter&lt;std::string&gt;(&quot;cmd_vel_navigation_topic&quot;, &quot;/cmd_vel&quot;);
+const auto miniapp_topic = declare_parameter&lt;std::string&gt;(&quot;cmd_vel_miniapp_topic&quot;, &quot;/cmd_vel_miniapp&quot;);
+const auto remote_topic = declare_parameter&lt;std::string&gt;(&quot;cmd_vel_remote_topic&quot;, &quot;/cmd_vel_remote&quot;);
+const auto other_topic = declare_parameter&lt;std::string&gt;(&quot;cmd_vel_other_topic&quot;, &quot;/cmd_vel_other&quot;);
+
+control_source_controller_ = ControlSourceController(active_control_source, auto_preempt_enabled);
+parameter_callback_handle_ = add_on_set_parameters_callback(
+  std::bind(&amp;SafetyEmergencyExecutorNode::on_parameter_update, this, std::placeholders::_1));
+publish_control_source_state();
+</code></pre>
+<p>In <code>on_parameter_update</code>:</p>
+<pre><code class="language-cpp">
+if (parameter.get_name() == &quot;active_control_source&quot;) {
+  const auto result = control_source_controller_.set_active_source(parameter.as_string());
+  response.successful = result.success;
+  response.reason = result.message;
+  if (result.success &amp;&amp; result.changed) {
+    publish_control_source_state();
+  }
+}
+</code></pre>
+<p>In <code>on_cmd_vel</code>:</p>
+<pre><code class="language-cpp">
+if (!control_source_controller_.accepts(source)) {
+  RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000, &quot;Ignoring cmd_vel from inactive source: %s&quot;, source.c_str());
+  return;
+}
+</code></pre>
+<p>Remove all manual-override service/state logic and delete the now-unused <code>std_srvs</code> dependency from <code>CMakeLists.txt</code> and <code>package.xml</code> if nothing else in the package uses it.</p>
+<ul>
+<li>[ ] <strong>Step 4: Re-run the routing and component tests</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-bash">
+source /opt/ros/humble/setup.bash &amp;&amp; colcon build --packages-select safety_emergency_executor --event-handlers console_direct+
+source install/setup.bash &amp;&amp; colcon test --packages-select safety_emergency_executor --event-handlers console_direct+ --ctest-args -R &quot;test_control_source_routing|test_pipeline_components&quot;
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li><code>test_control_source_routing</code> passes all source-routing and parameter-switch scenarios</li>
+</ul>
+<ul>
+<li><code>test_pipeline_components</code> still passes the component-level safety-policy assertions</li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 5: Commit the node routing upgrade</strong></li>
+</ul>
+<pre><code class="language-bash">
+git add src/safety_emergency_executor/include/safety_emergency_executor/safety_emergency_executor_node.hpp src/safety_emergency_executor/src/safety_emergency_executor_node.cpp src/safety_emergency_executor/test/test_control_source_routing.cpp src/safety_emergency_executor/test/test_pipeline_components.cpp src/safety_emergency_executor/CMakeLists.txt src/safety_emergency_executor/package.xml
+git commit -m &quot;feat(safety_emergency_executor): route velocity by control source&quot;
+</code></pre>
+<h2 id="chunk-3-config-and-documentation-migration">Chunk 3: Config And Documentation Migration</h2>
+<h3 id="task-3-migrate-runtime-configuration-and-documentation">Task 3: Migrate Runtime Configuration And Documentation</h3>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Modify: <code>config/Monitor/safety_emergency_executor/safety_emergency_executor_params.yaml</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/safety_emergency_executor/config/safety_emergency_executor_params.yaml</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/safety_emergency_executor/README.md</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/bridge/test/test_monitor_ota_layout.py</code></li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 1: Write the failing static config assertions</strong></li>
+</ul>
+<p>Extend <code>src/bridge/test/test_monitor_ota_layout.py</code>:</p>
+<pre><code class="language-python">
+def test_safety_executor_uses_control_source_routing_params():
+    params = yaml.safe_load(
+        (MONITOR_ROOT / &quot;safety_emergency_executor&quot; / &quot;safety_emergency_executor_params.yaml&quot;).read_text()
+    )[&quot;safety_emergency_executor&quot;][&quot;ros__parameters&quot;]
+
+    assert params[&quot;cmd_vel_navigation_topic&quot;] == &quot;/cmd_vel&quot;
+    assert params[&quot;active_control_source&quot;] == &quot;navigation&quot;
+    assert params[&quot;control_source_state_topic&quot;] == &quot;/control_source_state&quot;
+    assert &quot;cmd_vel_topic&quot; not in params
+    assert &quot;manual_override_service&quot; not in params
+    assert &quot;manual_override_query_service&quot; not in params
+    assert &quot;manual_override_state_topic&quot; not in params
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 2: Run the static config test and verify it fails</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-bash">
+source /opt/ros/humble/setup.bash &amp;&amp; source install/setup.bash &amp;&amp; colcon test --packages-select bridge --event-handlers console_direct+ --ctest-args -R test_monitor_ota_layout
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>the new assertions fail because the YAML files still expose <code>cmd_vel_topic</code> and <code>manual_override_*</code></li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 3: Migrate the YAML and README content</strong></li>
+</ul>
+<p>Update both parameter files to:</p>
+<pre><code class="language-yaml">
+cmd_vel_navigation_topic: &quot;/cmd_vel&quot;
+cmd_vel_miniapp_topic: &quot;/cmd_vel_miniapp&quot;
+cmd_vel_remote_topic: &quot;/cmd_vel_remote&quot;
+cmd_vel_other_topic: &quot;/cmd_vel_other&quot;
+control_source_state_topic: &quot;/control_source_state&quot;
+active_control_source: &quot;navigation&quot;
+control_source_auto_preempt_enabled: false
+</code></pre>
+<p>Rewrite <code>src/safety_emergency_executor/README.md</code> so the public interface section explicitly states:</p>
+<ul>
+<li><code>control_source</code> replaces <code>manual_override</code></li>
+</ul>
+<ul>
+<li>source switching uses <code>/safety_emergency_executor/set_parameters</code> on <code>active_control_source</code></li>
+</ul>
+<ul>
+<li>source querying uses <code>/safety_emergency_executor/get_parameters</code></li>
+</ul>
+<ul>
+<li>only the active source reaches <code>/command</code></li>
+</ul>
+<ul>
+<li>source switching does not synthesize stop commands</li>
+</ul>
+<ul>
+<li>safety commands stay effective regardless of active source</li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 4: Re-run static verification and the package test suite</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-bash">
+source /opt/ros/humble/setup.bash &amp;&amp; colcon build --packages-select safety_emergency_executor bridge --event-handlers console_direct+
+source install/setup.bash &amp;&amp; colcon test --packages-select safety_emergency_executor bridge --event-handlers console_direct+
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li><code>bridge</code> layout/static config tests pass</li>
+</ul>
+<ul>
+<li>all <code>safety_emergency_executor</code> tests pass</li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 5: Commit the config and docs migration</strong></li>
+</ul>
+<pre><code class="language-bash">
+git add config/Monitor/safety_emergency_executor/safety_emergency_executor_params.yaml src/safety_emergency_executor/config/safety_emergency_executor_params.yaml src/safety_emergency_executor/README.md src/bridge/test/test_monitor_ota_layout.py
+git commit -m &quot;docs(safety_emergency_executor): document control source routing&quot;
+</code></pre>
+<h2 id="chunk-4-end-to-end-verification">Chunk 4: End-To-End Verification</h2>
+<h3 id="task-4-run-a-final-focused-verification-pass">Task 4: Run A Final Focused Verification Pass</h3>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Modify: none</li>
+</ul>
+<ul>
+<li>Test: <code>src/safety_emergency_executor/test/test_control_source_controller.cpp</code></li>
+</ul>
+<ul>
+<li>Test: <code>src/safety_emergency_executor/test/test_control_source_routing.cpp</code></li>
+</ul>
+<ul>
+<li>Test: <code>src/safety_emergency_executor/test/test_pipeline_components.cpp</code></li>
+</ul>
+<ul>
+<li>Test: <code>src/bridge/test/test_monitor_ota_layout.py</code></li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 1: Run the focused package build from a clean shell</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-bash">
+source /opt/ros/humble/setup.bash &amp;&amp; colcon build --packages-select safety_emergency_executor bridge --event-handlers console_direct+
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>both packages build without missing-header or obsolete-service dependency errors</li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 2: Run the focused tests for source routing and static config</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-bash">
+source /opt/ros/humble/setup.bash &amp;&amp; source install/setup.bash &amp;&amp; colcon test --packages-select safety_emergency_executor bridge --event-handlers console_direct+ --ctest-args -R &quot;test_control_source_controller|test_control_source_routing|test_pipeline_components|test_monitor_ota_layout&quot;
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>all targeted tests pass</li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 3: Inspect the test result summaries</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-bash">
+source /opt/ros/humble/setup.bash &amp;&amp; source install/setup.bash &amp;&amp; colcon test-result --verbose --test-result-base build/safety_emergency_executor
+source /opt/ros/humble/setup.bash &amp;&amp; source install/setup.bash &amp;&amp; colcon test-result --verbose --test-result-base build/bridge
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>no failed tests listed in either package</li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 4: Record the migration impact in the final handoff notes</strong></li>
+</ul>
+<p>Capture these points in the completion summary:</p>
+<ul>
+<li>old <code>manual_override</code> interfaces were removed</li>
+</ul>
+<ul>
+<li>control-source switching/querying now uses standard parameter services on <code>active_control_source</code></li>
+</ul>
+<ul>
+<li>default source is <code>navigation</code></li>
+</ul>
+<ul>
+<li>inactive-source messages are dropped without synthesized stop commands</li>
+</ul>
+<ul>
+<li>safety commands still apply across all sources</li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 5: Final commit if any verification-only note changed</strong></li>
+</ul>
+<pre><code class="language-bash">
+git status --short
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>working tree clean</li>
+</ul>
+<ul>
+<li>no extra commit needed beyond the feature commits above</li>
+</ul>
+      <div class="meta">本文档已统一为 HTML 形式，便于浏览、打印和后续可视化扩展。</div>
+    </article>
+  </div>
+</body>
+</html>

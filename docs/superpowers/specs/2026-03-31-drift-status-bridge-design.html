@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>2026-03-31-drift-status-bridge-design</title>
+  <style>
+    :root {
+      --bg: #f6f7f8;
+      --paper: #ffffff;
+      --ink: #1f2a2c;
+      --muted: #5f6f73;
+      --line: #dbe3e6;
+      --brand: #1f6f50;
+      --brand-soft: #e7f3ee;
+      --shadow: 0 10px 28px rgb(31 42 44 / 8%);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: linear-gradient(160deg, #f6f7f8 0%, #edf3f5 100%);
+      font-family: "Noto Sans SC", "Microsoft YaHei", Arial, sans-serif;
+      line-height: 1.72;
+    }
+    .page {
+      width: min(1100px, calc(100% - 28px));
+      margin: 0 auto;
+      padding: 28px 0 48px;
+    }
+    .card {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+      padding: 28px;
+    }
+    h1, h2, h3, h4, h5, h6 { line-height: 1.28; margin: 22px 0 10px; }
+    h1 { margin-top: 6px; font-size: clamp(28px, 4vw, 44px); }
+    h2 { font-size: clamp(21px, 2.7vw, 31px); }
+    h3 { font-size: clamp(18px, 2.1vw, 24px); }
+    p { margin: 10px 0; }
+    code {
+      padding: 2px 6px;
+      border-radius: 6px;
+      background: var(--brand-soft);
+      color: #154933;
+      font-family: "JetBrains Mono", Consolas, monospace;
+      font-size: 0.93em;
+    }
+    pre {
+      margin: 14px 0;
+      padding: 14px;
+      border-radius: 12px;
+      background: #152124;
+      color: #e6f0f2;
+      overflow-x: auto;
+      border: 1px solid #26363a;
+    }
+    pre code {
+      padding: 0;
+      background: transparent;
+      color: inherit;
+      font-size: 0.9em;
+    }
+    ul, ol { padding-left: 22px; margin: 8px 0 14px; }
+    li { margin: 4px 0; }
+    blockquote {
+      margin: 14px 0;
+      padding: 10px 14px;
+      border-left: 4px solid var(--brand);
+      background: var(--brand-soft);
+      color: #1f4f3c;
+    }
+    a { color: #1f5f8c; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .toc {
+      margin-bottom: 18px;
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #f9fcfd;
+    }
+    .toc strong { display: block; margin-bottom: 8px; color: var(--brand); }
+    .toc ul { margin: 0; padding-left: 18px; }
+    .table-wrap {
+      overflow-x: auto;
+      margin: 12px 0;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+    }
+    table { border-collapse: collapse; width: 100%; min-width: 520px; }
+    th, td {
+      border-bottom: 1px solid var(--line);
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+    thead th {
+      color: var(--brand);
+      background: var(--brand-soft);
+    }
+    tbody tr:last-child td { border-bottom: none; }
+    .meta {
+      margin-top: 20px;
+      color: var(--muted);
+      font-size: 13px;
+      border-top: 1px dashed var(--line);
+      padding-top: 12px;
+    }
+    @media (max-width: 720px) {
+      .card { padding: 20px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <article class="card">
+      <aside class="toc"><strong>目录</strong><ul><li><a href="#drift-status-bridge-design">Drift Status Bridge Design</a></li><li><a href="#goal">Goal</a></li><li><a href="#chosen-design">Chosen Design</a></li><li><a href="#metrics">Metrics</a></li><li><a href="#monitor-rules">Monitor Rules</a></li><li><a href="#affected-files">Affected Files</a></li></ul></aside>
+<h1 id="drift-status-bridge-design">Drift Status Bridge Design</h1>
+<h2 id="goal">Goal</h2>
+<p>将 <code>/drift_status</code> (<code>geometry_msgs/msg/PoseStamped</code>) 接入现有 <code>bridge_py_node</code>， 统一转换为 <code>nav2_monitor/msg/AlgorithmFeedback</code>，并挂到 <code>light-lm</code> 模块下。</p>
+<h2 id="chosen-design">Chosen Design</h2>
+<ul>
+<li>不新增专用 bridge 节点</li>
+</ul>
+<ul>
+<li>直接在 <code>config/Monitor/bridge/generic_multi_bridge_spec.yaml</code> 中新增一条配置驱动桥接</li>
+</ul>
+<ul>
+<li><code>module_name</code> 固定为 <code>light-lm</code></li>
+</ul>
+<ul>
+<li><code>topic_name</code> 固定为 <code>/drift_status</code></li>
+</ul>
+<h2 id="metrics">Metrics</h2>
+<ul>
+<li><code>drift_state</code> -&gt; <code>pose.position.x</code></li>
+</ul>
+<ul>
+<li><code>1.0</code> 表示检测到漂移</li>
+</ul>
+<ul>
+<li><code>2.0</code> 表示正常</li>
+</ul>
+<ul>
+<li><code>drift_delta_norm</code> -&gt; <code>pose.position.y</code></li>
+</ul>
+<ul>
+<li>表示位移差模长</li>
+</ul>
+<ul>
+<li><code>drift_reserved</code> -&gt; <code>pose.position.z</code></li>
+</ul>
+<ul>
+<li>保留字段，当前默认 <code>-1.0</code></li>
+</ul>
+<h2 id="monitor-rules">Monitor Rules</h2>
+<p><code>nav2_monitor</code> 中的 <code>light-lm</code> 模块增加独立 <code>feedback_rules</code>：</p>
+<ul>
+<li>默认启用 <code>drift_state</code></li>
+</ul>
+<ul>
+<li>使用阈值规则区分 <code>1.0</code> 和 <code>2.0</code></li>
+</ul>
+<ul>
+<li>同时补充 <code>drift_delta_norm</code> 独立规则模板</li>
+</ul>
+<ul>
+<li>保持与 <code>drift_state</code> 分开判断</li>
+</ul>
+<ul>
+<li>便于后续只启用其中一个</li>
+</ul>
+<h2 id="affected-files">Affected Files</h2>
+<ul>
+<li><code>config/Monitor/bridge/generic_multi_bridge_spec.yaml</code></li>
+</ul>
+<ul>
+<li><code>src/bridge/test/test_monitor_ota_layout.py</code></li>
+</ul>
+<ul>
+<li><code>config/Monitor/nav2_monitor/fault_detector_config.yaml</code></li>
+</ul>
+<ul>
+<li><code>config/Monitor/nav2_monitor/profiles/*.yaml</code></li>
+</ul>
+<ul>
+<li><code>src/nav2_monitor/config/*.yaml</code></li>
+</ul>
+<ul>
+<li><code>src/nav2_monitor/README.md</code></li>
+</ul>
+      <div class="meta">本文档已统一为 HTML 形式，便于浏览、打印和后续可视化扩展。</div>
+    </article>
+  </div>
+</body>
+</html>

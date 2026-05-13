@@ -1,0 +1,542 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>2026-04-14-external-pressure-override</title>
+  <style>
+    :root {
+      --bg: #f6f7f8;
+      --paper: #ffffff;
+      --ink: #1f2a2c;
+      --muted: #5f6f73;
+      --line: #dbe3e6;
+      --brand: #1f6f50;
+      --brand-soft: #e7f3ee;
+      --shadow: 0 10px 28px rgb(31 42 44 / 8%);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: linear-gradient(160deg, #f6f7f8 0%, #edf3f5 100%);
+      font-family: "Noto Sans SC", "Microsoft YaHei", Arial, sans-serif;
+      line-height: 1.72;
+    }
+    .page {
+      width: min(1100px, calc(100% - 28px));
+      margin: 0 auto;
+      padding: 28px 0 48px;
+    }
+    .card {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+      padding: 28px;
+    }
+    h1, h2, h3, h4, h5, h6 { line-height: 1.28; margin: 22px 0 10px; }
+    h1 { margin-top: 6px; font-size: clamp(28px, 4vw, 44px); }
+    h2 { font-size: clamp(21px, 2.7vw, 31px); }
+    h3 { font-size: clamp(18px, 2.1vw, 24px); }
+    p { margin: 10px 0; }
+    code {
+      padding: 2px 6px;
+      border-radius: 6px;
+      background: var(--brand-soft);
+      color: #154933;
+      font-family: "JetBrains Mono", Consolas, monospace;
+      font-size: 0.93em;
+    }
+    pre {
+      margin: 14px 0;
+      padding: 14px;
+      border-radius: 12px;
+      background: #152124;
+      color: #e6f0f2;
+      overflow-x: auto;
+      border: 1px solid #26363a;
+    }
+    pre code {
+      padding: 0;
+      background: transparent;
+      color: inherit;
+      font-size: 0.9em;
+    }
+    ul, ol { padding-left: 22px; margin: 8px 0 14px; }
+    li { margin: 4px 0; }
+    blockquote {
+      margin: 14px 0;
+      padding: 10px 14px;
+      border-left: 4px solid var(--brand);
+      background: var(--brand-soft);
+      color: #1f4f3c;
+    }
+    a { color: #1f5f8c; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .toc {
+      margin-bottom: 18px;
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #f9fcfd;
+    }
+    .toc strong { display: block; margin-bottom: 8px; color: var(--brand); }
+    .toc ul { margin: 0; padding-left: 18px; }
+    .table-wrap {
+      overflow-x: auto;
+      margin: 12px 0;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+    }
+    table { border-collapse: collapse; width: 100%; min-width: 520px; }
+    th, td {
+      border-bottom: 1px solid var(--line);
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+    thead th {
+      color: var(--brand);
+      background: var(--brand-soft);
+    }
+    tbody tr:last-child td { border-bottom: none; }
+    .meta {
+      margin-top: 20px;
+      color: var(--muted);
+      font-size: 13px;
+      border-top: 1px dashed var(--line);
+      padding-top: 12px;
+    }
+    @media (max-width: 720px) {
+      .card { padding: 20px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <article class="card">
+      <aside class="toc"><strong>目录</strong><ul><li><a href="#external-pressure-override-implementation-plan">External Pressure Override Implementation Plan</a></li><li><a href="#file-map">File Map</a></li><li><a href="#chunk-1-pressure-topic-interface-refactor">Chunk 1: Pressure Topic Interface Refactor</a></li><li><a href="#task-1-replace-json-pressure-updates-with-a-single-value-pressure-api">Task 1: Replace JSON Pressure Updates With A Single-Value Pressure API</a></li><li><a href="#chunk-2-external-pressure-hold-window">Chunk 2: External Pressure Hold Window</a></li><li><a href="#task-2-block-automatic-pressure-adjustment-for-30-seconds-after-external-pressure-updates">Task 2: Block Automatic Pressure Adjustment For 30 Seconds After External Pressure Updates</a></li><li><a href="#chunk-3-node-wiring-config-and-end-to-end-verification">Chunk 3: Node Wiring, Config, And End-To-End Verification</a></li><li><a href="#task-3-wire-pressure-as-int32-update-docs-and-verify-node-behavior">Task 3: Wire `/pressure_` As `Int32`, Update Docs, And Verify Node Behavior</a></li></ul></aside>
+<h1 id="external-pressure-override-implementation-plan">External Pressure Override Implementation Plan</h1>
+<blockquote><strong>For agentic workers:</strong> REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (<code>- [ ]</code>) syntax for tracking.</blockquote>
+<p><strong>Goal:</strong> Change <code>/pressure_</code> to a single-value <code>std_msgs/Int32</code> pressure override topic, make each external pressure update hold off automatic pressure adjustment for 30 seconds, and resume automatic adjustment afterward using the external value as the new baseline.</p>
+<p><strong>Architecture:</strong> Keep the current <code>VelocityConverter -&gt; PressureAdjuster -&gt; SafetyPolicyExecutor -&gt; /command</code> pipeline, but split the new behavior cleanly across responsibilities: <code>VelocityConverter</code> owns the baseline command template fields, <code>PressureAdjuster</code> owns the override hold-window gate for automatic pressure adjustment, and <code>SafetyEmergencyExecutorNode</code> only wires the new <code>Int32</code> topic into those two components. Preserve the existing embedded-Twist pressure override semantics and keep them higher priority than the topic-based override.</p>
+<p><strong>Tech Stack:</strong> C++17, ROS 2 Humble, <code>rclcpp</code>, <code>std_msgs</code>, <code>geometry_msgs</code>, <code>nav_msgs</code>, <code>sensor_msgs</code>, <code>ament_cmake_gtest</code>, <code>colcon</code></p>
+<p>---</p>
+<h2 id="file-map">File Map</h2>
+<ul>
+<li>Modify: <code>src/safety_emergency_executor/include/safety_emergency_executor/velocity_converter.hpp</code></li>
+</ul>
+<ul>
+<li>Replace the JSON pressure-update API with a single-value pressure update method and keep <code>acc</code> override behavior intact.</li>
+</ul>
+<ul>
+<li>Modify: <code>src/safety_emergency_executor/src/velocity_converter.cpp</code></li>
+</ul>
+<ul>
+<li>Implement single-value pressure updates and remove JSON pressure parsing from the runtime path.</li>
+</ul>
+<ul>
+<li>Modify: <code>src/safety_emergency_executor/include/safety_emergency_executor/pressure_adjuster.hpp</code></li>
+</ul>
+<ul>
+<li>Add the external pressure hold-window state and public hook for starting or refreshing the hold period.</li>
+</ul>
+<ul>
+<li>Modify: <code>src/safety_emergency_executor/src/pressure_adjuster.cpp</code></li>
+</ul>
+<ul>
+<li>Implement the “skip automatic pressure adjustment while hold window is active” behavior.</li>
+</ul>
+<ul>
+<li>Modify: <code>src/safety_emergency_executor/include/safety_emergency_executor/safety_emergency_executor_node.hpp</code></li>
+</ul>
+<ul>
+<li>Change <code>/pressure_</code> subscription type from <code>std_msgs::msg::String</code> to <code>std_msgs::msg::Int32</code>.</li>
+</ul>
+<ul>
+<li>Modify: <code>src/safety_emergency_executor/src/safety_emergency_executor_node.cpp</code></li>
+</ul>
+<ul>
+<li>Subscribe to <code>std_msgs::msg::Int32</code>, update the baseline pressure in <code>VelocityConverter</code>, and refresh the hold window in <code>PressureAdjuster</code>.</li>
+</ul>
+<ul>
+<li>Modify: <code>src/safety_emergency_executor/test/test_pipeline_components.cpp</code></li>
+</ul>
+<ul>
+<li>Replace JSON pressure-update coverage with <code>Int32</code>-style baseline pressure tests and hold-window tests.</li>
+</ul>
+<ul>
+<li>Modify: <code>src/safety_emergency_executor/test/test_control_source_routing.cpp</code></li>
+</ul>
+<ul>
+<li>Add node-level coverage proving <code>/pressure_</code> affects outgoing command pressure, blocks auto-adjustment during the hold window, and resumes auto-adjustment after expiry.</li>
+</ul>
+<ul>
+<li>Modify: <code>src/safety_emergency_executor/config/safety_emergency_executor_params.yaml</code></li>
+</ul>
+<ul>
+<li>Document <code>pressure_update_topic</code> as <code>Int32</code> and add <code>external_pressure_hold_s</code>.</li>
+</ul>
+<ul>
+<li>Modify: <code>config/Monitor/safety_emergency_executor/safety_emergency_executor_params.yaml</code></li>
+</ul>
+<ul>
+<li>Keep the OTA runtime config in sync with the package-local example config.</li>
+</ul>
+<ul>
+<li>Modify: <code>src/safety_emergency_executor/README.md</code></li>
+</ul>
+<ul>
+<li>Replace the JSON <code>/pressure_</code> documentation with the <code>Int32</code> topic and 30-second hold-window behavior.</li>
+</ul>
+<h2 id="chunk-1-pressure-topic-interface-refactor">Chunk 1: Pressure Topic Interface Refactor</h2>
+<h3 id="task-1-replace-json-pressure-updates-with-a-single-value-pressure-api">Task 1: Replace JSON Pressure Updates With A Single-Value Pressure API</h3>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Modify: <code>src/safety_emergency_executor/include/safety_emergency_executor/velocity_converter.hpp</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/safety_emergency_executor/src/velocity_converter.cpp</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/safety_emergency_executor/test/test_pipeline_components.cpp</code></li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 1: Write the failing component tests</strong></li>
+</ul>
+<p>Update <code>src/safety_emergency_executor/test/test_pipeline_components.cpp</code> by replacing the JSON pressure-update coverage with tests like:</p>
+<pre><code class="language-cpp">
+TEST_F(SafetyExecutorComponentTest, VelocityConverterPressureTopicUpdatesBaselinePress)
+{
+  auto node = std::make_shared&lt;rclcpp::Node&gt;(&quot;velocity_converter_pressure_override_test&quot;);
+  safety_emergency_executor::VelocityConverter converter;
+  converter.configure(*node);
+
+  converter.update_press_from_topic(1100);
+  const auto frame = converter.template_frame();
+
+  EXPECT_EQ(frame.press, 1100);
+}
+
+TEST_F(SafetyExecutorComponentTest, VelocityConverterAccTopicOverrideStillWorksIndependently)
+{
+  auto node = std::make_shared&lt;rclcpp::Node&gt;(&quot;velocity_converter_acc_override_test&quot;);
+  safety_emergency_executor::VelocityConverter converter;
+  converter.configure(*node);
+
+  converter.update_press_from_topic(1100);
+  converter.update_acc_from_topic(3200);
+  const auto frame = converter.template_frame();
+
+  EXPECT_EQ(frame.press, 1100);
+  EXPECT_EQ(frame.acc, 3200);
+}
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 2: Run the targeted component test and verify it fails</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-bash">
+source /opt/ros/humble/setup.bash &amp;&amp; colcon test --packages-select safety_emergency_executor --event-handlers console_direct+ --ctest-args -R test_pipeline_components
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li><code>test_pipeline_components</code> fails because <code>VelocityConverter</code> does not yet expose <code>update_press_from_topic(int)</code></li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 3: Implement the minimal baseline pressure update API</strong></li>
+</ul>
+<p>Update <code>src/safety_emergency_executor/include/safety_emergency_executor/velocity_converter.hpp</code>:</p>
+<pre><code class="language-cpp">
+class VelocityConverter
+{
+public:
+  void update_press_from_topic(int press_value);
+  void update_acc_from_topic(int acc_value);
+  CommandFrame template_frame() const;
+};
+</code></pre>
+<p>Update <code>src/safety_emergency_executor/src/velocity_converter.cpp</code>:</p>
+<pre><code class="language-cpp">
+void VelocityConverter::update_press_from_topic(int press_value)
+{
+  params_.press = press_value;
+}
+</code></pre>
+<p>Also remove the obsolete JSON pressure-update path from the runtime API:</p>
+<pre><code class="language-cpp">
+bool update_params_from_json(...) = delete;
+</code></pre>
+<p>In practice, remove <code>update_params_from_json()</code> from both the header and the <code>.cpp</code>, and leave embedded-Twist parsing unchanged.</p>
+<ul>
+<li>[ ] <strong>Step 4: Re-run the targeted component test and make it pass</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-bash">
+source /opt/ros/humble/setup.bash &amp;&amp; colcon test --packages-select safety_emergency_executor --event-handlers console_direct+ --ctest-args -R test_pipeline_components
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li><code>test_pipeline_components</code> passes with the new baseline pressure API</li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 5: Commit the pressure API refactor</strong></li>
+</ul>
+<pre><code class="language-bash">
+git add src/safety_emergency_executor/include/safety_emergency_executor/velocity_converter.hpp src/safety_emergency_executor/src/velocity_converter.cpp src/safety_emergency_executor/test/test_pipeline_components.cpp
+git commit -m &quot;refactor(safety_emergency_executor): use int pressure override input&quot;
+</code></pre>
+<h2 id="chunk-2-external-pressure-hold-window">Chunk 2: External Pressure Hold Window</h2>
+<h3 id="task-2-block-automatic-pressure-adjustment-for-30-seconds-after-external-pressure-updates">Task 2: Block Automatic Pressure Adjustment For 30 Seconds After External Pressure Updates</h3>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Modify: <code>src/safety_emergency_executor/include/safety_emergency_executor/pressure_adjuster.hpp</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/safety_emergency_executor/src/pressure_adjuster.cpp</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/safety_emergency_executor/test/test_pipeline_components.cpp</code></li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 1: Write the failing hold-window tests</strong></li>
+</ul>
+<p>Extend <code>src/safety_emergency_executor/test/test_pipeline_components.cpp</code> with focused tests:</p>
+<pre><code class="language-cpp">
+TEST_F(SafetyExecutorComponentTest, ExternalPressureHoldWindowBypassesAutomaticAdjustment)
+{
+  rclcpp::NodeOptions options;
+  options.parameter_overrides({
+    rclcpp::Parameter(&quot;external_pressure_hold_s&quot;, 30.0)
+  });
+  auto node = std::make_shared&lt;rclcpp::Node&gt;(&quot;pressure_adjuster_hold_window_test&quot;, options);
+
+  safety_emergency_executor::PressureAdjuster adjuster;
+  adjuster.configure(*node);
+  adjuster.note_external_pressure_override(node-&gt;get_clock()-&gt;now());
+
+  safety_emergency_executor::CommandFrame frame;
+  frame.press = 1100;
+  adjuster.apply(frame);
+
+  EXPECT_EQ(frame.press, 1100);
+}
+
+TEST_F(SafetyExecutorComponentTest, AutomaticAdjustmentResumesAfterHoldWindowExpires)
+{
+  rclcpp::NodeOptions options;
+  options.parameter_overrides({
+    rclcpp::Parameter(&quot;external_pressure_hold_s&quot;, 0.01)
+  });
+  auto node = std::make_shared&lt;rclcpp::Node&gt;(&quot;pressure_adjuster_resume_test&quot;, options);
+
+  safety_emergency_executor::PressureAdjuster adjuster;
+  adjuster.configure(*node);
+  adjuster.note_external_pressure_override(node-&gt;get_clock()-&gt;now());
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(20));
+
+  safety_emergency_executor::CommandFrame frame;
+  frame.press = 1100;
+  // add wheel/localization data here so auto-pressure has enough inputs to change the pressure
+  adjuster.apply(frame);
+
+  EXPECT_NE(frame.press, 1100);
+}
+</code></pre>
+<p>Use the same style already present in <code>PressureAdjusterDisabledModeLeavesPressureUnchanged</code>, but add enough odom/IMU fixture setup to force a real auto-pressure adjustment after expiry.</p>
+<ul>
+<li>[ ] <strong>Step 2: Run the targeted component test and verify it fails</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-bash">
+source /opt/ros/humble/setup.bash &amp;&amp; colcon test --packages-select safety_emergency_executor --event-handlers console_direct+ --ctest-args -R test_pipeline_components
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>the new hold-window tests fail because <code>PressureAdjuster</code> has no external override timer state yet</li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 3: Implement the hold-window behavior in <code>PressureAdjuster</code></strong></li>
+</ul>
+<p>Update <code>src/safety_emergency_executor/include/safety_emergency_executor/pressure_adjuster.hpp</code>:</p>
+<pre><code class="language-cpp">
+class PressureAdjuster
+{
+public:
+  void configure(rclcpp::Node &amp; node);
+  void note_external_pressure_override(const rclcpp::Time &amp; stamp);
+  void apply(CommandFrame &amp; frame);
+
+private:
+  bool external_pressure_hold_active(const rclcpp::Time &amp; now) const;
+
+  rclcpp::Clock::SharedPtr clock_{};
+  rclcpp::Time external_pressure_hold_until_{0, 0, RCL_ROS_TIME};
+  double external_pressure_hold_s_{30.0};
+};
+</code></pre>
+<p>Update <code>src/safety_emergency_executor/src/pressure_adjuster.cpp</code>:</p>
+<pre><code class="language-cpp">
+void PressureAdjuster::configure(rclcpp::Node &amp; node)
+{
+  clock_ = node.get_clock();
+  external_pressure_hold_s_ =
+    node.declare_parameter&lt;double&gt;(&quot;external_pressure_hold_s&quot;, 30.0);
+  adjuster_.configure(node);
+}
+
+void PressureAdjuster::note_external_pressure_override(const rclcpp::Time &amp; stamp)
+{
+  if (external_pressure_hold_s_ &lt;= 0.0) {
+    external_pressure_hold_until_ = stamp;
+    return;
+  }
+  external_pressure_hold_until_ = stamp + rclcpp::Duration::from_seconds(external_pressure_hold_s_);
+}
+
+void PressureAdjuster::apply(CommandFrame &amp; frame)
+{
+  if (frame.press_from_embedded_fields) {
+    return;
+  }
+  if (clock_ &amp;&amp; clock_-&gt;now() &lt; external_pressure_hold_until_) {
+    return;
+  }
+  // existing auto-pressure logic stays here
+}
+</code></pre>
+<p>The important invariant is: during the hold window, <code>frame.press</code> must remain exactly the externally supplied baseline pressure.</p>
+<ul>
+<li>[ ] <strong>Step 4: Re-run the targeted component test and make it pass</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-bash">
+source /opt/ros/humble/setup.bash &amp;&amp; colcon test --packages-select safety_emergency_executor --event-handlers console_direct+ --ctest-args -R test_pipeline_components
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li><code>test_pipeline_components</code> passes</li>
+</ul>
+<ul>
+<li>hold-window tests prove that automatic adjustment is bypassed before expiry and resumes after expiry</li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 5: Commit the hold-window logic</strong></li>
+</ul>
+<pre><code class="language-bash">
+git add src/safety_emergency_executor/include/safety_emergency_executor/pressure_adjuster.hpp src/safety_emergency_executor/src/pressure_adjuster.cpp src/safety_emergency_executor/test/test_pipeline_components.cpp
+git commit -m &quot;feat(safety_emergency_executor): hold external pressure overrides&quot;
+</code></pre>
+<h2 id="chunk-3-node-wiring-config-and-end-to-end-verification">Chunk 3: Node Wiring, Config, And End-To-End Verification</h2>
+<h3 id="task-3-wire-pressure-as-int32-update-docs-and-verify-node-behavior">Task 3: Wire <code>/pressure_</code> As <code>Int32</code>, Update Docs, And Verify Node Behavior</h3>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Modify: <code>src/safety_emergency_executor/include/safety_emergency_executor/safety_emergency_executor_node.hpp</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/safety_emergency_executor/src/safety_emergency_executor_node.cpp</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/safety_emergency_executor/test/test_control_source_routing.cpp</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/safety_emergency_executor/README.md</code></li>
+</ul>
+<ul>
+<li>Modify: <code>src/safety_emergency_executor/config/safety_emergency_executor_params.yaml</code></li>
+</ul>
+<ul>
+<li>Modify: <code>config/Monitor/safety_emergency_executor/safety_emergency_executor_params.yaml</code></li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 1: Write the failing node-level and config assertions</strong></li>
+</ul>
+<p>Update <code>src/safety_emergency_executor/test/test_control_source_routing.cpp</code> with tests like:</p>
+<pre><code class="language-cpp">
+TEST_F(SafetyExecutorRoutingTest, PressureTopicOverrideUpdatesOutgoingCommandPressure)
+TEST_F(SafetyExecutorRoutingTest, PressureTopicOverrideBypassesAutoPressureDuringHoldWindow)
+TEST_F(SafetyExecutorRoutingTest, AutoPressureResumesAfterPressureHoldWindowExpires)
+</code></pre>
+<p>Update both YAML files to add the new parameter key expectation in tests only after the runtime tests are in place:</p>
+<pre><code class="language-yaml">
+external_pressure_hold_s: 30.0
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 2: Run the routing suite and verify it fails</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-bash">
+source /opt/ros/humble/setup.bash &amp;&amp; source install/setup.bash &amp;&amp; colcon test --packages-select safety_emergency_executor --event-handlers console_direct+ --ctest-args -R test_control_source_routing
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>routing tests fail because <code>/pressure_</code> is still subscribed as <code>std_msgs::msg::String</code></li>
+</ul>
+<ul>
+<li>the node does not yet refresh the external hold window when pressure messages arrive</li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 3: Implement node wiring and update docs/config</strong></li>
+</ul>
+<p>Update <code>src/safety_emergency_executor/include/safety_emergency_executor/safety_emergency_executor_node.hpp</code>:</p>
+<pre><code class="language-cpp">
+void on_pressure_update(const std_msgs::msg::Int32::SharedPtr msg);
+rclcpp::Subscription&lt;std_msgs::msg::Int32&gt;::SharedPtr pressure_sub_;
+</code></pre>
+<p>Update <code>src/safety_emergency_executor/src/safety_emergency_executor_node.cpp</code>:</p>
+<pre><code class="language-cpp">
+pressure_sub_ = this-&gt;create_subscription&lt;std_msgs::msg::Int32&gt;(
+  pressure_update_topic, rclcpp::QoS(10),
+  std::bind(&amp;SafetyEmergencyExecutorNode::on_pressure_update, this, std::placeholders::_1));
+
+void SafetyEmergencyExecutorNode::on_pressure_update(const std_msgs::msg::Int32::SharedPtr msg)
+{
+  velocity_converter_.update_press_from_topic(msg-&gt;data);
+  pressure_adjuster_.note_external_pressure_override(this-&gt;get_clock()-&gt;now());
+}
+</code></pre>
+<p>Update both parameter files:</p>
+<pre><code class="language-yaml">
+pressure_update_topic: &quot;/pressure_&quot;  # 外部单值压力覆盖 topic，std_msgs/Int32
+external_pressure_hold_s: 30.0  # 外部设压后自动调压冻结时长（秒）
+</code></pre>
+<p>Update <code>src/safety_emergency_executor/README.md</code> to replace the JSON <code>/pressure_</code> description with:</p>
+<pre><code class="language-markdown">
+- `pressure_update_topic`（`std_msgs/Int32`，只更新基础压力，并在 `external_pressure_hold_s` 内禁止自动调压）
+</code></pre>
+<ul>
+<li>[ ] <strong>Step 4: Run full package verification and make it pass</strong></li>
+</ul>
+<p>Run:</p>
+<pre><code class="language-bash">
+source /opt/ros/humble/setup.bash &amp;&amp; colcon build --packages-select safety_emergency_executor
+source install/setup.bash &amp;&amp; colcon test --packages-select safety_emergency_executor --event-handlers console_direct+ --ctest-args -R &quot;test_pipeline_components|test_control_source_routing&quot;
+</code></pre>
+<p>Expected:</p>
+<ul>
+<li>package builds</li>
+</ul>
+<ul>
+<li>component and routing tests pass</li>
+</ul>
+<ul>
+<li>the outgoing command pressure reflects <code>/pressure_</code> immediately</li>
+</ul>
+<ul>
+<li>auto-pressure stays out for 30 seconds, then resumes from the external value as the new baseline</li>
+</ul>
+<ul>
+<li>[ ] <strong>Step 5: Commit the node wiring, config, and docs</strong></li>
+</ul>
+<pre><code class="language-bash">
+git add src/safety_emergency_executor/include/safety_emergency_executor/safety_emergency_executor_node.hpp src/safety_emergency_executor/src/safety_emergency_executor_node.cpp src/safety_emergency_executor/test/test_control_source_routing.cpp src/safety_emergency_executor/README.md src/safety_emergency_executor/config/safety_emergency_executor_params.yaml config/Monitor/safety_emergency_executor/safety_emergency_executor_params.yaml
+git commit -m &quot;feat(safety_emergency_executor): add external pressure hold window&quot;
+</code></pre>
+      <div class="meta">本文档已统一为 HTML 形式，便于浏览、打印和后续可视化扩展。</div>
+    </article>
+  </div>
+</body>
+</html>

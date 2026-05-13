@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>2026-04-01-collision-zone-direction-design</title>
+  <style>
+    :root {
+      --bg: #f6f7f8;
+      --paper: #ffffff;
+      --ink: #1f2a2c;
+      --muted: #5f6f73;
+      --line: #dbe3e6;
+      --brand: #1f6f50;
+      --brand-soft: #e7f3ee;
+      --shadow: 0 10px 28px rgb(31 42 44 / 8%);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: linear-gradient(160deg, #f6f7f8 0%, #edf3f5 100%);
+      font-family: "Noto Sans SC", "Microsoft YaHei", Arial, sans-serif;
+      line-height: 1.72;
+    }
+    .page {
+      width: min(1100px, calc(100% - 28px));
+      margin: 0 auto;
+      padding: 28px 0 48px;
+    }
+    .card {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+      padding: 28px;
+    }
+    h1, h2, h3, h4, h5, h6 { line-height: 1.28; margin: 22px 0 10px; }
+    h1 { margin-top: 6px; font-size: clamp(28px, 4vw, 44px); }
+    h2 { font-size: clamp(21px, 2.7vw, 31px); }
+    h3 { font-size: clamp(18px, 2.1vw, 24px); }
+    p { margin: 10px 0; }
+    code {
+      padding: 2px 6px;
+      border-radius: 6px;
+      background: var(--brand-soft);
+      color: #154933;
+      font-family: "JetBrains Mono", Consolas, monospace;
+      font-size: 0.93em;
+    }
+    pre {
+      margin: 14px 0;
+      padding: 14px;
+      border-radius: 12px;
+      background: #152124;
+      color: #e6f0f2;
+      overflow-x: auto;
+      border: 1px solid #26363a;
+    }
+    pre code {
+      padding: 0;
+      background: transparent;
+      color: inherit;
+      font-size: 0.9em;
+    }
+    ul, ol { padding-left: 22px; margin: 8px 0 14px; }
+    li { margin: 4px 0; }
+    blockquote {
+      margin: 14px 0;
+      padding: 10px 14px;
+      border-left: 4px solid var(--brand);
+      background: var(--brand-soft);
+      color: #1f4f3c;
+    }
+    a { color: #1f5f8c; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .toc {
+      margin-bottom: 18px;
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #f9fcfd;
+    }
+    .toc strong { display: block; margin-bottom: 8px; color: var(--brand); }
+    .toc ul { margin: 0; padding-left: 18px; }
+    .table-wrap {
+      overflow-x: auto;
+      margin: 12px 0;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+    }
+    table { border-collapse: collapse; width: 100%; min-width: 520px; }
+    th, td {
+      border-bottom: 1px solid var(--line);
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+    thead th {
+      color: var(--brand);
+      background: var(--brand-soft);
+    }
+    tbody tr:last-child td { border-bottom: none; }
+    .meta {
+      margin-top: 20px;
+      color: var(--muted);
+      font-size: 13px;
+      border-top: 1px dashed var(--line);
+      padding-top: 12px;
+    }
+    @media (max-width: 720px) {
+      .card { padding: 20px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <article class="card">
+      <aside class="toc"><strong>目录</strong><ul><li><a href="#collision-zone-direction-design">Collision Zone Direction Design</a></li><li><a href="#background">Background</a></li><li><a href="#goal">Goal</a></li><li><a href="#scope">Scope</a></li><li><a href="#chosen-design">Chosen Design</a></li><li><a href="#configuration-changes">Configuration Changes</a></li><li><a href="#1-collisiondetectiondirectionspeedthreshold">1. `collision_detection.direction_speed_threshold`</a></li><li><a href="#2-zonesmotiondirection">2. `zones[*].motion_direction`</a></li><li><a href="#runtime-behavior">Runtime Behavior</a></li><li><a href="#why-this-design">Why This Design</a></li><li><a href="#testing-strategy">Testing Strategy</a></li><li><a href="#documentation-updates">Documentation Updates</a></li><li><a href="#risks-and-mitigations">Risks And Mitigations</a></li><li><a href="#verification-criteria">Verification Criteria</a></li></ul></aside>
+<h1 id="collision-zone-direction-design">Collision Zone Direction Design</h1>
+<h2 id="background">Background</h2>
+<p>当前 <code>nav2_monitor</code> 的碰撞检测里，<code>approach / TTC</code> 在配置了 <code>footprint_points</code> 后会使用 <code>prediction_motion</code> 的带符号速度做轻量轨迹估算，因此对前进/倒车方向有一定感知。</p>
+<p>但 <code>slow_down / stop</code> 这类 <code>zone</code> 模式仍然只做“点是否进入 polygon”的判断， 不区分车辆此刻是在前进还是倒车。这会导致：</p>
+<ul>
+<li>前进时，后向缓停/急停区也可能参与判断</li>
+</ul>
+<ul>
+<li>倒车时，如果仍使用前向 zone，实际运动方向与碰撞检测方向不一致</li>
+</ul>
+<h2 id="goal">Goal</h2>
+<p>让 <code>zone</code> 模式根据当前速度方向自动筛选前向/后向碰撞区，而不是依赖整份配置文件切换。</p>
+<h2 id="scope">Scope</h2>
+<p>In scope:</p>
+<ul>
+<li>仅增强 <code>zone</code> 模式的方向筛选</li>
+</ul>
+<ul>
+<li>为 <code>CollisionZoneConfig</code> 增加显式 <code>motion_direction</code> 配置</li>
+</ul>
+<ul>
+<li>增加一个速度方向判断阈值</li>
+</ul>
+<ul>
+<li>为前向/后向缓停区、急停区补方向字段</li>
+</ul>
+<ul>
+<li>增加相应测试与文档</li>
+</ul>
+<p>Out of scope:</p>
+<ul>
+<li>不修改 <code>approach / TTC</code> 的方向逻辑</li>
+</ul>
+<ul>
+<li>不引入整份碰撞配置文件的自动切换</li>
+</ul>
+<ul>
+<li>不改变现有 zone 多边形几何算法</li>
+</ul>
+<h2 id="chosen-design">Chosen Design</h2>
+<p>采用“同一配置文件内、运行时按速度方向筛选 zone”的方案：</p>
+<ul>
+<li>不切换整份 <code>fault_detector_config.yaml</code></li>
+</ul>
+<ul>
+<li>在同一配置里同时保留 <code>front_<em></code> 与 <code>rear_</em></code> zone</li>
+</ul>
+<ul>
+<li>运行时根据当前 <code>prediction_linear_x</code> 判断车辆是前进还是倒车</li>
+</ul>
+<ul>
+<li>只让与当前运动方向匹配的 <code>zone</code> 生效</li>
+</ul>
+<h2 id="configuration-changes">Configuration Changes</h2>
+<h3 id="1-collisiondetectiondirectionspeedthreshold">1. <code>collision_detection.direction_speed_threshold</code></h3>
+<p>在 <code>collision_detection</code> 下新增全局阈值：</p>
+<pre><code class="language-yaml">
+direction_speed_threshold: 0.05
+</code></pre>
+<p>含义：</p>
+<ul>
+<li><code>prediction_linear_x &gt; threshold</code> 认为前进</li>
+</ul>
+<ul>
+<li><code>prediction_linear_x &lt; -threshold</code> 认为倒车</li>
+</ul>
+<ul>
+<li>绝对值在阈值内认为方向不确定</li>
+</ul>
+<h3 id="2-zonesmotiondirection">2. <code>zones[*].motion_direction</code></h3>
+<p>在 <code>zone</code> 配置下新增显式字段：</p>
+<pre><code class="language-yaml">
+motion_direction: &quot;forward&quot;
+</code></pre>
+<p>取值：</p>
+<ul>
+<li><code>forward</code></li>
+</ul>
+<ul>
+<li><code>reverse</code></li>
+</ul>
+<ul>
+<li><code>both</code></li>
+</ul>
+<p>设计原则：</p>
+<ul>
+<li>不根据 zone 名字猜方向</li>
+</ul>
+<ul>
+<li>用显式配置表达语义</li>
+</ul>
+<ul>
+<li>现有 <code>front_*</code> zone 补成 <code>forward</code></li>
+</ul>
+<ul>
+<li>现有 <code>rear_*</code> zone 补成 <code>reverse</code></li>
+</ul>
+<ul>
+<li>未指定时默认 <code>both</code>，保持向后兼容</li>
+</ul>
+<h2 id="runtime-behavior">Runtime Behavior</h2>
+<p>在 <code>CollisionEvaluator::evaluate()</code> 的 <code>zone</code> 分支中新增方向筛选：</p>
+<ol>
+<li>先根据 <code>prediction_linear_x</code> 和 <code>direction_speed_threshold</code> 计算当前方向</li>
+</ol>
+<ol>
+<li>若 zone 的 <code>motion_direction</code> 与当前方向不匹配，则跳过该 zone</li>
+</ol>
+<ol>
+<li>若当前方向不确定：</li>
+</ol>
+<ul>
+<li>若有上一次有效方向，则保持上一次方向</li>
+</ul>
+<ul>
+<li>若没有历史方向，则按 <code>both</code> 处理</li>
+</ul>
+<h2 id="why-this-design">Why This Design</h2>
+<p>相比“根据任务切换整个 reverse profile”，这个方案更适合缓停区/急停区：</p>
+<ul>
+<li>直接依赖实时速度方向，不必等待任务状态切换</li>
+</ul>
+<ul>
+<li>配置文件结构更稳定</li>
+</ul>
+<ul>
+<li>前后向安全区可以同时配置在一份文件里</li>
+</ul>
+<ul>
+<li>更适合即时安全逻辑</li>
+</ul>
+<h2 id="testing-strategy">Testing Strategy</h2>
+<p>新增/调整测试覆盖：</p>
+<ul>
+<li>前进时，仅前向 <code>zone</code> 会触发</li>
+</ul>
+<ul>
+<li>倒车时，仅后向 <code>zone</code> 会触发</li>
+</ul>
+<ul>
+<li>方向不确定时，保持上一次方向</li>
+</ul>
+<ul>
+<li>未配置 <code>motion_direction</code> 时，默认行为与旧版一致</li>
+</ul>
+<ul>
+<li><code>approach / TTC</code> 现有测试保持通过</li>
+</ul>
+<h2 id="documentation-updates">Documentation Updates</h2>
+<p>需要更新：</p>
+<ul>
+<li><code>src/nav2_monitor/README.md</code></li>
+</ul>
+<ul>
+<li><code>src/nav2_monitor/docs/architecture.html</code></li>
+</ul>
+<p>重点写明：</p>
+<ul>
+<li><code>zone</code> 模式现已支持按当前运动方向自动筛选</li>
+</ul>
+<ul>
+<li>该逻辑与 <code>approach / TTC</code> 是分开的</li>
+</ul>
+<ul>
+<li>推荐给 <code>front_<em></code> / <code>rear_</em></code> zone 显式配置 <code>motion_direction</code></li>
+</ul>
+<h2 id="risks-and-mitigations">Risks And Mitigations</h2>
+<ul>
+<li>风险：速度接近 0 时方向抖动，导致 zone 在前后之间来回切换</li>
+</ul>
+<ul>
+<li>缓解：引入 <code>direction_speed_threshold</code> 和“保持上一次方向”的逻辑</li>
+</ul>
+<ul>
+<li>风险：旧配置未补 <code>motion_direction</code></li>
+</ul>
+<ul>
+<li>缓解：默认 <code>both</code>，保证兼容</li>
+</ul>
+<ul>
+<li>风险：用户误以为会自动切换整份 reverse 配置</li>
+</ul>
+<ul>
+<li>缓解：文档明确这是“同一配置内运行时筛选 zone”</li>
+</ul>
+<h2 id="verification-criteria">Verification Criteria</h2>
+<p>满足以下条件即视为设计落地成功：</p>
+<ol>
+<li><code>slow_down / stop</code> zone 可按速度方向自动筛选前后向</li>
+</ol>
+<ol>
+<li><code>approach / TTC</code> 现有行为不回归</li>
+</ol>
+<ol>
+<li>未配置 <code>motion_direction</code> 的旧配置仍能工作</li>
+</ol>
+<ol>
+<li>文档清楚说明“方向筛选”与“配置文件切换”的区别</li>
+</ol>
+      <div class="meta">本文档已统一为 HTML 形式，便于浏览、打印和后续可视化扩展。</div>
+    </article>
+  </div>
+</body>
+</html>

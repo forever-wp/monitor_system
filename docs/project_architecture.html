@@ -1,0 +1,1321 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>project architecture</title>
+  <style>
+    :root {
+      --bg: #f6f7f8;
+      --paper: #ffffff;
+      --ink: #1f2a2c;
+      --muted: #5f6f73;
+      --line: #dbe3e6;
+      --brand: #1f6f50;
+      --brand-soft: #e7f3ee;
+      --shadow: 0 10px 28px rgb(31 42 44 / 8%);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: linear-gradient(160deg, #f6f7f8 0%, #edf3f5 100%);
+      font-family: "Noto Sans SC", "Microsoft YaHei", Arial, sans-serif;
+      line-height: 1.72;
+    }
+    .page {
+      width: min(1100px, calc(100% - 28px));
+      margin: 0 auto;
+      padding: 28px 0 48px;
+    }
+    .card {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+      padding: 28px;
+    }
+    h1, h2, h3, h4, h5, h6 { line-height: 1.28; margin: 22px 0 10px; }
+    h1 { margin-top: 6px; font-size: clamp(28px, 4vw, 44px); }
+    h2 { font-size: clamp(21px, 2.7vw, 31px); }
+    h3 { font-size: clamp(18px, 2.1vw, 24px); }
+    p { margin: 10px 0; }
+    code {
+      padding: 2px 6px;
+      border-radius: 6px;
+      background: var(--brand-soft);
+      color: #154933;
+      font-family: "JetBrains Mono", Consolas, monospace;
+      font-size: 0.93em;
+    }
+    pre {
+      margin: 14px 0;
+      padding: 14px;
+      border-radius: 12px;
+      background: #152124;
+      color: #e6f0f2;
+      overflow-x: auto;
+      border: 1px solid #26363a;
+    }
+    pre code {
+      padding: 0;
+      background: transparent;
+      color: inherit;
+      font-size: 0.9em;
+    }
+    ul, ol { padding-left: 22px; margin: 8px 0 14px; }
+    li { margin: 4px 0; }
+    blockquote {
+      margin: 14px 0;
+      padding: 10px 14px;
+      border-left: 4px solid var(--brand);
+      background: var(--brand-soft);
+      color: #1f4f3c;
+    }
+    a { color: #1f5f8c; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .toc {
+      margin-bottom: 18px;
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #f9fcfd;
+    }
+    .toc strong { display: block; margin-bottom: 8px; color: var(--brand); }
+    .toc ul { margin: 0; padding-left: 18px; }
+    .table-wrap {
+      overflow-x: auto;
+      margin: 12px 0;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+    }
+    table { border-collapse: collapse; width: 100%; min-width: 520px; }
+    th, td {
+      border-bottom: 1px solid var(--line);
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+    thead th {
+      color: var(--brand);
+      background: var(--brand-soft);
+    }
+    tbody tr:last-child td { border-bottom: none; }
+    .meta {
+      margin-top: 20px;
+      color: var(--muted);
+      font-size: 13px;
+      border-top: 1px dashed var(--line);
+      padding-top: 12px;
+    }
+    @media (max-width: 720px) {
+      .card { padding: 20px; }
+    }
+  
+
+    /* SVG diagrams generated from Mermaid blocks. Offline, no CDN/runtime dependency. */
+    .svg-diagram {
+      margin: 20px 0;
+      padding: 20px;
+      border: 1px solid #cfe0d8;
+      border-radius: 22px;
+      background:
+        radial-gradient(circle at 10% 8%, rgb(255 255 255 / 92%), transparent 30%),
+        linear-gradient(135deg, #fbfefd 0%, #eef7f3 100%);
+      overflow-x: auto;
+      box-shadow: 0 14px 30px rgb(31 42 44 / 8%);
+    }
+    .svg-diagram-title {
+      display: inline-flex;
+      align-items: center;
+      margin-bottom: 14px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      background: #dff0e8;
+      color: #1f6f50;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+    .svg-diagram-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: -2px 0 14px;
+      color: #5b6c67;
+      font-size: 12px;
+    }
+    .svg-diagram-legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: rgb(255 255 255 / 68%);
+      border: 1px solid #d6e5df;
+    }
+    .svg-diagram-legend i {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .svg-diagram svg {
+      display: block;
+      max-width: 100%;
+      height: auto;
+      min-width: 720px;
+    }
+
+  </style>
+</head>
+<body>
+  <div class="page">
+    <article class="card">
+      <aside class="toc"><strong>目录</strong><ul><li><a href="#项目架构与数据链路">项目架构与数据链路</a></li><li><a href="#1-系统定位">1. 系统定位</a></li><li><a href="#2-功能分层图">2. 功能分层图</a></li><li><a href="#3-主数据链路">3. 主数据链路</a></li><li><a href="#31-算法反馈判断链路">3.1 算法反馈判断链路</a></li><li><a href="#32-碰撞检测链路">3.2 碰撞检测链路</a></li><li><a href="#33-小车状态检测链路">3.3 小车状态检测链路</a></li><li><a href="#34-安全执行链路">3.4 安全执行链路</a></li><li><a href="#4-输出与上报链路">4. 输出与上报链路</a></li><li><a href="#5-配置链路">5. 配置链路</a></li><li><a href="#6-主要-topic-总览">6. 主要 topic 总览</a></li><li><a href="#7-开发与验证命令">7. 开发与验证命令</a></li><li><a href="#8-设计原则">8. 设计原则</a></li></ul></aside>
+<h1 id="项目架构与数据链路">项目架构与数据链路</h1>
+<p>本文档描述 <code>monitor_system</code> 的项目级功能边界、数据链路、流程图和模块关系。模块级参数细节请继续参考各包 README 与 <a href="../INTERFACES.html">INTERFACES.html</a>。</p>
+<p>后续模块独立化、可靠数据联通、QoS 分层、CPU 满载降级与上层确认边界的完整方案见：<a href="monitor_modular_isolation_design.html">监控系统模块独立化与可靠数据联通设计方案</a>。</p>
+<p>多错误组合、动作覆盖、交叉策略和组合恢复的独立仲裁层设计见：<a href="combined_fault_policy_arbiter_design.html">多错误组合策略仲裁层设计页</a>。</p>
+<h2 id="1-系统定位">1. 系统定位</h2>
+<p><code>monitor_system</code> 是机器人本机安全监控与执行链路，不直接承担 MQTT 或云端连接。</p>
+<p>核心目标：</p>
+<ul>
+<li>低侵入接入算法模块输出。</li>
+</ul>
+<ul>
+<li>先做数据源有效性判断，再做业务规则判断。</li>
+</ul>
+<ul>
+<li>将不同来源的异常统一成 <code>FaultInfo</code>。</li>
+</ul>
+<ul>
+<li>对安全动作做统一仲裁，避免多个模块抢发安全命令。</li>
+</ul>
+<ul>
+<li>当需要人工介入时，输出本机 ROS topic 供外部云端/MQTT 模块订阅。</li>
+</ul>
+<h2 id="2-功能分层图">2. 功能分层图</h2>
+<div class="svg-diagram"><div class="svg-diagram-title">可视化流程图</div><div class="svg-diagram-legend"><span><i style="background:#6ba2d7"></i>输入 / 数据源</span><span><i style="background:#d2a235"></i>判断 / 策略</span><span><i style="background:#61a87d"></i>状态 / 输出</span><span><i style="background:#d26a56"></i>故障 / 风险</span><span><i style="background:#8d7ed3"></i>执行 / 安全动作</span></div><svg width="897pt" height="804pt"
+ viewBox="0.00 0.00 897.00 804.00" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<g id="graph0" class="graph" transform="scale(1 1) rotate(0) translate(18 786)">
+
+<g id="clust1" class="cluster">
+
+<path fill="#f7fbf9" stroke="#c8ded4" d="M26,-685C26,-685 841,-685 841,-685 847,-685 853,-691 853,-697 853,-697 853,-748 853,-748 853,-754 847,-760 841,-760 841,-760 26,-760 26,-760 20,-760 14,-754 14,-748 14,-748 14,-697 14,-697 14,-691 20,-685 26,-685"/>
+<text text-anchor="middle" x="433.5" y="-744.8" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="14.00" fill="#1f6f50">输入层</text>
+</g>
+<g id="clust2" class="cluster">
+
+<path fill="#f7fbf9" stroke="#c8ded4" d="M20,-586C20,-586 364,-586 364,-586 370,-586 376,-592 376,-598 376,-598 376,-649 376,-649 376,-655 370,-661 364,-661 364,-661 20,-661 20,-661 14,-661 8,-655 8,-649 8,-649 8,-598 8,-598 8,-592 14,-586 20,-586"/>
+<text text-anchor="middle" x="192" y="-645.8" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="14.00" fill="#1f6f50">适配与融合层</text>
+</g>
+<g id="clust3" class="cluster">
+
+<path fill="#f7fbf9" stroke="#c8ded4" d="M96,-309C96,-309 727,-309 727,-309 733,-309 739,-315 739,-321 739,-321 739,-540 739,-540 739,-546 733,-552 727,-552 727,-552 96,-552 96,-552 90,-552 84,-546 84,-540 84,-540 84,-321 84,-321 84,-315 90,-309 96,-309"/>
+<text text-anchor="middle" x="411.5" y="-536.8" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="14.00" fill="#1f6f50">监控判断层</text>
+</g>
+<g id="clust4" class="cluster">
+
+<path fill="#f7fbf9" stroke="#c8ded4" d="M239,-210C239,-210 521,-210 521,-210 527,-210 533,-216 533,-222 533,-222 533,-273 533,-273 533,-279 527,-285 521,-285 521,-285 239,-285 239,-285 233,-285 227,-279 227,-273 227,-273 227,-222 227,-222 227,-216 233,-210 239,-210"/>
+<text text-anchor="middle" x="380" y="-269.8" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="14.00" fill="#1f6f50">状态与动作仲裁层</text>
+</g>
+<g id="clust5" class="cluster">
+
+<path fill="#f7fbf9" stroke="#c8ded4" d="M361,-8C361,-8 690,-8 690,-8 696,-8 702,-14 702,-20 702,-20 702,-164 702,-164 702,-170 696,-176 690,-176 690,-176 361,-176 361,-176 355,-176 349,-170 349,-164 349,-164 349,-20 349,-20 349,-14 355,-8 361,-8"/>
+<text text-anchor="middle" x="525.5" y="-160.8" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="14.00" fill="#1f6f50">执行与外部消费层</text>
+</g>
+<!-- Algo&#45;&gt;AFA -->
+<g id="edge1" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M74,-692.84C74,-692.84 74,-637.84 74,-637.84"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="76.73,-637.84 74,-630.04 71.27,-637.84 76.73,-637.84"/>
+</g>
+<!-- Scan&#45;&gt;Voxel -->
+<g id="edge3" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M342.5,-692.84C342.5,-692.84 342.5,-637.84 342.5,-637.84"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="345.23,-637.84 342.5,-630.04 339.77,-637.84 345.23,-637.84"/>
+</g>
+<!-- Depth&#45;&gt;Voxel -->
+<g id="edge4" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M258.25,-692.84C258.25,-692.84 258.25,-637.84 258.25,-637.84"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="260.98,-637.84 258.25,-630.04 255.52,-637.84 260.98,-637.84"/>
+</g>
+<!-- Cmd&#45;&gt;Store -->
+<g id="edge6" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M454,-692.91C454,-692.91 454,-529 454,-529"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="456.73,-529 454,-521.2 451.27,-529 456.73,-529"/>
+</g>
+<!-- Motion&#45;&gt;Store -->
+<g id="edge7" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M558.25,-692.72C558.25,-642.99 558.25,-509 558.25,-509 558.25,-509 490.52,-509 490.52,-509"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="490.52,-506.27 482.72,-509 490.52,-511.73 490.52,-506.27"/>
+</g>
+<!-- NavCmd&#45;&gt;Safety -->
+<g id="edge8" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M807,-692.88C807,-594.31 807,-127 807,-127 807,-127 702.55,-127 702.55,-127"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="702.55,-124.27 694.75,-127 702.55,-129.73 702.55,-124.27"/>
+</g>
+<!-- AFA&#45;&gt;Store -->
+<g id="edge2" class="edge">
+
+<path fill="none" stroke="#5b8f79" stroke-width="1.45" d="M146.25,-593.59C146.25,-563.96 146.25,-509 146.25,-509 146.25,-509 355.49,-509 355.49,-509"/>
+<polygon fill="#5b8f79" stroke="#5b8f79" stroke-width="1.45" points="355.49,-511.73 363.29,-509 355.49,-506.27 355.49,-511.73"/>
+<text text-anchor="middle" x="191" y="-563" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="10.00">/nav2_monitor/algorithm_feedback</text>
+</g>
+<!-- Voxel&#45;&gt;Store -->
+<g id="edge5" class="edge">
+
+<path fill="none" stroke="#5b8f79" stroke-width="1.45" d="M368.27,-612C375.62,-612 380.5,-612 380.5,-612 380.5,-612 380.5,-529.29 380.5,-529.29"/>
+<polygon fill="#5b8f79" stroke="#5b8f79" stroke-width="1.45" points="383.23,-529.29 380.5,-521.49 377.77,-529.29 383.23,-529.29"/>
+<text text-anchor="middle" x="377.5" y="-563" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="10.00">/collision_voxel_layer/voxels</text>
+</g>
+<!-- Store&#45;&gt;Watch -->
+<g id="edge9" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M363.32,-497C301.79,-497 214.75,-497 214.75,-497 214.75,-497 214.75,-444.89 214.75,-444.89"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="217.48,-444.89 214.75,-437.09 212.02,-444.89 217.48,-444.89"/>
+</g>
+<!-- Store&#45;&gt;Feedback -->
+<g id="edge10" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M389,-484.77C389,-484.77 389,-444.99 389,-444.99"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="391.73,-444.99 389,-437.19 386.27,-444.99 391.73,-444.99"/>
+</g>
+<!-- Store&#45;&gt;Vehicle -->
+<g id="edge11" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M464.5,-484.77C464.5,-484.77 464.5,-445.87 464.5,-445.87"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="467.23,-445.87 464.5,-438.07 461.77,-445.87 467.23,-445.87"/>
+</g>
+<!-- Store&#45;&gt;Collision -->
+<g id="edge12" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M482.79,-497C555.89,-497 670,-497 670,-497 670,-497 670,-444.89 670,-444.89"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="672.73,-444.89 670,-437.09 667.27,-444.89 672.73,-444.89"/>
+</g>
+<!-- Watch&#45;&gt;Detector -->
+<g id="edge13" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M161,-400.84C161,-378.65 161,-344 161,-344 161,-344 396.15,-344 396.15,-344"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="396.15,-346.73 403.95,-344 396.15,-341.27 396.15,-346.73"/>
+</g>
+<!-- Feedback&#45;&gt;Detector -->
+<g id="edge14" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M409.25,-400.77C409.25,-400.77 409.25,-360.99 409.25,-360.99"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="411.98,-360.99 409.25,-353.19 406.52,-360.99 411.98,-360.99"/>
+</g>
+<!-- Vehicle&#45;&gt;Detector -->
+<g id="edge15" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M473.25,-399.94C473.25,-399.94 473.25,-360.92 473.25,-360.92"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="475.98,-360.92 473.25,-353.12 470.52,-360.92 475.98,-360.92"/>
+</g>
+<!-- Collision&#45;&gt;Detector -->
+<g id="edge16" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M652,-400.77C652,-376.07 652,-335 652,-335 652,-335 507.96,-335 507.96,-335"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="507.96,-332.27 500.16,-335 507.96,-337.73 507.96,-332.27"/>
+</g>
+<!-- Detector&#45;&gt;Coordinator -->
+<g id="edge17" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M452,-316.84C452,-316.84 452,-261.84 452,-261.84"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="454.73,-261.84 452,-254.04 449.27,-261.84 454.73,-261.84"/>
+</g>
+<!-- Detector&#45;&gt;Reporter -->
+<g id="edge18" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M403.62,-335C360.53,-335 304.25,-335 304.25,-335 304.25,-335 304.25,-261.96 304.25,-261.96"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="306.98,-261.96 304.25,-254.16 301.52,-261.96 306.98,-261.96"/>
+</g>
+<!-- Detector&#45;&gt;Cloud -->
+<g id="edge22" class="edge">
+
+<path fill="none" stroke="#5b8f79" stroke-width="1.45" d="M403.62,-326C386.77,-326 372,-326 372,-326 372,-326 372,-152.81 372,-152.81"/>
+<polygon fill="#5b8f79" stroke="#5b8f79" stroke-width="1.45" points="374.73,-152.81 372,-145.01 369.27,-152.81 374.73,-152.81"/>
+<text text-anchor="middle" x="673.5" y="-233.5" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="10.00">/nav2_monitor/human_intervention</text>
+</g>
+<!-- Coordinator&#45;&gt;Safety -->
+<g id="edge19" class="edge">
+
+<path fill="none" stroke="#5b8f79" stroke-width="1.45" d="M521,-217.51C521,-217.51 521,-153.02 521,-153.02"/>
+<polygon fill="#5b8f79" stroke="#5b8f79" stroke-width="1.45" points="523.73,-153.02 521,-145.22 518.27,-153.02 523.73,-153.02"/>
+<text text-anchor="middle" x="510" y="-187" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="10.00">/safety_system/cmd</text>
+</g>
+<!-- Reporter&#45;&gt;Cloud -->
+<g id="edge21" class="edge">
+
+<path fill="none" stroke="#5b8f79" stroke-width="1.45" d="M347.08,-236C357.14,-236 364.5,-236 364.5,-236 364.5,-236 364.5,-153.29 364.5,-153.29"/>
+<polygon fill="#5b8f79" stroke="#5b8f79" stroke-width="1.45" points="367.23,-153.29 364.5,-145.49 361.77,-153.29 367.23,-153.29"/>
+<text text-anchor="middle" x="353.5" y="-187" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="10.00">heartbeat/event JSON</text>
+</g>
+<!-- Safety&#45;&gt;Chassis -->
+<g id="edge20" class="edge">
+
+<path fill="none" stroke="#5b8f79" stroke-width="1.45" d="M606,-108.63C606,-108.63 606,-59.82 606,-59.82"/>
+<polygon fill="#5b8f79" stroke="#5b8f79" stroke-width="1.45" points="608.73,-59.82 606,-52.02 603.27,-59.82 608.73,-59.82"/>
+<text text-anchor="middle" x="631.5" y="-78" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="10.00">/command</text>
+</g>
+<!-- Algo -->
+<g id="node1" class="node">
+
+<path fill="#edf6ff" stroke="#6ba2d7" stroke-width="1.45" d="M113.5,-729C113.5,-729 34.5,-729 34.5,-729 28.5,-729 22.5,-723 22.5,-717 22.5,-717 22.5,-705 22.5,-705 22.5,-699 28.5,-693 34.5,-693 34.5,-693 113.5,-693 113.5,-693 119.5,-693 125.5,-699 125.5,-705 125.5,-705 125.5,-717 125.5,-717 125.5,-723 119.5,-729 113.5,-729"/>
+<text text-anchor="middle" x="74" y="-707.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#265b89">算法/业务 topic</text>
+</g>
+<!-- Scan -->
+<g id="node2" class="node">
+
+<path fill="#edf6ff" stroke="#6ba2d7" stroke-width="1.45" d="M381,-729C381,-729 329,-729 329,-729 323,-729 317,-723 317,-717 317,-717 317,-705 317,-705 317,-699 323,-693 329,-693 329,-693 381,-693 381,-693 387,-693 393,-699 393,-705 393,-705 393,-717 393,-717 393,-723 387,-729 381,-729"/>
+<text text-anchor="middle" x="355" y="-707.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#265b89">LaserScan</text>
+</g>
+<!-- Depth -->
+<g id="node3" class="node">
+
+<path fill="#ffffff" stroke="#86b6a3" stroke-width="1.45" d="M272.5,-729C272.5,-729 169.5,-729 169.5,-729 163.5,-729 157.5,-723 157.5,-717 157.5,-717 157.5,-705 157.5,-705 157.5,-699 163.5,-693 169.5,-693 169.5,-693 272.5,-693 272.5,-693 278.5,-693 284.5,-699 284.5,-705 284.5,-705 284.5,-717 284.5,-717 284.5,-723 278.5,-729 272.5,-729"/>
+<text text-anchor="middle" x="221" y="-707.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f2a2c">Depth PointCloud2</text>
+</g>
+<!-- Cmd -->
+<g id="node4" class="node">
+
+<path fill="#f1efff" stroke="#8d7ed3" stroke-width="1.45" d="M494.5,-729C494.5,-729 437.5,-729 437.5,-729 431.5,-729 425.5,-723 425.5,-717 425.5,-717 425.5,-705 425.5,-705 425.5,-699 431.5,-693 437.5,-693 437.5,-693 494.5,-693 494.5,-693 500.5,-693 506.5,-699 506.5,-705 506.5,-705 506.5,-717 506.5,-717 506.5,-723 500.5,-729 494.5,-729"/>
+<text text-anchor="middle" x="466" y="-707.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#463a88">/command</text>
+</g>
+<!-- Motion -->
+<g id="node5" class="node">
+
+<path fill="#edf6ff" stroke="#6ba2d7" stroke-width="1.45" d="M725,-729C725,-729 551,-729 551,-729 545,-729 539,-723 539,-717 539,-717 539,-705 539,-705 539,-699 545,-693 551,-693 551,-693 725,-693 725,-693 731,-693 737,-699 737,-705 737,-705 737,-717 737,-717 737,-723 731,-729 725,-729"/>
+<text text-anchor="middle" x="638" y="-707.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#265b89">/livox/imu / /odom / /moto_info</text>
+</g>
+<!-- NavCmd -->
+<g id="node6" class="node">
+
+<path fill="#f1efff" stroke="#8d7ed3" stroke-width="1.45" d="M833,-729C833,-729 781,-729 781,-729 775,-729 769,-723 769,-717 769,-717 769,-705 769,-705 769,-699 775,-693 781,-693 781,-693 833,-693 833,-693 839,-693 845,-699 845,-705 845,-705 845,-717 845,-717 845,-723 839,-729 833,-729"/>
+<text text-anchor="middle" x="807" y="-707.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#463a88">/cmd_vel*</text>
+</g>
+<!-- AFA -->
+<g id="node7" class="node">
+
+<path fill="#ffffff" stroke="#86b6a3" stroke-width="1.45" d="M188,-630C188,-630 28,-630 28,-630 22,-630 16,-624 16,-618 16,-618 16,-606 16,-606 16,-600 22,-594 28,-594 28,-594 188,-594 188,-594 194,-594 200,-600 200,-606 200,-606 200,-618 200,-618 200,-624 194,-630 188,-630"/>
+<text text-anchor="middle" x="108" y="-608.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f2a2c">algorithm_feedback_adapter</text>
+</g>
+<!-- Voxel -->
+<g id="node8" class="node">
+
+<path fill="#fff1ec" stroke="#d26a56" stroke-width="1.45" d="M356,-630C356,-630 244,-630 244,-630 238,-630 232,-624 232,-618 232,-618 232,-606 232,-606 232,-600 238,-594 244,-594 244,-594 356,-594 356,-594 362,-594 368,-600 368,-606 368,-606 368,-618 368,-618 368,-624 362,-630 356,-630"/>
+<text text-anchor="middle" x="300" y="-608.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#7c2f25">collision_voxel_layer</text>
+</g>
+<!-- Store -->
+<g id="node9" class="node">
+
+<path fill="#eaf7ef" stroke="#61a87d" stroke-width="1.45" d="M470.5,-521C470.5,-521 375.5,-521 375.5,-521 369.5,-521 363.5,-515 363.5,-509 363.5,-509 363.5,-497 363.5,-497 363.5,-491 369.5,-485 375.5,-485 375.5,-485 470.5,-485 470.5,-485 476.5,-485 482.5,-491 482.5,-497 482.5,-497 482.5,-509 482.5,-509 482.5,-515 476.5,-521 470.5,-521"/>
+<text text-anchor="middle" x="423" y="-499.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">MonitorDataStore</text>
+</g>
+<!-- Watch -->
+<g id="node10" class="node">
+
+<path fill="#edf6ff" stroke="#6ba2d7" stroke-width="1.45" d="M217.5,-437C217.5,-437 104.5,-437 104.5,-437 98.5,-437 92.5,-431 92.5,-425 92.5,-425 92.5,-413 92.5,-413 92.5,-407 98.5,-401 104.5,-401 104.5,-401 217.5,-401 217.5,-401 223.5,-401 229.5,-407 229.5,-413 229.5,-413 229.5,-425 229.5,-425 229.5,-431 223.5,-437 217.5,-437"/>
+<text text-anchor="middle" x="161" y="-415.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#265b89">WatchTopicEvaluator</text>
+</g>
+<!-- Feedback -->
+<g id="node11" class="node">
+
+<path fill="#ffffff" stroke="#86b6a3" stroke-width="1.45" d="M402.5,-437C402.5,-437 273.5,-437 273.5,-437 267.5,-437 261.5,-431 261.5,-425 261.5,-425 261.5,-413 261.5,-413 261.5,-407 267.5,-401 273.5,-401 273.5,-401 402.5,-401 402.5,-401 408.5,-401 414.5,-407 414.5,-413 414.5,-413 414.5,-425 414.5,-425 414.5,-431 408.5,-437 402.5,-437"/>
+<text text-anchor="middle" x="338" y="-415.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f2a2c">FeedbackRuleEvaluator</text>
+</g>
+<!-- Vehicle -->
+<g id="node12" class="node">
+
+<path fill="#fff6db" stroke="#d2a235" stroke-width="1.45" d="M565.5,-438C565.5,-438 458.5,-438 458.5,-438 452.5,-438 446.5,-432 446.5,-426 446.5,-426 446.5,-412 446.5,-412 446.5,-406 452.5,-400 458.5,-400 458.5,-400 565.5,-400 565.5,-400 571.5,-400 577.5,-406 577.5,-412 577.5,-412 577.5,-426 577.5,-426 577.5,-432 571.5,-438 565.5,-438"/>
+<text text-anchor="middle" x="512" y="-422.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#6c4d00">ChassisEvaluator</text>
+<text text-anchor="middle" x="512" y="-409.4" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#6c4d00">vehicle_state_judge</text>
+</g>
+<!-- Collision -->
+<g id="node13" class="node">
+
+<path fill="#fff1ec" stroke="#d26a56" stroke-width="1.45" d="M718.5,-437C718.5,-437 621.5,-437 621.5,-437 615.5,-437 609.5,-431 609.5,-425 609.5,-425 609.5,-413 609.5,-413 609.5,-407 615.5,-401 621.5,-401 621.5,-401 718.5,-401 718.5,-401 724.5,-401 730.5,-407 730.5,-413 730.5,-413 730.5,-425 730.5,-425 730.5,-431 724.5,-437 718.5,-437"/>
+<text text-anchor="middle" x="670" y="-415.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#7c2f25">CollisionEvaluator</text>
+</g>
+<!-- Detector -->
+<g id="node14" class="node">
+
+<path fill="#fff1ec" stroke="#d26a56" stroke-width="1.45" d="M488,-353C488,-353 416,-353 416,-353 410,-353 404,-347 404,-341 404,-341 404,-329 404,-329 404,-323 410,-317 416,-317 416,-317 488,-317 488,-317 494,-317 500,-323 500,-329 500,-329 500,-341 500,-341 500,-347 494,-353 488,-353"/>
+<text text-anchor="middle" x="452" y="-331.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#7c2f25">FaultDetector</text>
+</g>
+<!-- Coordinator -->
+<g id="node15" class="node">
+
+<path fill="#fff1ec" stroke="#d26a56" stroke-width="1.45" d="M512.5,-254C512.5,-254 391.5,-254 391.5,-254 385.5,-254 379.5,-248 379.5,-242 379.5,-242 379.5,-230 379.5,-230 379.5,-224 385.5,-218 391.5,-218 391.5,-218 512.5,-218 512.5,-218 518.5,-218 524.5,-224 524.5,-230 524.5,-230 524.5,-242 524.5,-242 524.5,-248 518.5,-254 512.5,-254"/>
+<text text-anchor="middle" x="452" y="-232.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#7c2f25">FaultStateCoordinator</text>
+</g>
+<!-- Reporter -->
+<g id="node16" class="node">
+
+<path fill="#eaf7ef" stroke="#61a87d" stroke-width="1.45" d="M335,-254C335,-254 247,-254 247,-254 241,-254 235,-248 235,-242 235,-242 235,-230 235,-230 235,-224 241,-218 247,-218 247,-218 335,-218 335,-218 341,-218 347,-224 347,-230 347,-230 347,-242 347,-242 347,-248 341,-254 335,-254"/>
+<text text-anchor="middle" x="291" y="-232.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">MonitorReporter</text>
+</g>
+<!-- Safety -->
+<g id="node17" class="node">
+
+<path fill="#fff1ec" stroke="#d26a56" stroke-width="1.45" d="M682.5,-145C682.5,-145 529.5,-145 529.5,-145 523.5,-145 517.5,-139 517.5,-133 517.5,-133 517.5,-121 517.5,-121 517.5,-115 523.5,-109 529.5,-109 529.5,-109 682.5,-109 682.5,-109 688.5,-109 694.5,-115 694.5,-121 694.5,-121 694.5,-133 694.5,-133 694.5,-139 688.5,-145 682.5,-145"/>
+<text text-anchor="middle" x="606" y="-123.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#7c2f25">safety_emergency_executor</text>
+</g>
+<!-- Chassis -->
+<g id="node18" class="node">
+
+<path fill="#ffffff" stroke="#86b6a3" stroke-width="1.45" d="M648,-52C648,-52 564,-52 564,-52 558,-52 552,-46 552,-40 552,-40 552,-28 552,-28 552,-22 558,-16 564,-16 564,-16 648,-16 648,-16 654,-16 660,-22 660,-28 660,-28 660,-40 660,-40 660,-46 654,-52 648,-52"/>
+<text text-anchor="middle" x="606" y="-30.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f2a2c">底盘 /command</text>
+</g>
+<!-- Cloud -->
+<g id="node19" class="node">
+
+<path fill="#ffffff" stroke="#86b6a3" stroke-width="1.45" d="M473,-145C473,-145 369,-145 369,-145 363,-145 357,-139 357,-133 357,-133 357,-121 357,-121 357,-115 363,-109 369,-109 369,-109 473,-109 473,-109 479,-109 485,-115 485,-121 485,-121 485,-133 485,-133 485,-139 479,-145 473,-145"/>
+<text text-anchor="middle" x="421" y="-123.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f2a2c">外部云端/MQTT模块</text>
+</g>
+</g>
+</svg>
+</div>
+<h2 id="3-主数据链路">3. 主数据链路</h2>
+<h3 id="31-算法反馈判断链路">3.1 算法反馈判断链路</h3>
+<div class="svg-diagram"><div class="svg-diagram-title">可视化时序图</div><div class="svg-diagram-legend"><span><i style="background:#6ba2d7"></i>输入 / 数据源</span><span><i style="background:#d2a235"></i>判断 / 策略</span><span><i style="background:#61a87d"></i>状态 / 输出</span><span><i style="background:#d26a56"></i>故障 / 风险</span><span><i style="background:#8d7ed3"></i>执行 / 安全动作</span></div><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 613" role="img">
+<defs>
+<marker id="arrow-seq" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#1f6f50"/></marker>
+</defs>
+<rect width="1080" height="613" rx="18" fill="#fbfefd"/>
+<rect x="60" y="18" width="130" height="38" rx="10" fill="#ffffff" stroke="#86b6a3" stroke-width="1.3"/>
+<text x="125" y="42" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12" fill="#1f2a2c" font-weight="700">算法模块</text>
+<line x1="125" y1="58" x2="125" y2="581" stroke="#c7d8d0" stroke-width="1.2" stroke-dasharray="5 5"/>
+<rect x="230" y="18" width="130" height="38" rx="10" fill="#ffffff" stroke="#86b6a3" stroke-width="1.3"/>
+<text x="295" y="42" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12" fill="#1f2a2c" font-weight="700">algorithm_feedback_adapter</text>
+<line x1="295" y1="58" x2="295" y2="581" stroke="#c7d8d0" stroke-width="1.2" stroke-dasharray="5 5"/>
+<rect x="400" y="18" width="130" height="38" rx="10" fill="#eaf7ef" stroke="#61a87d" stroke-width="1.3"/>
+<text x="465" y="42" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12" fill="#1f6f50" font-weight="700">nav2_monitor</text>
+<line x1="465" y1="58" x2="465" y2="581" stroke="#c7d8d0" stroke-width="1.2" stroke-dasharray="5 5"/>
+<rect x="570" y="18" width="130" height="38" rx="10" fill="#fff1ec" stroke="#d26a56" stroke-width="1.3"/>
+<text x="635" y="42" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12" fill="#7c2f25" font-weight="700">FaultDetector</text>
+<line x1="635" y1="58" x2="635" y2="581" stroke="#c7d8d0" stroke-width="1.2" stroke-dasharray="5 5"/>
+<rect x="740" y="18" width="130" height="38" rx="10" fill="#fff1ec" stroke="#d26a56" stroke-width="1.3"/>
+<text x="805" y="42" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12" fill="#7c2f25" font-weight="700">FaultStateCoordinator</text>
+<line x1="805" y1="58" x2="805" y2="581" stroke="#c7d8d0" stroke-width="1.2" stroke-dasharray="5 5"/>
+<rect x="910" y="18" width="130" height="38" rx="10" fill="#fff1ec" stroke="#d26a56" stroke-width="1.3"/>
+<text x="975" y="42" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12" fill="#7c2f25" font-weight="700">safety_emergency_executor</text>
+<line x1="975" y1="58" x2="975" y2="581" stroke="#c7d8d0" stroke-width="1.2" stroke-dasharray="5 5"/>
+<line x1="133" y1="72" x2="287" y2="72" stroke="#6ba2d7" stroke-width="1.7" marker-end="url(#arrow-seq)"/>
+<circle cx="125" cy="72" r="12" fill="#ffffff" stroke="#6ba2d7"/>
+<text x="125" y="76" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="10" fill="#265b89" font-weight="700">1</text>
+<text x="210.0" y="62" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12" fill="#265b89">发布业务 topic</text>
+<line x1="303" y1="148" x2="457" y2="148" stroke="#61a87d" stroke-width="1.7" marker-end="url(#arrow-seq)"/>
+<circle cx="295" cy="148" r="12" fill="#ffffff" stroke="#61a87d"/>
+<text x="295" y="152" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="10" fill="#1f6f50" font-weight="700">2</text>
+<text x="380.0" y="138" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12" fill="#1f6f50">/nav2_monitor/algo</text>
+<text x="380.0" y="153" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12" fill="#1f6f50">rithm_feedback</text>
+<line x1="473" y1="224" x2="627" y2="224" stroke="#61a87d" stroke-width="1.7" marker-end="url(#arrow-seq)"/>
+<circle cx="465" cy="224" r="12" fill="#ffffff" stroke="#61a87d"/>
+<text x="465" y="228" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="10" fill="#1f6f50" font-weight="700">3</text>
+<text x="550.0" y="214" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12" fill="#1f6f50">写入 MonitorDataStor</text>
+<text x="550.0" y="229" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12" fill="#1f6f50">e 后周期检测</text>
+<path d="M635,300 C707,300 707,332 635,332" fill="none" stroke="#d2a235" stroke-width="1.7" marker-end="url(#arrow-seq)"/>
+<circle cx="635" cy="300" r="12" fill="#ffffff" stroke="#d2a235"/>
+<text x="635" y="304" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="10" fill="#6c4d00" font-weight="700">4</text>
+<text x="715" y="290" text-anchor="start" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12" fill="#6c4d00">feedback_rules 判断 </text>
+<text x="715" y="305" text-anchor="start" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12" fill="#6c4d00">missing/stale/inva</text>
+<text x="715" y="320" text-anchor="start" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12" fill="#6c4d00">lid/range</text>
+<line x1="643" y1="376" x2="797" y2="376" stroke="#d26a56" stroke-width="1.7" marker-end="url(#arrow-seq)"/>
+<circle cx="635" cy="376" r="12" fill="#ffffff" stroke="#d26a56"/>
+<text x="635" y="380" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="10" fill="#7c2f25" font-weight="700">5</text>
+<text x="720.0" y="366" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12" fill="#7c2f25">FaultInfo[]</text>
+<line x1="813" y1="452" x2="967" y2="452" stroke="#8d7ed3" stroke-width="1.7" marker-end="url(#arrow-seq)"/>
+<circle cx="805" cy="452" r="12" fill="#ffffff" stroke="#8d7ed3"/>
+<text x="805" y="456" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="10" fill="#463a88" font-weight="700">6</text>
+<text x="890.0" y="442" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12" fill="#463a88">/safety_system/cmd</text>
+</svg></div>
+<p>说明：</p>
+<ul>
+<li><code>algorithm_feedback_adapter</code> 只负责字段拆解和标准化，不做故障判断。</li>
+</ul>
+<ul>
+<li><code>FeedbackRuleEvaluator</code> 根据 <code>source_topic + metric_name</code> 命中规则。</li>
+</ul>
+<ul>
+<li>安全动作由 <code>FaultStateCoordinator</code> 统一仲裁。</li>
+</ul>
+<h3 id="32-碰撞检测链路">3.2 碰撞检测链路</h3>
+<div class="svg-diagram"><div class="svg-diagram-title">可视化流程图</div><div class="svg-diagram-legend"><span><i style="background:#6ba2d7"></i>输入 / 数据源</span><span><i style="background:#d2a235"></i>判断 / 策略</span><span><i style="background:#61a87d"></i>状态 / 输出</span><span><i style="background:#d26a56"></i>故障 / 风险</span><span><i style="background:#8d7ed3"></i>执行 / 安全动作</span></div><svg width="1246pt" height="242pt"
+ viewBox="0.00 0.00 1246.00 242.00" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<g id="graph0" class="graph" transform="scale(1 1) rotate(0) translate(18 224)">
+
+<!-- Scan&#45;&gt;Voxel -->
+<g id="edge1" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M63,-169.68C63,-164.06 63,-159.33 63,-159.33 63,-159.33 163.15,-159.33 163.15,-159.33"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="163.15,-162.06 170.95,-159.33 163.15,-156.6 163.15,-162.06"/>
+</g>
+<!-- Voxel&#45;&gt;Grid -->
+<g id="edge3" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M307.16,-154C307.16,-154 343.86,-154 343.86,-154"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="343.86,-156.73 351.66,-154 343.86,-151.27 343.86,-156.73"/>
+</g>
+<!-- Depth&#45;&gt;Voxel -->
+<g id="edge2" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M108,-138.32C108,-143.94 108,-148.67 108,-148.67 108,-148.67 163.01,-148.67 163.01,-148.67"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="163.01,-151.4 170.81,-148.67 163.01,-145.94 163.01,-151.4"/>
+</g>
+<!-- Grid&#45;&gt;Collision -->
+<g id="edge4" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M523,-135.98C523,-118.63 523,-95 523,-95 523,-95 568.86,-95 568.86,-95"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="568.86,-97.73 576.66,-95 568.86,-92.27 568.86,-97.73"/>
+</g>
+<!-- Collision&#45;&gt;Zone -->
+<g id="edge7" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M786.05,-86C786.05,-86 822.95,-86 822.95,-86"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="822.95,-88.73 830.75,-86 822.95,-83.27 822.95,-88.73"/>
+</g>
+<!-- CmdVel&#45;&gt;Collision -->
+<g id="edge5" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M505.55,-86C505.55,-86 569.08,-86 569.08,-86"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="569.08,-88.73 576.88,-86 569.08,-83.27 569.08,-88.73"/>
+</g>
+<!-- Source&#45;&gt;Collision -->
+<g id="edge6" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M510,-36.02C510,-53.37 510,-77 510,-77 510,-77 569,-77 569,-77"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="569,-79.73 576.8,-77 569,-74.27 569,-79.73"/>
+</g>
+<!-- Zone&#45;&gt;Safety -->
+<g id="edge8" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M884,-104.22C884,-124.37 884,-154 884,-154 884,-154 1021.94,-154 1021.94,-154"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="1021.94,-156.73 1029.74,-154 1021.94,-151.27 1021.94,-156.73"/>
+</g>
+<!-- Zone&#45;&gt;NavMode -->
+<g id="edge9" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M936.18,-92C936.18,-92 995.65,-92 995.65,-92"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="995.65,-94.73 1003.45,-92 995.65,-89.27 995.65,-94.73"/>
+</g>
+<!-- Zone&#45;&gt;Visual -->
+<g id="edge10" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M936,-80C964.11,-80 993,-80 993,-80 993,-80 993,-44.07 993,-44.07"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="995.73,-44.07 993,-36.27 990.27,-44.07 995.73,-44.07"/>
+</g>
+<!-- Scan -->
+<g id="node1" class="node">
+
+<path fill="#edf6ff" stroke="#6ba2d7" stroke-width="1.45" d="M78,-206C78,-206 48,-206 48,-206 42,-206 36,-200 36,-194 36,-194 36,-182 36,-182 36,-176 42,-170 48,-170 48,-170 78,-170 78,-170 84,-170 90,-176 90,-182 90,-182 90,-194 90,-194 90,-200 84,-206 78,-206"/>
+<text text-anchor="middle" x="63" y="-184.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#265b89">/scan</text>
+</g>
+<!-- Voxel -->
+<g id="node2" class="node">
+
+<path fill="#fff1ec" stroke="#d26a56" stroke-width="1.45" d="M295,-172C295,-172 183,-172 183,-172 177,-172 171,-166 171,-160 171,-160 171,-148 171,-148 171,-142 177,-136 183,-136 183,-136 295,-136 295,-136 301,-136 307,-142 307,-148 307,-148 307,-160 307,-160 307,-166 301,-172 295,-172"/>
+<text text-anchor="middle" x="239" y="-150.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#7c2f25">collision_voxel_layer</text>
+</g>
+<!-- Depth -->
+<g id="node3" class="node">
+
+<path fill="#ffffff" stroke="#86b6a3" stroke-width="1.45" d="M114,-138C114,-138 12,-138 12,-138 6,-138 0,-132 0,-126 0,-126 0,-114 0,-114 0,-108 6,-102 12,-102 12,-102 114,-102 114,-102 120,-102 126,-108 126,-114 126,-114 126,-126 126,-126 126,-132 120,-138 114,-138"/>
+<text text-anchor="middle" x="63" y="-116.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f2a2c">depth PointCloud2</text>
+</g>
+<!-- Grid -->
+<g id="node4" class="node">
+
+<path fill="#fff1ec" stroke="#d26a56" stroke-width="1.45" d="M520,-172C520,-172 364,-172 364,-172 358,-172 352,-166 352,-160 352,-160 352,-148 352,-148 352,-142 358,-136 364,-136 364,-136 520,-136 520,-136 526,-136 532,-142 532,-148 532,-148 532,-160 532,-160 532,-166 526,-172 520,-172"/>
+<text text-anchor="middle" x="442" y="-150.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#7c2f25">/collision_voxel_layer/voxels</text>
+</g>
+<!-- Collision -->
+<g id="node5" class="node">
+
+<path fill="#fff1ec" stroke="#d26a56" stroke-width="1.45" d="M774,-104C774,-104 589,-104 589,-104 583,-104 577,-98 577,-92 577,-92 577,-80 577,-80 577,-74 583,-68 589,-68 589,-68 774,-68 774,-68 780,-68 786,-74 786,-80 786,-80 786,-92 786,-92 786,-98 780,-104 774,-104"/>
+<text text-anchor="middle" x="681.5" y="-82.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#7c2f25">nav2_monitor collision_detection</text>
+</g>
+<!-- CmdVel -->
+<g id="node6" class="node">
+
+<path fill="#f1efff" stroke="#8d7ed3" stroke-width="1.45" d="M493.5,-104C493.5,-104 390.5,-104 390.5,-104 384.5,-104 378.5,-98 378.5,-92 378.5,-92 378.5,-80 378.5,-80 378.5,-74 384.5,-68 390.5,-68 390.5,-68 493.5,-68 493.5,-68 499.5,-68 505.5,-74 505.5,-80 505.5,-80 505.5,-92 505.5,-92 505.5,-98 499.5,-104 493.5,-104"/>
+<text text-anchor="middle" x="442" y="-82.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#463a88">prediction cmd_vel</text>
+</g>
+<!-- Source -->
+<g id="node7" class="node">
+
+<path fill="#edf6ff" stroke="#6ba2d7" stroke-width="1.45" d="M501.5,-36C501.5,-36 382.5,-36 382.5,-36 376.5,-36 370.5,-30 370.5,-24 370.5,-24 370.5,-12 370.5,-12 370.5,-6 376.5,0 382.5,0 382.5,0 501.5,0 501.5,0 507.5,0 513.5,-6 513.5,-12 513.5,-12 513.5,-24 513.5,-24 513.5,-30 507.5,-36 501.5,-36"/>
+<text text-anchor="middle" x="442" y="-14.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#265b89">/control_source_state</text>
+</g>
+<!-- Zone -->
+<g id="node8" class="node">
+
+<path fill="#fff6db" stroke="#d2a235" stroke-width="1.45" d="M924,-104C924,-104 843,-104 843,-104 837,-104 831,-98 831,-92 831,-92 831,-80 831,-80 831,-74 837,-68 843,-68 843,-68 924,-68 924,-68 930,-68 936,-74 936,-80 936,-80 936,-92 936,-92 936,-98 930,-104 924,-104"/>
+<text text-anchor="middle" x="883.5" y="-82.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#6c4d00">zone / TTC 判断</text>
+</g>
+<!-- Safety -->
+<g id="node9" class="node">
+
+<path fill="#f1efff" stroke="#8d7ed3" stroke-width="1.45" d="M1149,-172C1149,-172 1042,-172 1042,-172 1036,-172 1030,-166 1030,-160 1030,-160 1030,-148 1030,-148 1030,-142 1036,-136 1042,-136 1042,-136 1149,-136 1149,-136 1155,-136 1161,-142 1161,-148 1161,-148 1161,-160 1161,-160 1161,-166 1155,-172 1149,-172"/>
+<text text-anchor="middle" x="1095.5" y="-150.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#463a88">/safety_system/cmd</text>
+</g>
+<!-- NavMode -->
+<g id="node10" class="node">
+
+<path fill="#ffffff" stroke="#86b6a3" stroke-width="1.45" d="M1175.5,-104C1175.5,-104 1015.5,-104 1015.5,-104 1009.5,-104 1003.5,-98 1003.5,-92 1003.5,-92 1003.5,-80 1003.5,-80 1003.5,-74 1009.5,-68 1015.5,-68 1015.5,-68 1175.5,-68 1175.5,-68 1181.5,-68 1187.5,-74 1187.5,-80 1187.5,-80 1187.5,-92 1187.5,-92 1187.5,-98 1181.5,-104 1175.5,-104"/>
+<text text-anchor="middle" x="1095.5" y="-82.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f2a2c">/navigation_mode FAST/SAFE</text>
+</g>
+<!-- Visual -->
+<g id="node11" class="node">
+
+<path fill="#fff1ec" stroke="#d26a56" stroke-width="1.45" d="M1198,-36C1198,-36 993,-36 993,-36 987,-36 981,-30 981,-24 981,-24 981,-12 981,-12 981,-6 987,0 993,0 993,0 1198,0 1198,0 1204,0 1210,-6 1210,-12 1210,-12 1210,-24 1210,-24 1210,-30 1204,-36 1198,-36"/>
+<text text-anchor="middle" x="1095.5" y="-14.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#7c2f25">/nav2_monitor/collision_ttc_markers</text>
+</g>
+</g>
+</svg>
+</div>
+<p>关键原则：</p>
+<ul>
+<li><code>collision_voxel_layer</code> 中任一数据源可用时都应继续发布体素。</li>
+</ul>
+<ul>
+<li><code>nav2_monitor</code> 先判断体素/点云数据源是否新鲜，再做 zone/TTC。</li>
+</ul>
+<ul>
+<li>fresh empty source 表示当前无障碍，不等于数据源故障。</li>
+</ul>
+<ul>
+<li>TTC 控制器切换使用滞回和最小保持时间，避免边界反复跳变。</li>
+</ul>
+<h3 id="33-小车状态检测链路">3.3 小车状态检测链路</h3>
+<div class="svg-diagram"><div class="svg-diagram-title">可视化流程图</div><div class="svg-diagram-legend"><span><i style="background:#6ba2d7"></i>输入 / 数据源</span><span><i style="background:#d2a235"></i>判断 / 策略</span><span><i style="background:#61a87d"></i>状态 / 输出</span><span><i style="background:#d26a56"></i>故障 / 风险</span><span><i style="background:#8d7ed3"></i>执行 / 安全动作</span></div><svg width="757pt" height="276pt"
+ viewBox="0.00 0.00 757.00 276.00" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<g id="graph0" class="graph" transform="scale(1 1) rotate(0) translate(18 258)">
+
+<!-- Command&#45;&gt;Judge -->
+<g id="edge1" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M81.78,-223C119.9,-223 171,-223 171,-223 171,-223 171,-146.21 171,-146.21"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="173.73,-146.21 171,-138.41 168.27,-146.21 173.73,-146.21"/>
+</g>
+<!-- Judge&#45;&gt;SourceFault -->
+<g id="edge5" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M193,-101.78C193,-81.63 193,-52 193,-52 193,-52 301,-52 301,-52"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="301,-54.73 308.8,-52 301,-49.27 301,-54.73"/>
+</g>
+<!-- Judge&#45;&gt;Anomaly -->
+<g id="edge6" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M258.24,-120C258.24,-120 295.03,-120 295.03,-120"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="295.03,-122.73 302.83,-120 295.03,-117.27 295.03,-122.73"/>
+</g>
+<!-- Judge&#45;&gt;Idle -->
+<g id="edge7" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M215,-138.22C215,-158.37 215,-188 215,-188 215,-188 309.19,-188 309.19,-188"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="309.19,-190.73 316.99,-188 309.19,-185.27 309.19,-190.73"/>
+</g>
+<!-- IMU&#45;&gt;Judge -->
+<g id="edge2" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M76,-135.94C76,-131.51 76,-128 76,-128 76,-128 118.96,-128 118.96,-128"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="118.96,-130.73 126.76,-128 118.96,-125.27 118.96,-130.73"/>
+</g>
+<!-- Odom&#45;&gt;Judge -->
+<g id="edge3" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M41,-104.19C41,-112.28 41,-120 41,-120 41,-120 119.13,-120 119.13,-120"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="119.13,-122.73 126.93,-120 119.13,-117.27 119.13,-122.73"/>
+</g>
+<!-- Moto&#45;&gt;Judge -->
+<g id="edge4" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M73,-36.12C73,-63.44 73,-112 73,-112 73,-112 119.01,-112 119.01,-112"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="119.01,-114.73 126.81,-112 119.01,-109.27 119.01,-114.73"/>
+</g>
+<!-- SourceFault&#45;&gt;Event -->
+<g id="edge8" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M446.01,-58C462.27,-58 475,-58 475,-58 475,-58 475,-120 475,-120 475,-120 515.2,-120 515.2,-120"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="515.2,-122.73 523,-120 515.2,-117.27 515.2,-122.73"/>
+</g>
+<!-- SourceFault&#45;&gt;Human -->
+<g id="edge11" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M446.02,-46C446.02,-46 489.02,-46 489.02,-46"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="489.02,-48.73 496.82,-46 489.02,-43.27 489.02,-48.73"/>
+</g>
+<!-- Anomaly&#45;&gt;Event -->
+<g id="edge9" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M452.02,-129C452.02,-129 515.13,-129 515.13,-129"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="515.13,-131.73 522.93,-129 515.13,-126.27 515.13,-131.73"/>
+</g>
+<!-- Anomaly&#45;&gt;Human -->
+<g id="edge10" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M452.27,-111C482.32,-111 510,-111 510,-111 510,-111 510,-77.82 510,-77.82"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="512.73,-77.82 510,-70.02 507.27,-77.82 512.73,-77.82"/>
+</g>
+<!-- Idle&#45;&gt;Event -->
+<g id="edge12" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M438.28,-188C507.17,-188 610,-188 610,-188 610,-188 610,-146.02 610,-146.02"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="612.73,-146.02 610,-138.22 607.27,-146.02 612.73,-146.02"/>
+</g>
+<!-- Command -->
+<g id="node1" class="node">
+
+<path fill="#ffffff" stroke="#86b6a3" stroke-width="1.45" d="M69.5,-240C69.5,-240 12.5,-240 12.5,-240 6.5,-240 0.5,-234 0.5,-228 0.5,-228 0.5,-216 0.5,-216 0.5,-210 6.5,-204 12.5,-204 12.5,-204 69.5,-204 69.5,-204 75.5,-204 81.5,-210 81.5,-216 81.5,-216 81.5,-228 81.5,-228 81.5,-234 75.5,-240 69.5,-240"/>
+<text text-anchor="middle" x="41" y="-218.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f2a2c">/command</text>
+</g>
+<!-- Judge -->
+<g id="node2" class="node">
+
+<path fill="#fff6db" stroke="#d2a235" stroke-width="1.45" d="M246,-138C246,-138 139,-138 139,-138 133,-138 127,-132 127,-126 127,-126 127,-114 127,-114 127,-108 133,-102 139,-102 139,-102 246,-102 246,-102 252,-102 258,-108 258,-114 258,-114 258,-126 258,-126 258,-132 252,-138 246,-138"/>
+<text text-anchor="middle" x="192.5" y="-116.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#6c4d00">vehicle_state_judge</text>
+</g>
+<!-- IMU -->
+<g id="node3" class="node">
+
+<path fill="#ffffff" stroke="#86b6a3" stroke-width="1.45" d="M67,-172C67,-172 15,-172 15,-172 9,-172 3,-166 3,-160 3,-160 3,-148 3,-148 3,-142 9,-136 15,-136 15,-136 67,-136 67,-136 73,-136 79,-142 79,-148 79,-148 79,-160 79,-160 79,-166 73,-172 67,-172"/>
+<text text-anchor="middle" x="41" y="-150.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f2a2c">/livox/imu</text>
+</g>
+<!-- Odom -->
+<g id="node4" class="node">
+
+<path fill="#edf6ff" stroke="#6ba2d7" stroke-width="1.45" d="M57.5,-104C57.5,-104 24.5,-104 24.5,-104 18.5,-104 12.5,-98 12.5,-92 12.5,-92 12.5,-80 12.5,-80 12.5,-74 18.5,-68 24.5,-68 24.5,-68 57.5,-68 57.5,-68 63.5,-68 69.5,-74 69.5,-80 69.5,-80 69.5,-92 69.5,-92 69.5,-98 63.5,-104 57.5,-104"/>
+<text text-anchor="middle" x="41" y="-82.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#265b89">/odom</text>
+</g>
+<!-- Moto -->
+<g id="node5" class="node">
+
+<path fill="#ffffff" stroke="#86b6a3" stroke-width="1.45" d="M70,-36C70,-36 12,-36 12,-36 6,-36 0,-30 0,-24 0,-24 0,-12 0,-12 0,-6 6,0 12,0 12,0 70,0 70,0 76,0 82,-6 82,-12 82,-12 82,-24 82,-24 82,-30 76,-36 70,-36"/>
+<text text-anchor="middle" x="41" y="-14.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f2a2c">/moto_info</text>
+</g>
+<!-- SourceFault -->
+<g id="node6" class="node">
+
+<path fill="#fff1ec" stroke="#d26a56" stroke-width="1.45" d="M434,-70C434,-70 321,-70 321,-70 315,-70 309,-64 309,-58 309,-58 309,-46 309,-46 309,-40 315,-34 321,-34 321,-34 434,-34 434,-34 440,-34 446,-40 446,-46 446,-46 446,-58 446,-58 446,-64 440,-70 434,-70"/>
+<text text-anchor="middle" x="377.5" y="-48.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#7c2f25">vehicle_state_source</text>
+</g>
+<!-- Anomaly -->
+<g id="node7" class="node">
+
+<path fill="#ffffff" stroke="#86b6a3" stroke-width="1.45" d="M440,-138C440,-138 315,-138 315,-138 309,-138 303,-132 303,-126 303,-126 303,-114 303,-114 303,-108 309,-102 315,-102 315,-102 440,-102 440,-102 446,-102 452,-108 452,-114 452,-114 452,-126 452,-126 452,-132 446,-138 440,-138"/>
+<text text-anchor="middle" x="377.5" y="-116.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f2a2c">vehicle_state_anomaly</text>
+</g>
+<!-- Idle -->
+<g id="node8" class="node">
+
+<path fill="#ffffff" stroke="#86b6a3" stroke-width="1.45" d="M426,-206C426,-206 329,-206 329,-206 323,-206 317,-200 317,-194 317,-194 317,-182 317,-182 317,-176 323,-170 329,-170 329,-170 426,-170 426,-170 432,-170 438,-176 438,-182 438,-182 438,-194 438,-194 438,-200 432,-206 426,-206"/>
+<text text-anchor="middle" x="377.5" y="-184.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f2a2c">vehicle_state_idle</text>
+</g>
+<!-- Event -->
+<g id="node9" class="node">
+
+<path fill="#fff1ec" stroke="#d26a56" stroke-width="1.45" d="M683,-138C683,-138 535,-138 535,-138 529,-138 523,-132 523,-126 523,-126 523,-114 523,-114 523,-108 529,-102 535,-102 535,-102 683,-102 683,-102 689,-102 695,-108 695,-114 695,-114 695,-126 695,-126 695,-132 689,-138 683,-138"/>
+<text text-anchor="middle" x="609" y="-116.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#7c2f25">/nav2_monitor/fault_event</text>
+</g>
+<!-- Human -->
+<g id="node10" class="node">
+
+<path fill="#eaf7ef" stroke="#61a87d" stroke-width="1.45" d="M709,-70C709,-70 509,-70 509,-70 503,-70 497,-64 497,-58 497,-58 497,-46 497,-46 497,-40 503,-34 509,-34 509,-34 709,-34 709,-34 715,-34 721,-40 721,-46 721,-46 721,-58 721,-58 721,-64 715,-70 709,-70"/>
+<text text-anchor="middle" x="609" y="-48.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">/nav2_monitor/human_intervention</text>
+</g>
+</g>
+</svg>
+</div>
+<p>判断策略：</p>
+<ul>
+<li><code>/command</code> 是期望运动来源，必须先判断是否新鲜。</li>
+</ul>
+<ul>
+<li>实际运动来源优先级为 IMU、odom、moto feedback。</li>
+</ul>
+<ul>
+<li>有速度指令但实际不动，上报人工介入，可能是急停或底盘异常。</li>
+</ul>
+<ul>
+<li>无速度指令但实际仍动，超过 <code>coast_grace_s</code> 后上报人工介入。</li>
+</ul>
+<ul>
+<li>无指令且不动过久，输出低优先级 idle 提示。</li>
+</ul>
+<h3 id="34-安全执行链路">3.4 安全执行链路</h3>
+<div class="svg-diagram"><div class="svg-diagram-title">可视化状态机</div><div class="svg-diagram-legend"><span><i style="background:#6ba2d7"></i>输入 / 数据源</span><span><i style="background:#d2a235"></i>判断 / 策略</span><span><i style="background:#61a87d"></i>状态 / 输出</span><span><i style="background:#d26a56"></i>故障 / 风险</span><span><i style="background:#8d7ed3"></i>执行 / 安全动作</span></div><svg width="693pt" height="168pt"
+ viewBox="0.00 0.00 693.00 168.15" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<g id="graph0" class="graph" transform="scale(1 1) rotate(0) translate(18 150.15)">
+
+<!-- EmergencyStop -->
+<g id="node1" class="node">
+
+<path fill="#fff1ec" stroke="#d26a56" stroke-width="1.45" d="M95,-132.15C95,-132.15 12,-132.15 12,-132.15 6,-132.15 0,-126.15 0,-120.15 0,-120.15 0,-108.15 0,-108.15 0,-102.15 6,-96.15 12,-96.15 12,-96.15 95,-96.15 95,-96.15 101,-96.15 107,-102.15 107,-108.15 107,-108.15 107,-120.15 107,-120.15 107,-126.15 101,-132.15 95,-132.15"/>
+<text text-anchor="middle" x="53.5" y="-111.05" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#7c2f25">EmergencyStop</text>
+</g>
+<!-- Normal -->
+<g id="node2" class="node">
+
+<path fill="#ffffff" stroke="#86b6a3" stroke-width="1.45" d="M248,-54.15C248,-54.15 211,-54.15 211,-54.15 205,-54.15 199,-48.15 199,-42.15 199,-42.15 199,-30.15 199,-30.15 199,-24.15 205,-18.15 211,-18.15 211,-18.15 248,-18.15 248,-18.15 254,-18.15 260,-24.15 260,-30.15 260,-30.15 260,-42.15 260,-42.15 260,-48.15 254,-54.15 248,-54.15"/>
+<text text-anchor="middle" x="229.5" y="-33.05" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f2a2c">Normal</text>
+</g>
+<!-- EmergencyStop&#45;&gt;Normal -->
+<g id="edge5" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M94.86,-96.06C124.07,-82.96 163.25,-65.4 191.62,-52.68"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="192.96,-55.07 198.96,-49.39 190.72,-50.09 192.96,-55.07"/>
+<text text-anchor="middle" x="153" y="-80.15" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="10.00">RESUME</text>
+</g>
+<!-- SlowDown -->
+<g id="node3" class="node">
+
+<path fill="#ffffff" stroke="#86b6a3" stroke-width="1.45" d="M469,-69.15C469,-69.15 413,-69.15 413,-69.15 407,-69.15 401,-63.15 401,-57.15 401,-57.15 401,-45.15 401,-45.15 401,-39.15 407,-33.15 413,-33.15 413,-33.15 469,-33.15 469,-33.15 475,-33.15 481,-39.15 481,-45.15 481,-45.15 481,-57.15 481,-57.15 481,-63.15 475,-69.15 469,-69.15"/>
+<text text-anchor="middle" x="441" y="-48.05" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f2a2c">SlowDown</text>
+</g>
+<!-- Normal&#45;&gt;SlowDown -->
+<g id="edge2" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M260.08,-41.63C268.43,-42.99 277.55,-44.3 286,-45.15 321.8,-48.74 362.49,-50.21 393.05,-50.8"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="393.14,-53.53 400.98,-50.94 393.23,-48.08 393.14,-53.53"/>
+<text text-anchor="middle" x="330.5" y="-53.15" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="10.00">SLOW_DOWN</text>
+</g>
+<!-- SlowDown&#45;&gt;Normal -->
+<g id="edge7" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M400.87,-37.77C392.43,-35.43 383.5,-33.37 375,-32.15 338.89,-26.98 297.21,-28.97 267.92,-31.66"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="267.5,-28.95 260,-32.43 268.03,-34.39 267.5,-28.95"/>
+<text text-anchor="middle" x="330.5" y="-35.15" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="10.00">RESUME</text>
+</g>
+<!-- SoftStop -->
+<g id="node4" class="node">
+
+<path fill="#ffffff" stroke="#86b6a3" stroke-width="1.45" d="M645,-69.15C645,-69.15 601,-69.15 601,-69.15 595,-69.15 589,-63.15 589,-57.15 589,-57.15 589,-45.15 589,-45.15 589,-39.15 595,-33.15 601,-33.15 601,-33.15 645,-33.15 645,-33.15 651,-33.15 657,-39.15 657,-45.15 657,-45.15 657,-57.15 657,-57.15 657,-63.15 651,-69.15 645,-69.15"/>
+<text text-anchor="middle" x="623" y="-48.05" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f2a2c">SoftStop</text>
+</g>
+<!-- SlowDown&#45;&gt;SoftStop -->
+<g id="edge3" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M481.06,-51.15C510.45,-51.15 550.65,-51.15 580.6,-51.15"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="580.96,-53.88 588.76,-51.15 580.96,-48.42 580.96,-53.88"/>
+<text text-anchor="middle" x="535" y="-54.15" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="10.00">SOFT_STOP</text>
+</g>
+<!-- SoftStop&#45;&gt;EmergencyStop -->
+<g id="edge4" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M588.85,-63.26C580.48,-66.07 571.47,-68.9 563,-71.15 527.11,-80.69 517.83,-82.41 481,-87.15 351.26,-103.84 197.92,-110.35 115.04,-112.78"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="114.96,-110.05 107.24,-113.01 115.11,-115.51 114.96,-110.05"/>
+<text text-anchor="middle" x="330.5" y="-107.15" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="10.00">EMERGENCY_STOP</text>
+</g>
+<!-- SoftStop&#45;&gt;Normal -->
+<g id="edge6" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M588.87,-36.72C560.77,-25.32 519.08,-10.33 481,-4.15 405.62,8.08 316.85,-11.14 267.81,-24.68"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="267.05,-22.06 260.29,-26.8 268.53,-27.32 267.05,-22.06"/>
+<text text-anchor="middle" x="441" y="-7.15" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="10.00">RESUME</text>
+</g>
+<!-- [*] -->
+<g id="node5" class="node">
+
+<ellipse fill="#1f6f50" stroke="#1f6f50" stroke-width="1.35" cx="53.5" cy="-36.15" rx="8" ry="8"/>
+</g>
+<!-- [*]&#45;&gt;Normal -->
+<g id="edge1" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M61.54,-36.15C82.98,-36.15 148.62,-36.15 190.93,-36.15"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="191,-38.88 198.8,-36.15 191,-33.42 191,-38.88"/>
+</g>
+</g>
+</svg>
+</div>
+<p>安全动作优先级：</p>
+<pre><code class="language-text">
+EMERGENCY_STOP &gt; SOFT_STOP &gt; SLOW_DOWN &gt; NONE
+</code></pre>
+<p><code>safety_emergency_executor</code> 只执行当前仲裁结果，不参与故障判断。</p>
+<h2 id="4-输出与上报链路">4. 输出与上报链路</h2>
+<div class="svg-diagram"><div class="svg-diagram-title">可视化流程图</div><div class="svg-diagram-legend"><span><i style="background:#6ba2d7"></i>输入 / 数据源</span><span><i style="background:#d2a235"></i>判断 / 策略</span><span><i style="background:#61a87d"></i>状态 / 输出</span><span><i style="background:#d26a56"></i>故障 / 风险</span><span><i style="background:#8d7ed3"></i>执行 / 安全动作</span></div><svg width="1289pt" height="396pt"
+ viewBox="0.00 0.00 1288.50 396.00" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<g id="graph0" class="graph" transform="scale(1 1) rotate(0) translate(18 378)">
+
+<!-- Faults&#45;&gt;Coordinator -->
+<g id="edge1" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M318.83,-242.84C318.83,-220.65 318.83,-186 318.83,-186 318.83,-186 317.93,-186 317.93,-186"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="317.93,-183.27 310.13,-186 317.93,-188.73 317.93,-183.27"/>
+</g>
+<!-- Faults&#45;&gt;Node -->
+<g id="edge2" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M384.13,-261C407.57,-261 433,-261 433,-261 433,-261 433,-206.18 433,-206.18"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="435.73,-206.18 433,-198.38 430.27,-206.18 435.73,-206.18"/>
+</g>
+<!-- Coordinator&#45;&gt;SafetyCmd -->
+<g id="edge7" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M164.56,-180C117.68,-180 65.5,-180 65.5,-180 65.5,-180 65.5,-125.18 65.5,-125.18"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="68.23,-125.18 65.5,-117.38 62.77,-125.18 68.23,-125.18"/>
+</g>
+<!-- Node&#45;&gt;Human -->
+<g id="edge11" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M606.65,-186C725.53,-186 917.25,-186 917.25,-186 917.25,-186 917.25,-124.83 917.25,-124.83"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="919.98,-124.83 917.25,-117.03 914.52,-124.83 919.98,-124.83"/>
+</g>
+<!-- Node&#45;&gt;Status -->
+<g id="edge8" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M422.45,-174C375.29,-174 327.67,-174 327.67,-174 327.67,-174 327.67,-99 327.67,-99 327.67,-99 312.19,-99 312.19,-99"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="312.19,-96.27 304.39,-99 312.19,-101.73 312.19,-96.27"/>
+</g>
+<!-- Node&#45;&gt;Event -->
+<g id="edge9" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M465.5,-161.62C465.5,-161.62 465.5,-124.83 465.5,-124.83"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="468.23,-124.83 465.5,-117.03 462.77,-124.83 468.23,-124.83"/>
+</g>
+<!-- Node&#45;&gt;NodeManager -->
+<g id="edge10" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M573.5,-161.62C573.5,-161.62 573.5,-124.83 573.5,-124.83"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="576.23,-124.83 573.5,-117.03 570.77,-124.83 576.23,-124.83"/>
+</g>
+<!-- Node&#45;&gt;Reporter -->
+<g id="edge12" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M606.8,-174C676.6,-174 760.5,-174 760.5,-174 760.5,-174 760.5,-124.96 760.5,-124.96"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="763.23,-124.96 760.5,-117.16 757.77,-124.96 763.23,-124.96"/>
+</g>
+<!-- TopicFreq&#45;&gt;TopicStates -->
+<g id="edge3" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M514.5,-323.62C514.5,-323.62 514.5,-286.83 514.5,-286.83"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="517.23,-286.83 514.5,-279.03 511.77,-286.83 517.23,-286.83"/>
+</g>
+<!-- TopicStates&#45;&gt;Node -->
+<g id="edge4" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M514.5,-242.62C514.5,-242.62 514.5,-205.83 514.5,-205.83"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="517.23,-205.83 514.5,-198.03 511.77,-205.83 517.23,-205.83"/>
+</g>
+<!-- VehicleJudge&#45;&gt;VehicleState -->
+<g id="edge5" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M1128.75,-161.62C1128.75,-161.62 1128.75,-124.83 1128.75,-124.83"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="1131.48,-124.83 1128.75,-117.03 1126.02,-124.83 1131.48,-124.83"/>
+</g>
+<!-- VehicleJudge&#45;&gt;Human -->
+<g id="edge6" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M1029.25,-161.62C1029.25,-161.62 1029.25,-124.83 1029.25,-124.83"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="1031.98,-124.83 1029.25,-117.03 1026.52,-124.83 1031.98,-124.83"/>
+</g>
+<!-- Reporter&#45;&gt;Heartbeat -->
+<g id="edge13" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M727.5,-80.62C727.5,-80.62 727.5,-43.83 727.5,-43.83"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="730.23,-43.83 727.5,-36.03 724.77,-43.83 730.23,-43.83"/>
+</g>
+<!-- Reporter&#45;&gt;EventJson -->
+<g id="edge14" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M799.5,-80.62C799.5,-80.62 799.5,-43.83 799.5,-43.83"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="802.23,-43.83 799.5,-36.03 796.77,-43.83 802.23,-43.83"/>
+</g>
+<!-- Faults -->
+<g id="node1" class="node">
+
+<path fill="#fff1ec" stroke="#d26a56" stroke-width="1.45" d="M372,-279C372,-279 319,-279 319,-279 313,-279 307,-273 307,-267 307,-267 307,-255 307,-255 307,-249 313,-243 319,-243 319,-243 372,-243 372,-243 378,-243 384,-249 384,-255 384,-255 384,-267 384,-267 384,-273 378,-279 372,-279"/>
+<text text-anchor="middle" x="345.5" y="-257.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#7c2f25">FaultInfo[]</text>
+</g>
+<!-- Coordinator -->
+<g id="node2" class="node">
+
+<path fill="#fff1ec" stroke="#d26a56" stroke-width="1.45" d="M298,-198C298,-198 177,-198 177,-198 171,-198 165,-192 165,-186 165,-186 165,-174 165,-174 165,-168 171,-162 177,-162 177,-162 298,-162 298,-162 304,-162 310,-168 310,-174 310,-174 310,-186 310,-186 310,-192 304,-198 298,-198"/>
+<text text-anchor="middle" x="237.5" y="-176.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#7c2f25">FaultStateCoordinator</text>
+</g>
+<!-- Node -->
+<g id="node3" class="node">
+
+<path fill="#eaf7ef" stroke="#61a87d" stroke-width="1.45" d="M594.5,-198C594.5,-198 434.5,-198 434.5,-198 428.5,-198 422.5,-192 422.5,-186 422.5,-186 422.5,-174 422.5,-174 422.5,-168 428.5,-162 434.5,-162 434.5,-162 594.5,-162 594.5,-162 600.5,-162 606.5,-168 606.5,-174 606.5,-174 606.5,-186 606.5,-186 606.5,-192 600.5,-198 594.5,-198"/>
+<text text-anchor="middle" x="514.5" y="-176.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">Nav2MonitorAggregatorNode</text>
+</g>
+<!-- TopicFreq -->
+<g id="node4" class="node">
+
+<path fill="#edf6ff" stroke="#6ba2d7" stroke-width="1.45" d="M602,-360C602,-360 427,-360 427,-360 421,-360 415,-354 415,-348 415,-348 415,-336 415,-336 415,-330 421,-324 427,-324 427,-324 602,-324 602,-324 608,-324 614,-330 614,-336 614,-336 614,-348 614,-348 614,-354 608,-360 602,-360"/>
+<text text-anchor="middle" x="514.5" y="-338.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#265b89">topic_frequency_monitor_node</text>
+</g>
+<!-- TopicStates -->
+<g id="node5" class="node">
+
+<path fill="#edf6ff" stroke="#6ba2d7" stroke-width="1.45" d="M573.5,-279C573.5,-279 455.5,-279 455.5,-279 449.5,-279 443.5,-273 443.5,-267 443.5,-267 443.5,-255 443.5,-255 443.5,-249 449.5,-243 455.5,-243 455.5,-243 573.5,-243 573.5,-243 579.5,-243 585.5,-249 585.5,-255 585.5,-255 585.5,-267 585.5,-267 585.5,-273 579.5,-279 573.5,-279"/>
+<text text-anchor="middle" x="514.5" y="-257.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#265b89">/monitor/topic_states</text>
+</g>
+<!-- VehicleJudge -->
+<g id="node6" class="node">
+
+<path fill="#fff6db" stroke="#d2a235" stroke-width="1.45" d="M1141,-198C1141,-198 998,-198 998,-198 992,-198 986,-192 986,-186 986,-186 986,-174 986,-174 986,-168 992,-162 998,-162 998,-162 1141,-162 1141,-162 1147,-162 1153,-168 1153,-174 1153,-174 1153,-186 1153,-186 1153,-192 1147,-198 1141,-198"/>
+<text text-anchor="middle" x="1069.5" y="-176.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#6c4d00">vehicle_state_judge_node</text>
+</g>
+<!-- VehicleState -->
+<g id="node7" class="node">
+
+<path fill="#eaf7ef" stroke="#61a87d" stroke-width="1.45" d="M1240.5,-117C1240.5,-117 1116.5,-117 1116.5,-117 1110.5,-117 1104.5,-111 1104.5,-105 1104.5,-105 1104.5,-93 1104.5,-93 1104.5,-87 1110.5,-81 1116.5,-81 1116.5,-81 1240.5,-81 1240.5,-81 1246.5,-81 1252.5,-87 1252.5,-93 1252.5,-93 1252.5,-105 1252.5,-105 1252.5,-111 1246.5,-117 1240.5,-117"/>
+<text text-anchor="middle" x="1178.5" y="-95.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">/monitor/vehicle_state</text>
+</g>
+<!-- Human -->
+<g id="node8" class="node">
+
+<path fill="#eaf7ef" stroke="#61a87d" stroke-width="1.45" d="M1060.5,-117C1060.5,-117 860.5,-117 860.5,-117 854.5,-117 848.5,-111 848.5,-105 848.5,-105 848.5,-93 848.5,-93 848.5,-87 854.5,-81 860.5,-81 860.5,-81 1060.5,-81 1060.5,-81 1066.5,-81 1072.5,-87 1072.5,-93 1072.5,-93 1072.5,-105 1072.5,-105 1072.5,-111 1066.5,-117 1060.5,-117"/>
+<text text-anchor="middle" x="960.5" y="-95.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">/nav2_monitor/human_intervention</text>
+</g>
+<!-- SafetyCmd -->
+<g id="node9" class="node">
+
+<path fill="#f1efff" stroke="#8d7ed3" stroke-width="1.45" d="M119,-117C119,-117 12,-117 12,-117 6,-117 0,-111 0,-105 0,-105 0,-93 0,-93 0,-87 6,-81 12,-81 12,-81 119,-81 119,-81 125,-81 131,-87 131,-93 131,-93 131,-105 131,-105 131,-111 125,-117 119,-117"/>
+<text text-anchor="middle" x="65.5" y="-95.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#463a88">/safety_system/cmd</text>
+</g>
+<!-- Status -->
+<g id="node10" class="node">
+
+<path fill="#eaf7ef" stroke="#61a87d" stroke-width="1.45" d="M292,-117C292,-117 175,-117 175,-117 169,-117 163,-111 163,-105 163,-105 163,-93 163,-93 163,-87 169,-81 175,-81 175,-81 292,-81 292,-81 298,-81 304,-87 304,-93 304,-93 304,-105 304,-105 304,-111 298,-117 292,-117"/>
+<text text-anchor="middle" x="233.5" y="-95.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">/nav2_monitor/status</text>
+</g>
+<!-- Event -->
+<g id="node11" class="node">
+
+<path fill="#fff1ec" stroke="#d26a56" stroke-width="1.45" d="M496.5,-117C496.5,-117 348.5,-117 348.5,-117 342.5,-117 336.5,-111 336.5,-105 336.5,-105 336.5,-93 336.5,-93 336.5,-87 342.5,-81 348.5,-81 348.5,-81 496.5,-81 496.5,-81 502.5,-81 508.5,-87 508.5,-93 508.5,-93 508.5,-105 508.5,-105 508.5,-111 502.5,-117 496.5,-117"/>
+<text text-anchor="middle" x="422.5" y="-95.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#7c2f25">/nav2_monitor/fault_event</text>
+</g>
+<!-- NodeManager -->
+<g id="node12" class="node">
+
+<path fill="#f1efff" stroke="#8d7ed3" stroke-width="1.45" d="M660.5,-117C660.5,-117 552.5,-117 552.5,-117 546.5,-117 540.5,-111 540.5,-105 540.5,-105 540.5,-93 540.5,-93 540.5,-87 546.5,-81 552.5,-81 552.5,-81 660.5,-81 660.5,-81 666.5,-81 672.5,-87 672.5,-93 672.5,-93 672.5,-105 672.5,-105 672.5,-111 666.5,-117 660.5,-117"/>
+<text text-anchor="middle" x="606.5" y="-95.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#463a88">/nodemanager/cmd</text>
+</g>
+<!-- Reporter -->
+<g id="node13" class="node">
+
+<path fill="#eaf7ef" stroke="#61a87d" stroke-width="1.45" d="M804.5,-117C804.5,-117 716.5,-117 716.5,-117 710.5,-117 704.5,-111 704.5,-105 704.5,-105 704.5,-93 704.5,-93 704.5,-87 710.5,-81 716.5,-81 716.5,-81 804.5,-81 804.5,-81 810.5,-81 816.5,-87 816.5,-93 816.5,-93 816.5,-105 816.5,-105 816.5,-111 810.5,-117 804.5,-117"/>
+<text text-anchor="middle" x="760.5" y="-95.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">MonitorReporter</text>
+</g>
+<!-- Heartbeat -->
+<g id="node14" class="node">
+
+<path fill="#eaf7ef" stroke="#61a87d" stroke-width="1.45" d="M738.5,-36C738.5,-36 518.5,-36 518.5,-36 512.5,-36 506.5,-30 506.5,-24 506.5,-24 506.5,-12 506.5,-12 506.5,-6 512.5,0 518.5,0 518.5,0 738.5,0 738.5,0 744.5,0 750.5,-6 750.5,-12 750.5,-12 750.5,-24 750.5,-24 750.5,-30 744.5,-36 738.5,-36"/>
+<text text-anchor="middle" x="628.5" y="-14.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">/nav2_monitor/reporter/heartbeat_json</text>
+</g>
+<!-- EventJson -->
+<g id="node15" class="node">
+
+<path fill="#eaf7ef" stroke="#61a87d" stroke-width="1.45" d="M990.5,-36C990.5,-36 794.5,-36 794.5,-36 788.5,-36 782.5,-30 782.5,-24 782.5,-24 782.5,-12 782.5,-12 782.5,-6 788.5,0 794.5,0 794.5,0 990.5,0 990.5,0 996.5,0 1002.5,-6 1002.5,-12 1002.5,-12 1002.5,-24 1002.5,-24 1002.5,-30 996.5,-36 990.5,-36"/>
+<text text-anchor="middle" x="892.5" y="-14.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">/nav2_monitor/reporter/event_json</text>
+</g>
+</g>
+</svg>
+</div>
+<p>输出说明：</p>
+<ul>
+<li><code>/monitor/topic_states</code>：独立 topic 频率监测 JSON；<code>nav2_monitor</code> 可配置为消费该状态。</li>
+</ul>
+<ul>
+<li><code>/monitor/vehicle_state</code>：独立小车状态判断 JSON；当前供上层/后续 aggregator 消费。</li>
+</ul>
+<ul>
+<li><code>/nav2_monitor/status</code>：周期状态总览。</li>
+</ul>
+<ul>
+<li><code>/nav2_monitor/fault_event</code>：故障触发/恢复边沿事件。</li>
+</ul>
+<ul>
+<li><code>/nodemanager/cmd</code>：节点管理器 JSON 命令；旧 <code>/supervisor/cmd</code> 仅作为兼容配置保留。</li>
+</ul>
+<ul>
+<li><code>/nav2_monitor/human_intervention</code>：仅小车状态检测触发的人工介入提醒。</li>
+</ul>
+<ul>
+<li><code>/safety_system/cmd</code>：安全执行命令。</li>
+</ul>
+<ul>
+<li>reporter JSON：给外部上报模块消费的本机 JSON topic。</li>
+</ul>
+<h2 id="5-配置链路">5. 配置链路</h2>
+<div class="svg-diagram"><div class="svg-diagram-title">可视化流程图</div><div class="svg-diagram-legend"><span><i style="background:#6ba2d7"></i>输入 / 数据源</span><span><i style="background:#d2a235"></i>判断 / 策略</span><span><i style="background:#61a87d"></i>状态 / 输出</span><span><i style="background:#d26a56"></i>故障 / 风险</span><span><i style="background:#8d7ed3"></i>执行 / 安全动作</span></div><svg width="660pt" height="412pt"
+ viewBox="0.00 0.00 660.00 412.00" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<g id="graph0" class="graph" transform="scale(1 1) rotate(0) translate(18 394)">
+
+<!-- Repo&#45;&gt;Deploy -->
+<g id="edge1" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M113.45,-188C113.45,-188 150.08,-188 150.08,-188"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="150.08,-190.73 157.88,-188 150.08,-185.27 150.08,-190.73"/>
+</g>
+<!-- Deploy&#45;&gt;AFA -->
+<g id="edge2" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M237,-206.19C237,-250.05 237,-358 237,-358 237,-358 354.46,-358 354.46,-358"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="354.46,-360.73 362.26,-358 354.46,-355.27 354.46,-360.73"/>
+</g>
+<!-- Deploy&#45;&gt;Monitor -->
+<g id="edge3" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M315.13,-196C344.56,-196 371,-196 371,-196 371,-196 371,-264.08 371,-264.08"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="368.27,-264.08 371,-271.88 373.73,-264.08 368.27,-264.08"/>
+</g>
+<!-- Deploy&#45;&gt;TopicFreq -->
+<g id="edge4" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M315.29,-188C355.06,-188 395,-188 395,-188 395,-188 395,-196.01 395,-196.01"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="392.27,-196.01 395,-203.81 397.73,-196.01 392.27,-196.01"/>
+</g>
+<!-- Deploy&#45;&gt;VehicleJudge -->
+<g id="edge5" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M263,-169.68C263,-161.21 263,-153 263,-153 263,-153 395.99,-153 395.99,-153"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="395.99,-155.73 403.79,-153 395.99,-150.27 395.99,-155.73"/>
+</g>
+<!-- Deploy&#45;&gt;Voxel -->
+<g id="edge6" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M211,-169.76C211,-140.43 211,-86 211,-86 211,-86 393.36,-86 393.36,-86"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="393.36,-88.73 401.16,-86 393.36,-83.27 393.36,-88.73"/>
+</g>
+<!-- Deploy&#45;&gt;Safety -->
+<g id="edge7" class="edge">
+
+<path fill="none" stroke="#1f6f50" stroke-width="1.45" d="M315.1,-180C350.72,-180 385,-180 385,-180 385,-180 385,-44.07 385,-44.07"/>
+<polygon fill="#1f6f50" stroke="#1f6f50" stroke-width="1.45" points="387.73,-44.07 385,-36.27 382.27,-44.07 387.73,-44.07"/>
+</g>
+<!-- Repo -->
+<g id="node1" class="node">
+
+<path fill="#eaf7ef" stroke="#61a87d" stroke-width="1.45" d="M101,-206C101,-206 12,-206 12,-206 6,-206 0,-200 0,-194 0,-194 0,-182 0,-182 0,-176 6,-170 12,-170 12,-170 101,-170 101,-170 107,-170 113,-176 113,-182 113,-182 113,-194 113,-194 113,-200 107,-206 101,-206"/>
+<text text-anchor="middle" x="56.5" y="-184.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">config/Monitor/*</text>
+</g>
+<!-- Deploy -->
+<g id="node2" class="node">
+
+<path fill="#eaf7ef" stroke="#61a87d" stroke-width="1.45" d="M303,-206C303,-206 170,-206 170,-206 164,-206 158,-200 158,-194 158,-194 158,-182 158,-182 158,-176 164,-170 170,-170 170,-170 303,-170 303,-170 309,-170 315,-176 315,-182 315,-182 315,-194 315,-194 315,-200 309,-206 303,-206"/>
+<text text-anchor="middle" x="236.5" y="-184.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">/opt/ry/config/Monitor/*</text>
+</g>
+<!-- AFA -->
+<g id="node3" class="node">
+
+<path fill="#ffffff" stroke="#86b6a3" stroke-width="1.45" d="M609.5,-376C609.5,-376 374.5,-376 374.5,-376 368.5,-376 362.5,-370 362.5,-364 362.5,-364 362.5,-352 362.5,-352 362.5,-346 368.5,-340 374.5,-340 374.5,-340 609.5,-340 609.5,-340 615.5,-340 621.5,-346 621.5,-352 621.5,-352 621.5,-364 621.5,-364 621.5,-370 615.5,-376 609.5,-376"/>
+<text text-anchor="middle" x="492" y="-354.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f2a2c">algorithm_feedback_adapter params/spec</text>
+</g>
+<!-- Monitor -->
+<g id="node4" class="node">
+
+<path fill="#fff1ec" stroke="#d26a56" stroke-width="1.45" d="M612,-308C612,-308 372,-308 372,-308 366,-308 360,-302 360,-296 360,-296 360,-284 360,-284 360,-278 366,-272 372,-272 372,-272 612,-272 612,-272 618,-272 624,-278 624,-284 624,-284 624,-296 624,-296 624,-302 618,-308 612,-308"/>
+<text text-anchor="middle" x="492" y="-286.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#7c2f25">nav2_monitor params/fault_config/profiles</text>
+</g>
+<!-- TopicFreq -->
+<g id="node5" class="node">
+
+<path fill="#edf6ff" stroke="#6ba2d7" stroke-width="1.45" d="M584,-240C584,-240 400,-240 400,-240 394,-240 388,-234 388,-228 388,-228 388,-216 388,-216 388,-210 394,-204 400,-204 400,-204 584,-204 584,-204 590,-204 596,-210 596,-216 596,-216 596,-228 596,-228 596,-234 590,-240 584,-240"/>
+<text text-anchor="middle" x="492" y="-218.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#265b89">topic_frequency_monitor params</text>
+</g>
+<!-- VehicleJudge -->
+<g id="node6" class="node">
+
+<path fill="#fff6db" stroke="#d2a235" stroke-width="1.45" d="M568,-172C568,-172 416,-172 416,-172 410,-172 404,-166 404,-160 404,-160 404,-148 404,-148 404,-142 410,-136 416,-136 416,-136 568,-136 568,-136 574,-136 580,-142 580,-148 580,-148 580,-160 580,-160 580,-166 574,-172 568,-172"/>
+<text text-anchor="middle" x="492" y="-150.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#6c4d00">vehicle_state_judge params</text>
+</g>
+<!-- Voxel -->
+<g id="node7" class="node">
+
+<path fill="#fff1ec" stroke="#d26a56" stroke-width="1.45" d="M570.5,-104C570.5,-104 413.5,-104 413.5,-104 407.5,-104 401.5,-98 401.5,-92 401.5,-92 401.5,-80 401.5,-80 401.5,-74 407.5,-68 413.5,-68 413.5,-68 570.5,-68 570.5,-68 576.5,-68 582.5,-74 582.5,-80 582.5,-80 582.5,-92 582.5,-92 582.5,-98 576.5,-104 570.5,-104"/>
+<text text-anchor="middle" x="492" y="-82.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#7c2f25">collision_voxel_layer params</text>
+</g>
+<!-- Safety -->
+<g id="node8" class="node">
+
+<path fill="#fff1ec" stroke="#d26a56" stroke-width="1.45" d="M591,-36C591,-36 393,-36 393,-36 387,-36 381,-30 381,-24 381,-24 381,-12 381,-12 381,-6 387,0 393,0 393,0 591,0 591,0 597,0 603,-6 603,-12 603,-12 603,-24 603,-24 603,-30 597,-36 591,-36"/>
+<text text-anchor="middle" x="492" y="-14.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#7c2f25">safety_emergency_executor params</text>
+</g>
+</g>
+</svg>
+</div>
+<p>配置约定：</p>
+<ul>
+<li>仓库 <code>config/Monitor/*</code> 是运行配置镜像。</li>
+</ul>
+<ul>
+<li>实机以 <code>/opt/ry/config/Monitor/*</code> 为运行时单一事实来源。</li>
+</ul>
+<ul>
+<li><code>nav2_monitor</code> 的任务配置可按 <code>default / todoor / elevator / reverse</code> 切换 fault config。</li>
+</ul>
+<ul>
+<li><code>algorithm_feedback_adapter</code> 的 spec 支持热重载。</li>
+</ul>
+<ul>
+<li><code>collision_voxel_layer</code> 支持参数和文件热重载。</li>
+</ul>
+<h2 id="6-主要-topic-总览">6. 主要 topic 总览</h2>
+<div class="table-wrap"><table>
+<thead><tr><th>Topic</th><th>Type</th><th>生产者</th><th>消费者</th><th>说明</th></tr></thead>
+<tbody>
+<tr><td><code>/nav2_monitor/algorithm_feedback</code></td><td><code>nav2_monitor/msg/AlgorithmFeedback</code></td><td><code>algorithm_feedback_adapter</code></td><td><code>nav2_monitor</code></td><td>统一算法反馈指标</td></tr>
+<tr><td><code>/monitor/topic_states</code></td><td><code>std_msgs/msg/String</code></td><td><code>topic_frequency_monitor_node</code></td><td><code>nav2_monitor</code> / 上层模块</td><td>watch topic 频率与新鲜度状态</td></tr>
+<tr><td><code>/monitor/vehicle_state</code></td><td><code>std_msgs/msg/String</code></td><td><code>vehicle_state_judge_node</code></td><td>上层模块 / 后续 aggregator</td><td>小车运动状态是否符合期望</td></tr>
+<tr><td><code>/collision_voxel_layer/voxels</code></td><td><code>collision_voxel_layer/msg/VoxelGrid</code></td><td><code>collision_voxel_layer</code></td><td><code>nav2_monitor</code></td><td>融合障碍体素</td></tr>
+<tr><td><code>/collision_voxel_layer/source_status</code></td><td><code>std_msgs/msg/String</code></td><td><code>collision_voxel_layer</code></td><td>调试/上报模块</td><td>体素输入源状态</td></tr>
+<tr><td><code>/nav2_monitor/status</code></td><td><code>nav2_monitor/msg/MonitorStatus</code></td><td><code>nav2_monitor</code></td><td>外部模块</td><td>周期状态</td></tr>
+<tr><td><code>/nav2_monitor/fault_event</code></td><td><code>nav2_monitor/msg/FaultEvent</code></td><td><code>nav2_monitor</code></td><td>外部模块</td><td>故障边沿事件</td></tr>
+<tr><td><code>/nav2_monitor/human_intervention</code></td><td><code>std_msgs/msg/String</code></td><td><code>nav2_monitor</code></td><td>外部云端/MQTT模块</td><td>小车状态人工介入提醒</td></tr>
+<tr><td><code>/nav2_monitor/reporter/heartbeat_json</code></td><td><code>std_msgs/msg/String</code></td><td><code>nav2_monitor</code></td><td>外部云端/MQTT模块</td><td>JSON 心跳</td></tr>
+<tr><td><code>/nav2_monitor/reporter/event_json</code></td><td><code>std_msgs/msg/String</code></td><td><code>nav2_monitor</code></td><td>外部云端/MQTT模块</td><td>JSON 事件</td></tr>
+<tr><td><code>/nodemanager/cmd</code></td><td><code>std_msgs/msg/String</code></td><td><code>nav2_monitor</code></td><td>节点管理器 / 外部模块</td><td>模块重启请求</td></tr>
+<tr><td><code>/safety_system/cmd</code></td><td><code>nav2_monitor/msg/SafetyCmd</code></td><td><code>nav2_monitor</code></td><td><code>safety_emergency_executor</code></td><td>安全动作</td></tr>
+<tr><td><code>/navigation_mode</code></td><td><code>std_msgs/msg/String</code></td><td><code>nav2_monitor</code></td><td>导航控制器切换模块</td><td><code>FAST</code> / <code>SAFE</code></td></tr>
+<tr><td><code>/control_source_state</code></td><td><code>std_msgs/msg/String</code></td><td><code>safety_emergency_executor</code></td><td><code>nav2_monitor</code></td><td>当前速度控制源</td></tr>
+<tr><td><code>/command</code></td><td><code>std_msgs/msg/String</code></td><td><code>safety_emergency_executor</code></td><td>底盘</td><td>最终底盘控制</td></tr>
+</tbody></table></div>
+<h2 id="7-开发与验证命令">7. 开发与验证命令</h2>
+<p>所有 ROS 相关命令建议显式声明 <code>ROS_DOMAIN_ID=66</code>。</p>
+<pre><code class="language-bash">
+env ROS_DOMAIN_ID=66 colcon build --packages-select algorithm_feedback_adapter nav2_monitor collision_voxel_layer safety_emergency_executor
+</code></pre>
+<pre><code class="language-bash">
+env ROS_DOMAIN_ID=66 ROS_LOG_DIR=/tmp/ros_logs colcon test --packages-select algorithm_feedback_adapter nav2_monitor collision_voxel_layer safety_emergency_executor --event-handlers console_direct+
+</code></pre>
+<p>单包测试示例：</p>
+<pre><code class="language-bash">
+env ROS_DOMAIN_ID=66 ROS_LOG_DIR=/tmp/ros_logs colcon test --packages-select algorithm_feedback_adapter --event-handlers console_direct+
+</code></pre>
+<pre><code class="language-bash">
+env ROS_DOMAIN_ID=66 ROS_LOG_DIR=/tmp/ros_logs /bin/bash -lc &#x27;source install/setup.bash &amp;&amp; build/nav2_monitor/test_fault_detector&#x27;
+</code></pre>
+<h2 id="8-设计原则">8. 设计原则</h2>
+<ul>
+<li>数据源检测优先于业务判断。</li>
+</ul>
+<ul>
+<li>单个数据源丢失不应导致整条障碍链路失效。</li>
+</ul>
+<ul>
+<li>故障判断和安全执行解耦。</li>
+</ul>
+<ul>
+<li>安全动作集中仲裁，避免多点直接控制底盘。</li>
+</ul>
+<ul>
+<li>人工介入提醒和云端上报解耦，本项目只发布本机 ROS topic。</li>
+</ul>
+<ul>
+<li>配置统一迁移到 <code>/opt/ry/config/Monitor</code>，仓库保持镜像文件用于版本管理。</li>
+</ul>
+      <div class="meta">本文档已统一为 HTML 形式，便于浏览、打印和后续可视化扩展。</div>
+    </article>
+  </div>
+</body>
+</html>

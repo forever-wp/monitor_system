@@ -7,8 +7,8 @@
 
 轻量级 Nav2 监控、故障检测与安全联动系统。
 
-项目级数据链路见 [项目架构与数据链路](../../docs/project_architecture.md)。
-后续模块独立化与可靠数据联通方案见 [监控系统模块独立化与可靠数据联通设计方案](../../docs/monitor_modular_isolation_design.md)。
+项目级数据链路见 [项目架构与数据链路](../../docs/project_architecture.html)。
+后续模块独立化与可靠数据联通方案见 [监控系统模块独立化与可靠数据联通设计方案](../../docs/monitor_modular_isolation_design.html)。
 
 ## 设计原则
 
@@ -18,9 +18,9 @@
 
 ## 文档入口
 
-- 变更记录：`CHANGELOG.md`
-- 设计说明：`src/nav2_monitor/docs/architecture.md`
-- 流程图 / 数据流图：`src/nav2_monitor/docs/architecture_diagrams.md`
+- 变更记录：[CHANGELOG.html](../../CHANGELOG.html)
+- 设计说明：[architecture.html](docs/architecture.html)
+- 流程图 / 数据流图：[architecture_diagrams.html](docs/architecture_diagrams.html)
 - 上报器类：`src/nav2_monitor/include/nav2_monitor/monitor_reporter.hpp`
 
 ## 功能概览
@@ -62,7 +62,7 @@
 - `FaultStateCoordinator`：故障边沿、状态机、安全动作发布
 - `safety_emergency_executor`：执行 `SLOW_DOWN / SOFT_STOP / EMERGENCY_STOP / RESUME`
 
-详细职责见 `src/nav2_monitor/docs/architecture.md`。
+详细职责见 [architecture.html](docs/architecture.html)。
 
 ## 快速启动
 

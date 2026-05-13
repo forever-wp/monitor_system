@@ -2,7 +2,7 @@
 
 从 `strategy_state_machine` 中抽取的应急措施执行功能包。
 
-项目级数据链路见 [项目架构与数据链路](../../docs/project_architecture.md)。
+项目级数据链路见 [项目架构与数据链路](../../docs/project_architecture.html)。
 
 ## 功能
 
