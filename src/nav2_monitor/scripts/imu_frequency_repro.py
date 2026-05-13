@@ -95,7 +95,7 @@ def make_temp_configs(workspace_root: Path, monitor_topic: str, min_hz: float) -
 
         modules:
           - name: "imu_probe"
-            supervisor: 0
+            nodemanager: 0
             safety_system: 0
             nodes: []
             watch_topics:
@@ -109,8 +109,8 @@ def make_temp_configs(workspace_root: Path, monitor_topic: str, min_hz: float) -
             timeout: 2.0
             scan_rate: 1.0
             check_rate: 5.0
-            safety_cooldown_s: 2.0
-            supervisor_cooldown_s: 5.0
+            nodemanager_cooldown_s: 5.0
+            safety_cmd_republish_period_s: 0.2
             topic_states_topic: "/monitor/topic_states"
             vehicle_state_topic: "/monitor/vehicle_state"
             node_tf_state_topic: "/monitor/node_tf_state"

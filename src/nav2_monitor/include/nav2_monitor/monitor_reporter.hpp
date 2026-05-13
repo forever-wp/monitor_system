@@ -11,6 +11,7 @@
 #include "nav2_monitor/msg/monitor_status.hpp"
 #include "nav2_monitor/msg/fault_event.hpp"
 #include "nav2_monitor/msg/safety_cmd.hpp"
+#include "nav2_monitor/event_codex_arbiter.hpp"
 
 namespace nav2_monitor
 {
@@ -26,6 +27,10 @@ public:
   void cache_supervisor_json(const std::string & json_payload, const rclcpp::Time & now);
   void cache_safety_cmd(const msg::SafetyCmd & msg, const rclcpp::Time & now);
   void publish_fault_event_json(const msg::FaultEvent & event, const rclcpp::Time & now) const;
+  void publish_human_takeover(
+    const EventHumanTakeoverDecision & decision,
+    const std::string & plan_id,
+    const rclcpp::Time & now) const;
 
 private:
   struct NodeManagerCache
@@ -60,6 +65,7 @@ private:
   double cmd_correlation_window_s_{2.0};
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr heartbeat_pub_;
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr event_pub_;
+  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr human_takeover_pub_;
   NodeManagerCache last_nodemanager_cmd_;
   SafetyCache last_safety_cmd_;
 };

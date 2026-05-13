@@ -59,16 +59,12 @@ VehicleStateJudgeNode::VehicleStateJudgeNode()
   config_profile_topic_ = declare_parameter<std::string>(
     "config_profile_topic", "/monitor/config_profile");
   publish_topic_ = declare_parameter<std::string>("publish_topic", "/monitor/vehicle_state");
-  human_intervention_topic_ = declare_parameter<std::string>(
-    "human_intervention_topic", "/nav2_monitor/human_intervention");
   check_rate_hz_ = std::max(1.0, declare_parameter<double>("check_rate_hz", 10.0));
 
   load_configuration();
 
   state_pub_ = create_publisher<std_msgs::msg::String>(
     publish_topic_, rclcpp::QoS(1).reliable().transient_local());
-  human_intervention_pub_ = create_publisher<std_msgs::msg::String>(
-    human_intervention_topic_, rclcpp::QoS(50).reliable().durability_volatile());
 
   configure_profile_subscription();
   configure_subscriptions();
@@ -83,8 +79,8 @@ VehicleStateJudgeNode::VehicleStateJudgeNode()
 
   RCLCPP_INFO(
     get_logger(),
-    "vehicle_state_judge started: publish=%s human_intervention=%s command=%s moto=%s odom=%s imu=%s",
-    publish_topic_.c_str(), human_intervention_topic_.c_str(), cfg_.command_topic.c_str(),
+    "vehicle_state_judge started as event discoverer: publish=%s command=%s moto=%s odom=%s imu=%s",
+    publish_topic_.c_str(), cfg_.command_topic.c_str(),
     cfg_.moto_topic.c_str(), cfg_.odom_topic.empty() ? "<disabled>" : cfg_.odom_topic.c_str(),
     cfg_.imu_topic.empty() ? "<disabled>" : cfg_.imu_topic.c_str());
 }
@@ -105,7 +101,6 @@ void VehicleStateJudgeNode::load_configuration()
   evaluator_.set_logger(get_logger());
   evaluator_.set_multi_value_config(multi_value_cfg_);
   evaluator_.reset();
-  active_human_fault_keys_.clear();
 }
 
 void VehicleStateJudgeNode::configure_profile_subscription()
@@ -250,15 +245,6 @@ void VehicleStateJudgeNode::evaluate_and_publish()
 
   auto faults = evaluator_.evaluate(cfg_, data_store_, now_time);
   publish_state(faults, data_store_.get_chassis_state(), now_time);
-
-  std::set<std::string> current_fault_keys;
-  for (const auto & fault : faults) {
-    current_fault_keys.insert(fault.fault_key);
-    if (active_human_fault_keys_.count(fault.fault_key) == 0) {
-      publish_human_intervention_request(fault, now_time);
-    }
-  }
-  active_human_fault_keys_ = std::move(current_fault_keys);
 }
 
 void VehicleStateJudgeNode::publish_state(
@@ -339,26 +325,6 @@ void VehicleStateJudgeNode::publish_state(
   std_msgs::msg::String msg;
   msg.data = oss.str();
   state_pub_->publish(msg);
-}
-
-void VehicleStateJudgeNode::publish_human_intervention_request(
-  const FaultInfo & fault,
-  const rclcpp::Time & now_time)
-{
-  std_msgs::msg::String msg;
-  std::ostringstream oss;
-  oss << '{'
-      << "\"stamp\":" << now_time.seconds() << ','
-      << "\"source_module\":\"vehicle_state_judge\","
-      << "\"fault_key\":\"" << json_escape(fault.fault_key) << "\","
-      << "\"level\":\"" << fault_level_to_string(fault.level) << "\","
-      << "\"reason\":\"" << json_escape(fault.reason) << "\","
-      << "\"request\":\"human_intervention\""
-      << '}';
-  msg.data = oss.str();
-  human_intervention_pub_->publish(msg);
-  RCLCPP_ERROR(
-    get_logger(), "Vehicle state requires human intervention: %s", fault.reason.c_str());
 }
 
 double VehicleStateJudgeNode::parse_command_speed(const std::string & payload) const

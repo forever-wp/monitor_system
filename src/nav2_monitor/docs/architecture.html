@@ -117,7 +117,7 @@
 <body>
   <div class="page">
     <article class="card">
-      <aside class="toc"><strong>目录</strong><ul><li><a href="#nav2monitor-架构设计说明">nav2_monitor 架构设计说明</a></li><li><a href="#1-版本目标">1. 版本目标</a></li><li><a href="#2-总体架构">2. 总体架构</a></li><li><a href="#3-各模块职责">3. 各模块职责</a></li><li><a href="#31-nav2monitoraggregatornode">3.1 Nav2MonitorAggregatorNode</a></li><li><a href="#32-monitordatastore">3.2 MonitorDataStore</a></li><li><a href="#33-watchtopicevaluator">3.3 WatchTopicEvaluator</a></li><li><a href="#34-feedbackruleevaluator">3.4 FeedbackRuleEvaluator</a></li><li><a href="#35-chassisevaluator">3.5 ChassisEvaluator</a></li><li><a href="#36-collisionevaluator">3.6 CollisionEvaluator</a></li><li><a href="#37-faultdetector">3.7 FaultDetector</a></li><li><a href="#38-faultstatecoordinator">3.8 FaultStateCoordinator</a></li><li><a href="#39-safetyemergencyexecutor">3.9 safety_emergency_executor</a></li><li><a href="#4-数据流与执行流">4. 数据流与执行流</a></li><li><a href="#41-状态采集流">4.1 状态采集流</a></li><li><a href="#42-故障检测流">4.2 故障检测流</a></li><li><a href="#43-安全仲裁流">4.3 安全仲裁流</a></li><li><a href="#44-事件与状态输出流">4.4 事件与状态输出流</a></li><li><a href="#5-配置语义">5. 配置语义</a></li><li><a href="#51-watchtopics">5.1 `watch_topics`</a></li><li><a href="#52-feedbackrules">5.2 `feedback_rules`</a></li><li><a href="#52-targettransforms">5.2 `target_transforms`</a></li><li><a href="#53-collisiondetection">5.3 `collision_detection`</a></li><li><a href="#54-zones">5.4 `zones`</a></li><li><a href="#6-当前已实现能力">6. 当前已实现能力</a></li><li><a href="#已实现">已实现</a></li><li><a href="#尚未实现-未来优化点">尚未实现 / 未来优化点</a></li><li><a href="#多错误组合策略已支持第一版">多错误组合策略（已支持第一版）</a></li><li><a href="#7-性能设计原则">7. 性能设计原则</a></li><li><a href="#8-推荐阅读顺序">8. 推荐阅读顺序</a></li></ul></aside>
+      <aside class="toc"><strong>目录</strong><ul><li><a href="#nav2monitor-架构设计说明">nav2_monitor 架构设计说明</a></li><li><a href="#1-版本目标">1. 版本目标</a></li><li><a href="#2-总体架构">2. 总体架构</a></li><li><a href="#3-各模块职责">3. 各模块职责</a></li><li><a href="#31-nav2monitoraggregatornode">3.1 Nav2MonitorAggregatorNode</a></li><li><a href="#32-monitordatastore">3.2 MonitorDataStore</a></li><li><a href="#33-watchtopicevaluator">3.3 WatchTopicEvaluator</a></li><li><a href="#34-feedbackruleevaluator">3.4 FeedbackRuleEvaluator</a></li><li><a href="#35-chassisevaluator">3.5 ChassisEvaluator</a></li><li><a href="#36-collisionevaluator">3.6 CollisionEvaluator</a></li><li><a href="#37-faultdetector">3.7 FaultDetector</a></li><li><a href="#38-eventcodexarbiter-eventexecutor">3.8 EventCodexArbiter / EventExecutor</a></li><li><a href="#39-safetyemergencyexecutor">3.9 safety_emergency_executor</a></li><li><a href="#4-数据流与执行流">4. 数据流与执行流</a></li><li><a href="#41-状态采集流">4.1 状态采集流</a></li><li><a href="#42-故障检测流">4.2 故障检测流</a></li><li><a href="#43-事件仲裁与执行流">4.3 事件仲裁与执行流</a></li><li><a href="#44-事件与状态输出流">4.4 事件与状态输出流</a></li><li><a href="#5-配置语义">5. 配置语义</a></li><li><a href="#51-watchtopics">5.1 `watch_topics`</a></li><li><a href="#52-feedbackrules">5.2 `feedback_rules`</a></li><li><a href="#52-targettransforms">5.2 `target_transforms`</a></li><li><a href="#53-collisiondetection">5.3 `collision_detection`</a></li><li><a href="#54-zones">5.4 `zones`</a></li><li><a href="#6-当前已实现能力">6. 当前已实现能力</a></li><li><a href="#已实现">已实现</a></li><li><a href="#尚未实现-未来优化点">尚未实现 / 未来优化点</a></li><li><a href="#多错误组合策略已支持第一版">多错误组合策略（已支持第一版）</a></li><li><a href="#7-性能设计原则">7. 性能设计原则</a></li><li><a href="#8-推荐阅读顺序">8. 推荐阅读顺序</a></li></ul></aside>
 <h1 id="nav2monitor-架构设计说明">nav2_monitor 架构设计说明</h1>
 <ul>
 <li>名称：nav2_monitor v2.3</li>
@@ -165,13 +165,13 @@
 <li><strong>故障编排层</strong>：<code>FaultDetector</code></li>
 </ol>
 <ol>
-<li><strong>安全状态层</strong>：<code>FaultStateCoordinator</code></li>
+<li><strong>事件仲裁与执行层</strong>：<code>EventCodexArbiter</code> + <code>EventExecutor</code></li>
 </ol>
 <ol>
 <li><strong>动作执行层</strong>：<code>safety_emergency_executor</code></li>
 </ol>
 <p>数据主链路如下：</p>
-<p><code>ROS 输入 -&gt; Nav2MonitorAggregatorNode -&gt; MonitorDataStore -&gt; FaultDetector -&gt; FaultStateCoordinator -&gt; SafetyCmd -&gt; safety_emergency_executor</code></p>
+<p><code>ROS 输入 -&gt; 事件发现器 -&gt; /monitor/*_state -&gt; Nav2MonitorAggregatorNode -&gt; FaultDetector -&gt; EventCodexArbiter -&gt; EventExecutor -&gt; safety_emergency_executor / nodemanager</code></p>
 <p>同时还有两条输出链路：</p>
 <ul>
 <li>状态输出链：<code>/nav2_monitor/status</code></li>
@@ -202,7 +202,7 @@
 <li>周期组装 <code>MonitorStatus</code></li>
 </ul>
 <ul>
-<li>触发故障检测与安全仲裁</li>
+<li>触发事件发现、法典仲裁与事件执行层</li>
 </ul>
 <ul>
 <li>发布 <code>FaultEvent</code> 与 <code>SupervisorCmd</code></li>
@@ -417,8 +417,8 @@
 <ul>
 <li>生成稳定 <code>fault_key</code></li>
 </ul>
-<h3 id="38-faultstatecoordinator">3.8 FaultStateCoordinator</h3>
-<p><code>FaultStateCoordinator</code> 是安全状态机与边沿管理中心。</p>
+<h3 id="38-eventcodexarbiter-eventexecutor">3.8 EventCodexArbiter / EventExecutor</h3>
+<p><code>EventCodexArbiter</code> 是事件法典仲裁器，负责基于当前 active event set 生成唯一最终执行计划；<code>EventExecutor</code> 是事件执行层，负责将执行计划发布到 <code>/safety_system/cmd</code> 和 <code>/nodemanager/cmd</code>。</p>
 <p>职责：</p>
 <ul>
 <li>维护当前激活故障标志位</li>
@@ -498,9 +498,9 @@
 <ul>
 <li>每条 <code>FaultInfo</code> 带稳定 <code>fault_key</code></li>
 </ul>
-<h3 id="43-安全仲裁流">4.3 安全仲裁流</h3>
+<h3 id="43-事件仲裁与执行流">4.3 事件仲裁与执行流</h3>
 <ul>
-<li><code>FaultStateCoordinator</code> 接收 <code>FaultInfo[]</code></li>
+<li><code>EventCodexArbiter</code> 接收 <code>FaultInfo[]</code> 事实集</li>
 </ul>
 <ul>
 <li>识别：</li>
@@ -709,7 +709,7 @@
 <li>输出方式：命中后附加一条新的 <code>FaultInfo</code>，<code>module_name</code> 固定为 <code>combined_fault</code></li>
 </ul>
 <ul>
-<li>仲裁方式：不新增单独仲裁器，继续复用 <code>FaultStateCoordinator</code></li>
+<li>仲裁方式：由 <code>EventCodexArbiter</code> 独立完成组合规则、交叉规则和恢复降级仲裁</li>
 </ul>
 <ul>
 <li>当前边界：不支持 <code>when_any</code>、层级表达式、时间窗聚合、排除条件</li>
@@ -737,7 +737,7 @@
 <li>evaluator 做局部轻量判断</li>
 </ul>
 <ul>
-<li><code>FaultStateCoordinator</code> 统一安全仲裁，避免多处重复逻辑</li>
+<li><code>EventExecutor</code> 统一执行 safety 与 nodemanager 命令，避免多处重复直发</li>
 </ul>
 <ul>
 <li>碰撞检测使用轻量几何判定，而不是重型地图/规划推演</li>
@@ -758,7 +758,7 @@
 <li>各 evaluator</li>
 </ol>
 <ol>
-<li><code>FaultStateCoordinator</code></li>
+<li><code>EventCodexArbiter</code> / <code>EventExecutor</code></li>
 </ol>
 <ol>
 <li><code>safety_emergency_executor</code></li>
@@ -774,7 +774,10 @@
 <li><code>include/nav2_monitor/fault_detector.hpp</code></li>
 </ul>
 <ul>
-<li><code>include/nav2_monitor/fault_state_coordinator.hpp</code></li>
+<li><code>include/nav2_monitor/event_codex_arbiter.hpp</code></li>
+</ul>
+<ul>
+<li><code>include/nav2_monitor/event_executor.hpp</code></li>
 </ul>
 <ul>
 <li><code>include/nav2_monitor/collision_evaluator.hpp</code></li>

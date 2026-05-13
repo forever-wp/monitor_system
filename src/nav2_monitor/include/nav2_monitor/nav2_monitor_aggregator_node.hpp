@@ -15,9 +15,10 @@
 #include "nav2_monitor/system_monitor.hpp"
 #include "nav2_monitor/monitor_data_store.hpp"
 #include "nav2_monitor/monitor_reporter.hpp"
+#include "nav2_monitor/event_codex_arbiter.hpp"
+#include "nav2_monitor/event_executor.hpp"
 #include "nav2_monitor/fault_detector.hpp"
 #include "nav2_monitor/fault_config_watcher.hpp"
-#include "nav2_monitor/fault_state_coordinator.hpp"
 #include "nav2_monitor/task_fault_config_selector.hpp"
 #include "nav2_monitor/task_status_mapper.hpp"
 #include "nav2_monitor/task_status_message_adapter.hpp"
@@ -58,9 +59,7 @@ private:
   void on_monitor_battery_state(const std_msgs::msg::String::SharedPtr msg);
   void on_feedback_state(const std_msgs::msg::String::SharedPtr msg);
   void on_collision_state(const std_msgs::msg::String::SharedPtr msg);
-  bool should_publish_action(const std::string & module_name, ActionType action, const rclcpp::Time & now);
   rcl_interfaces::msg::SetParametersResult on_parameter_change(const std::vector<rclcpp::Parameter>& params);
-  void publish_human_intervention_request(const FaultInfo & fault, const rclcpp::Time & now);
   bool reload_fault_config_if_needed(bool force = false);
   void apply_loaded_fault_config();
   void publish_config_profile();
@@ -110,8 +109,8 @@ private:
   rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr param_callback_;
 
   double timeout_;
-  double safety_cooldown_s_;
   double nodemanager_cooldown_s_;
+  double safety_cmd_republish_period_s_{0.2};
   std::string topic_states_topic_{"/monitor/topic_states"};
   std::string vehicle_state_topic_{"/monitor/vehicle_state"};
   std::string node_tf_state_topic_{"/monitor/node_tf_state"};
@@ -142,9 +141,9 @@ private:
   MonitorDataStore data_store_;
   FaultDetector fault_detector_;
   MonitorReporter monitor_reporter_;
-  FaultStateCoordinator fault_state_coordinator_;
+  EventCodexArbiter event_codex_arbiter_;
+  EventExecutor event_executor_;
   std::unique_ptr<VehicleStatusMonitor> vehicle_monitor_;
-  std::map<std::string, rclcpp::Time> last_action_publish_time_;
   std::vector<FaultInfo> external_vehicle_faults_;
   rclcpp::Time last_vehicle_state_time_{0, 0, RCL_ROS_TIME};
   std::map<std::string, bool> external_node_active_;
@@ -158,9 +157,6 @@ private:
   rclcpp::Time last_monitor_battery_state_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Time last_feedback_state_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Time last_collision_state_time_{0, 0, RCL_ROS_TIME};
-
-  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr nodemanager_pub_;
-  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr human_intervention_pub_;
 };
 
 }  // namespace nav2_monitor

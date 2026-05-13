@@ -341,7 +341,7 @@
 
 <path fill="none" stroke="#5b8f79" stroke-width="1.45" d="M403.62,-326C386.77,-326 372,-326 372,-326 372,-326 372,-152.81 372,-152.81"/>
 <polygon fill="#5b8f79" stroke="#5b8f79" stroke-width="1.45" points="374.73,-152.81 372,-145.01 369.27,-152.81 374.73,-152.81"/>
-<text text-anchor="middle" x="673.5" y="-233.5" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="10.00">/nav2_monitor/human_intervention</text>
+<text text-anchor="middle" x="673.5" y="-233.5" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="10.00">/nav2_monitor/reporter/human_takeover_json</text>
 </g>
 <!-- Coordinator&#45;&gt;Safety -->
 <g id="edge19" class="edge">
@@ -453,7 +453,7 @@
 <g id="node15" class="node">
 
 <path fill="#fff1ec" stroke="#d26a56" stroke-width="1.45" d="M512.5,-254C512.5,-254 391.5,-254 391.5,-254 385.5,-254 379.5,-248 379.5,-242 379.5,-242 379.5,-230 379.5,-230 379.5,-224 385.5,-218 391.5,-218 391.5,-218 512.5,-218 512.5,-218 518.5,-218 524.5,-224 524.5,-230 524.5,-230 524.5,-242 524.5,-242 524.5,-248 518.5,-254 512.5,-254"/>
-<text text-anchor="middle" x="452" y="-232.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#7c2f25">FaultStateCoordinator</text>
+<text text-anchor="middle" x="452" y="-232.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#7c2f25">EventCodexArbiter + EventExecutor</text>
 </g>
 <!-- Reporter -->
 <g id="node16" class="node">
@@ -502,7 +502,7 @@
 <text x="635" y="42" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12" fill="#7c2f25" font-weight="700">FaultDetector</text>
 <line x1="635" y1="58" x2="635" y2="581" stroke="#c7d8d0" stroke-width="1.2" stroke-dasharray="5 5"/>
 <rect x="740" y="18" width="130" height="38" rx="10" fill="#fff1ec" stroke="#d26a56" stroke-width="1.3"/>
-<text x="805" y="42" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12" fill="#7c2f25" font-weight="700">FaultStateCoordinator</text>
+<text x="805" y="42" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12" fill="#7c2f25" font-weight="700">EventCodexArbiter + EventExecutor</text>
 <line x1="805" y1="58" x2="805" y2="581" stroke="#c7d8d0" stroke-width="1.2" stroke-dasharray="5 5"/>
 <rect x="910" y="18" width="130" height="38" rx="10" fill="#fff1ec" stroke="#d26a56" stroke-width="1.3"/>
 <text x="975" y="42" text-anchor="middle" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12" fill="#7c2f25" font-weight="700">safety_emergency_executor</text>
@@ -544,7 +544,7 @@
 <li><code>FeedbackRuleEvaluator</code> 根据 <code>source_topic + metric_name</code> 命中规则。</li>
 </ul>
 <ul>
-<li>安全动作由 <code>FaultStateCoordinator</code> 统一仲裁。</li>
+<li>最终动作由 <code>EventCodexArbiter</code> 统一仲裁，并由 <code>EventExecutor</code> 统一执行。</li>
 </ul>
 <h3 id="32-碰撞检测链路">3.2 碰撞检测链路</h3>
 <div class="svg-diagram"><div class="svg-diagram-title">可视化流程图</div><div class="svg-diagram-legend"><span><i style="background:#6ba2d7"></i>输入 / 数据源</span><span><i style="background:#d2a235"></i>判断 / 策略</span><span><i style="background:#61a87d"></i>状态 / 输出</span><span><i style="background:#d26a56"></i>故障 / 风险</span><span><i style="background:#8d7ed3"></i>执行 / 安全动作</span></div><svg width="1246pt" height="242pt"
@@ -828,7 +828,7 @@
 <g id="node10" class="node">
 
 <path fill="#eaf7ef" stroke="#61a87d" stroke-width="1.45" d="M709,-70C709,-70 509,-70 509,-70 503,-70 497,-64 497,-58 497,-58 497,-46 497,-46 497,-40 503,-34 509,-34 509,-34 709,-34 709,-34 715,-34 721,-40 721,-46 721,-46 721,-58 721,-58 721,-64 715,-70 709,-70"/>
-<text text-anchor="middle" x="609" y="-48.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">/nav2_monitor/human_intervention</text>
+<text text-anchor="middle" x="609" y="-48.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">/nav2_monitor/reporter/human_takeover_json</text>
 </g>
 </g>
 </svg>
@@ -1038,7 +1038,7 @@ EMERGENCY_STOP &gt; SOFT_STOP &gt; SLOW_DOWN &gt; NONE
 <g id="node2" class="node">
 
 <path fill="#fff1ec" stroke="#d26a56" stroke-width="1.45" d="M298,-198C298,-198 177,-198 177,-198 171,-198 165,-192 165,-186 165,-186 165,-174 165,-174 165,-168 171,-162 177,-162 177,-162 298,-162 298,-162 304,-162 310,-168 310,-174 310,-174 310,-186 310,-186 310,-192 304,-198 298,-198"/>
-<text text-anchor="middle" x="237.5" y="-176.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#7c2f25">FaultStateCoordinator</text>
+<text text-anchor="middle" x="237.5" y="-176.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#7c2f25">EventCodexArbiter + EventExecutor</text>
 </g>
 <!-- Node -->
 <g id="node3" class="node">
@@ -1074,7 +1074,7 @@ EMERGENCY_STOP &gt; SOFT_STOP &gt; SLOW_DOWN &gt; NONE
 <g id="node8" class="node">
 
 <path fill="#eaf7ef" stroke="#61a87d" stroke-width="1.45" d="M1060.5,-117C1060.5,-117 860.5,-117 860.5,-117 854.5,-117 848.5,-111 848.5,-105 848.5,-105 848.5,-93 848.5,-93 848.5,-87 854.5,-81 860.5,-81 860.5,-81 1060.5,-81 1060.5,-81 1066.5,-81 1072.5,-87 1072.5,-93 1072.5,-93 1072.5,-105 1072.5,-105 1072.5,-111 1066.5,-117 1060.5,-117"/>
-<text text-anchor="middle" x="960.5" y="-95.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">/nav2_monitor/human_intervention</text>
+<text text-anchor="middle" x="960.5" y="-95.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">/nav2_monitor/reporter/human_takeover_json</text>
 </g>
 <!-- SafetyCmd -->
 <g id="node9" class="node">
@@ -1138,7 +1138,7 @@ EMERGENCY_STOP &gt; SOFT_STOP &gt; SLOW_DOWN &gt; NONE
 <li><code>/nodemanager/cmd</code>：节点管理器 JSON 命令；旧 <code>/supervisor/cmd</code> 仅作为兼容配置保留。</li>
 </ul>
 <ul>
-<li><code>/nav2_monitor/human_intervention</code>：仅小车状态检测触发的人工介入提醒。</li>
+<li><code>/nav2_monitor/reporter/human_takeover_json</code>：事件仲裁后统一输出的人工接管建议。</li>
 </ul>
 <ul>
 <li><code>/safety_system/cmd</code>：安全执行命令。</li>
@@ -1271,7 +1271,7 @@ EMERGENCY_STOP &gt; SOFT_STOP &gt; SLOW_DOWN &gt; NONE
 <tr><td><code>/collision_voxel_layer/source_status</code></td><td><code>std_msgs/msg/String</code></td><td><code>collision_voxel_layer</code></td><td>调试/上报模块</td><td>体素输入源状态</td></tr>
 <tr><td><code>/nav2_monitor/status</code></td><td><code>nav2_monitor/msg/MonitorStatus</code></td><td><code>nav2_monitor</code></td><td>外部模块</td><td>周期状态</td></tr>
 <tr><td><code>/nav2_monitor/fault_event</code></td><td><code>nav2_monitor/msg/FaultEvent</code></td><td><code>nav2_monitor</code></td><td>外部模块</td><td>故障边沿事件</td></tr>
-<tr><td><code>/nav2_monitor/human_intervention</code></td><td><code>std_msgs/msg/String</code></td><td><code>nav2_monitor</code></td><td>外部云端/MQTT模块</td><td>小车状态人工介入提醒</td></tr>
+<tr><td><code>/nav2_monitor/reporter/human_takeover_json</code></td><td><code>std_msgs/msg/String</code></td><td><code>nav2_monitor</code></td><td>外部云端/MQTT模块</td><td>人工接管建议统一上报</td></tr>
 <tr><td><code>/nav2_monitor/reporter/heartbeat_json</code></td><td><code>std_msgs/msg/String</code></td><td><code>nav2_monitor</code></td><td>外部云端/MQTT模块</td><td>JSON 心跳</td></tr>
 <tr><td><code>/nav2_monitor/reporter/event_json</code></td><td><code>std_msgs/msg/String</code></td><td><code>nav2_monitor</code></td><td>外部云端/MQTT模块</td><td>JSON 事件</td></tr>
 <tr><td><code>/nodemanager/cmd</code></td><td><code>std_msgs/msg/String</code></td><td><code>nav2_monitor</code></td><td>节点管理器 / 外部模块</td><td>模块重启请求</td></tr>

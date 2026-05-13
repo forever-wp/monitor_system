@@ -3,7 +3,6 @@ nav2_monitor_aggregator:
     timeout: 5.0  # 节点/TF/反馈等通用超时时间（秒）
     scan_rate: 5.0  # 配置热重载检查频率（Hz），不再直接扫描高频 topic/TF
     check_rate: 10.0  # 健康检查与状态发布频率（Hz）
-    safety_cooldown_s: 2.0  # 安全动作重复发布冷却时间（秒）
     nodemanager_cooldown_s: 5.0  # 节点管理器重启命令重复发布冷却时间（秒）
     topic_states_topic: "/monitor/topic_states"  # topic_frequency_monitor_node 输出的 topic 状态 JSON
     vehicle_state_topic: "/monitor/vehicle_state"  # vehicle_state_judge_node 输出的小车状态 JSON
@@ -21,9 +20,9 @@ nav2_monitor_aggregator:
     nodemanager_cmd_topic: "/nodemanager/cmd"  # 节点管理器重启命令输出 topic
     safety_cmd_topic: "/safety_system/cmd"  # 安全执行命令输出 topic
     safety_cmd_republish_period_s: 0.2  # 安全状态激活期间重复发布周期，避免单帧命令丢失导致执行器没收到
-    human_intervention_topic: "/nav2_monitor/human_intervention"  # 小车状态异常人工介入提醒 topic
     reporter.heartbeat_json_topic: "/nav2_monitor/reporter/heartbeat_json"  # 心跳 JSON 上报 topic
     reporter.event_json_topic: "/nav2_monitor/reporter/event_json"  # 事件 JSON 上报 topic
+    reporter.human_takeover_json_topic: "/nav2_monitor/reporter/human_takeover_json"  # 人工接管建议统一上报 topic
     reporter.cmd_correlation_window_s: 2.0  # reporter 关联安全/重启动作与事件的时间窗（秒）
     # 特殊 topic QoS 兜底覆盖；默认不配置，节点自动匹配发布端 QoS
     # 注意 ROS 2 参数 YAML 不支持无类型空数组 `[]`，需要覆盖时再取消注释并填入字符串列表

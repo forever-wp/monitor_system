@@ -40,7 +40,8 @@ add_executable(nav2_monitor_aggregator_node
   src/task_fault_config_selector.cpp
   src/task_status_mapper.cpp
   src/task_status_message_adapter.cpp
-  src/fault_state_coordinator.cpp
+  src/event_codex_arbiter.cpp
+  src/event_executor.cpp
   src/monitor_data_store.cpp
   src/monitor_reporter.cpp
   src/chassis_evaluator.cpp
@@ -137,7 +138,8 @@ if(BUILD_TESTING)
     src/task_fault_config_selector.cpp
     src/task_status_mapper.cpp
     src/task_status_message_adapter.cpp
-    src/fault_state_coordinator.cpp
+    src/event_codex_arbiter.cpp
+    src/event_executor.cpp
     src/monitor_data_store.cpp
     src/monitor_reporter.cpp
     src/chassis_evaluator.cpp

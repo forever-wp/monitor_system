@@ -1,11 +1,9 @@
 #include <gtest/gtest.h>
 
 #include <cstdio>
-#include <chrono>
 #include <fstream>
 #include <memory>
 #include <string>
-#include <thread>
 #include <utility>
 #include <vector>
 
@@ -13,9 +11,10 @@
 
 #include "nav2_monitor/fault_detector.hpp"
 #include "nav2_monitor/collision_prediction_router.hpp"
+#include "nav2_monitor/event_codex_arbiter.hpp"
+#include "nav2_monitor/event_executor.hpp"
 #include "nav2_monitor/monitor_data_store.hpp"
 #include "nav2_monitor/monitor_reporter.hpp"
-#include "nav2_monitor/fault_state_coordinator.hpp"
 #include "nav2_monitor/task_fault_config_selector.hpp"
 #include "nav2_monitor/task_status_mapper.hpp"
 #include "nav2_monitor/task_status_message_adapter.hpp"
@@ -411,14 +410,20 @@ modules:
   detector.update_topic_freq({{"/cmd_vel", 1.0}, {"/plan", 0.1}});
   auto faults_both = detector.detect_faults();
 
-  ASSERT_EQ(faults_both.size(), 3u);
+  ASSERT_EQ(faults_both.size(), 2u);
   EXPECT_EQ(faults_both[0].fault_key, "navigation|topic_legacy:/cmd_vel|action=1");
   EXPECT_EQ(faults_both[1].fault_key, "navigation|topic_legacy:/plan|action=1");
-  EXPECT_EQ(faults_both[2].fault_key, "combined_fault|nav_and_plan_both_low|action=1");
-  EXPECT_EQ(faults_both[2].module_name, "combined_fault");
-  EXPECT_EQ(faults_both[2].level, nav2_monitor::FaultLevel::CRITICAL);
-  EXPECT_EQ(faults_both[2].action, nav2_monitor::ActionType::SUPERVISOR);
-  EXPECT_EQ(faults_both[2].reason, "Combined fault: cmd_vel and plan both low");
+
+  nav2_monitor::EventCodexArbiter arbiter;
+  arbiter.set_combined_fault_rules(detector.get_combined_fault_rules());
+  const auto arbitration = arbiter.update(faults_both);
+
+  ASSERT_EQ(arbitration.plan.selected_rules.size(), 1u);
+  EXPECT_EQ(arbitration.plan.selected_rules[0].rule_id, "combined|nav_and_plan_both_low");
+  EXPECT_TRUE(arbitration.plan.selected_rules[0].combined);
+  ASSERT_EQ(arbitration.plan.nodemanager_decisions.size(), 1u);
+  EXPECT_EQ(arbitration.plan.nodemanager_decisions[0].module_name, "combined_fault");
+  EXPECT_EQ(arbitration.plan.nodemanager_decisions[0].reason, "Combined fault: cmd_vel and plan both low");
 
   std::remove(config_path.c_str());
 }
@@ -460,10 +465,17 @@ modules:
 
   auto faults = detector.detect_faults();
 
-  ASSERT_EQ(faults.size(), 3u);
-  EXPECT_EQ(faults[2].fault_key, "combined_fault|nav_and_plan_both_low|action=1");
-  EXPECT_EQ(faults[2].action, nav2_monitor::ActionType::SUPERVISOR);
-  EXPECT_EQ(faults[2].level, nav2_monitor::FaultLevel::CRITICAL);
+  ASSERT_EQ(faults.size(), 2u);
+
+  nav2_monitor::EventCodexArbiter arbiter;
+  arbiter.set_combined_fault_rules(detector.get_combined_fault_rules());
+  const auto arbitration = arbiter.update(faults);
+
+  ASSERT_EQ(arbitration.plan.selected_rules.size(), 1u);
+  EXPECT_EQ(arbitration.plan.selected_rules[0].rule_id, "combined|nav_and_plan_both_low");
+  ASSERT_EQ(arbitration.plan.nodemanager_decisions.size(), 1u);
+  EXPECT_EQ(arbitration.plan.nodemanager_decisions[0].module_name, "combined_fault");
+  EXPECT_EQ(arbitration.plan.selected_rules[0].level, nav2_monitor::FaultLevel::CRITICAL);
 
   std::remove(config_path.c_str());
 }
@@ -514,10 +526,9 @@ modules:
     "navigation", "/nav_state", "error_rate", 0.5, true, node->now());
 
   auto faults = detector.detect_faults();
-  ASSERT_EQ(faults.size(), 3u);
+  ASSERT_EQ(faults.size(), 2u);
   bool saw_topic_fault = false;
   bool saw_feedback_fault = false;
-  bool saw_combined_fault = false;
   for (const auto & fault : faults) {
     if (fault.fault_key == "navigation|topic_legacy:/cmd_vel|action=1") {
       saw_topic_fault = true;
@@ -527,19 +538,21 @@ modules:
       saw_feedback_fault = true;
       continue;
     }
-    if (fault.fault_key == "combined_fault|nav_combo_stop|action=2") {
-      saw_combined_fault = true;
-      EXPECT_EQ(fault.module_name, "combined_fault");
-      EXPECT_EQ(fault.level, nav2_monitor::FaultLevel::ERROR);
-      EXPECT_EQ(fault.action, nav2_monitor::ActionType::SAFETY_SYSTEM);
-      EXPECT_EQ(fault.safety_command, nav2_monitor::SafetyCommandType::SLOW_DOWN);
-      EXPECT_DOUBLE_EQ(fault.safety_slow_down_percentage, 15.0);
-      EXPECT_EQ(fault.reason, "Combined fault: nav cmd low + feedback error");
-    }
   }
   EXPECT_TRUE(saw_topic_fault);
   EXPECT_TRUE(saw_feedback_fault);
-  EXPECT_TRUE(saw_combined_fault);
+
+  nav2_monitor::EventCodexArbiter arbiter;
+  arbiter.set_combined_fault_rules(detector.get_combined_fault_rules());
+  const auto arbitration = arbiter.update(faults);
+
+  ASSERT_EQ(arbitration.plan.selected_rules.size(), 1u);
+  EXPECT_EQ(arbitration.plan.selected_rules[0].rule_id, "combined|nav_combo_stop");
+  ASSERT_TRUE(arbitration.plan.safety_update.has_value());
+  EXPECT_TRUE(arbitration.plan.safety_update->active);
+  EXPECT_EQ(arbitration.plan.safety_update->command, nav2_monitor::SafetyCommandType::SLOW_DOWN);
+  EXPECT_DOUBLE_EQ(arbitration.plan.safety_update->slow_down_percentage, 15.0);
+  EXPECT_EQ(arbitration.plan.safety_update->reason, "Combined fault: nav cmd low + feedback error");
 
   std::remove(config_path.c_str());
 }
@@ -3669,9 +3682,9 @@ modules:
   std::remove(config_path.c_str());
 }
 
-TEST_F(FaultDetectorTest, FaultStateCoordinatorDistinguishesTriggerAndRecoverEdges)
+TEST_F(FaultDetectorTest, EventCodexArbiterDistinguishesTriggerAndRecoverEdges)
 {
-  nav2_monitor::FaultStateCoordinator coordinator;
+  nav2_monitor::EventCodexArbiter arbiter;
 
   nav2_monitor::FaultInfo safety_fault;
   safety_fault.fault_key = "navigation|node_inactive|action=2";
@@ -3682,31 +3695,35 @@ TEST_F(FaultDetectorTest, FaultStateCoordinatorDistinguishesTriggerAndRecoverEdg
   safety_fault.safety_command = nav2_monitor::SafetyCommandType::EMERGENCY_STOP;
   safety_fault.safety_slow_down_percentage = 0.0;
 
-  auto trigger_update = coordinator.update({safety_fault});
+  auto trigger_update = arbiter.update({safety_fault});
   ASSERT_EQ(trigger_update.edge_events.size(), 1u);
   EXPECT_EQ(trigger_update.edge_events[0].edge, nav2_monitor::FaultEdgeType::TRIGGER);
-  ASSERT_TRUE(trigger_update.safety_update.has_value());
-  EXPECT_TRUE(trigger_update.safety_update->active);
-  EXPECT_EQ(trigger_update.safety_update->command, nav2_monitor::SafetyCommandType::EMERGENCY_STOP);
+  ASSERT_TRUE(trigger_update.plan.safety_update.has_value());
+  EXPECT_TRUE(trigger_update.plan.safety_update->active);
+  EXPECT_EQ(trigger_update.plan.safety_update->command, nav2_monitor::SafetyCommandType::EMERGENCY_STOP);
+  EXPECT_TRUE(trigger_update.plan_changed);
 
-  auto steady_update = coordinator.update({safety_fault});
+  auto steady_update = arbiter.update({safety_fault});
   EXPECT_TRUE(steady_update.edge_events.empty());
-  EXPECT_FALSE(steady_update.safety_update.has_value());
+  EXPECT_FALSE(steady_update.plan_changed);
+  ASSERT_TRUE(steady_update.plan.safety_update.has_value());
+  EXPECT_TRUE(steady_update.plan.safety_update->active);
 
-  auto recover_update = coordinator.update({});
+  auto recover_update = arbiter.update({});
   ASSERT_EQ(recover_update.edge_events.size(), 1u);
   EXPECT_EQ(recover_update.edge_events[0].edge, nav2_monitor::FaultEdgeType::RECOVER);
   EXPECT_NE(
     recover_update.edge_events[0].fault.reason.find(
       "RECOVER fault_key=navigation|node_inactive|action=2; previous_reason=Node inactive"),
     std::string::npos);
-  ASSERT_TRUE(recover_update.safety_update.has_value());
-  EXPECT_FALSE(recover_update.safety_update->active);
+  ASSERT_TRUE(recover_update.plan.safety_update.has_value());
+  EXPECT_FALSE(recover_update.plan.safety_update->active);
+  EXPECT_TRUE(recover_update.plan_changed);
 }
 
-TEST_F(FaultDetectorTest, FaultStateCoordinatorChoosesMostStrictSafetyCommand)
+TEST_F(FaultDetectorTest, EventCodexArbiterChoosesMostStrictSafetyCommand)
 {
-  nav2_monitor::FaultStateCoordinator coordinator;
+  nav2_monitor::EventCodexArbiter arbiter;
 
   nav2_monitor::FaultInfo slow_fault;
   slow_fault.fault_key = "navigation|feedback|metric_a|action=2";
@@ -3723,51 +3740,56 @@ TEST_F(FaultDetectorTest, FaultStateCoordinatorChoosesMostStrictSafetyCommand)
   stop_fault.safety_command = nav2_monitor::SafetyCommandType::SOFT_STOP;
   stop_fault.safety_slow_down_percentage = 0.0;
 
-  auto update = coordinator.update({slow_fault, stop_fault});
-  ASSERT_TRUE(update.safety_update.has_value());
-  EXPECT_TRUE(update.safety_update->active);
-  EXPECT_EQ(update.safety_update->command, nav2_monitor::SafetyCommandType::SOFT_STOP);
+  auto update = arbiter.update({slow_fault, stop_fault});
+  ASSERT_TRUE(update.plan.safety_update.has_value());
+  EXPECT_TRUE(update.plan.safety_update->active);
+  EXPECT_EQ(update.plan.safety_update->command, nav2_monitor::SafetyCommandType::SOFT_STOP);
 
-  auto downgrade_update = coordinator.update({slow_fault});
-  ASSERT_TRUE(downgrade_update.safety_update.has_value());
-  EXPECT_TRUE(downgrade_update.safety_update->active);
-  EXPECT_EQ(downgrade_update.safety_update->command, nav2_monitor::SafetyCommandType::SLOW_DOWN);
-  EXPECT_DOUBLE_EQ(downgrade_update.safety_update->slow_down_percentage, 40.0);
+  auto downgrade_update = arbiter.update({slow_fault});
+  ASSERT_TRUE(downgrade_update.plan.safety_update.has_value());
+  EXPECT_TRUE(downgrade_update.plan.safety_update->active);
+  EXPECT_EQ(downgrade_update.plan.safety_update->command, nav2_monitor::SafetyCommandType::SLOW_DOWN);
+  EXPECT_DOUBLE_EQ(downgrade_update.plan.safety_update->slow_down_percentage, 40.0);
 
-  auto resume_update = coordinator.update({});
-  ASSERT_TRUE(resume_update.safety_update.has_value());
-  EXPECT_FALSE(resume_update.safety_update->active);
+  auto resume_update = arbiter.update({});
+  ASSERT_TRUE(resume_update.plan.safety_update.has_value());
+  EXPECT_FALSE(resume_update.plan.safety_update->active);
 }
 
-TEST_F(FaultDetectorTest, FaultStateCoordinatorPublishesSafetyCmdAndRepublishesActiveState)
+TEST_F(FaultDetectorTest, EventExecutorPublishesResumeAndRepublishesActiveState)
 {
-  nav2_monitor::FaultStateCoordinator coordinator;
-  std::vector<nav2_monitor::SafetyCommandUpdate> published_updates;
-  coordinator.set_publish_callback_for_test(
-    [&published_updates](const nav2_monitor::SafetyCommandUpdate & update) {
-      published_updates.push_back(update);
-    },
-    0.05);
+  nav2_monitor::EventExecutor executor;
+  executor.configure(nullptr, "/safety_system/cmd", "/nodemanager/cmd", 0.05, 5.0);
 
-  nav2_monitor::FaultInfo safety_fault;
-  safety_fault.fault_key = "collision_detection|collision:front_stop|action=2";
-  safety_fault.module_name = "collision_detection";
-  safety_fault.level = nav2_monitor::FaultLevel::CRITICAL;
-  safety_fault.reason = "Collision zone hit";
-  safety_fault.action = nav2_monitor::ActionType::SAFETY_SYSTEM;
-  safety_fault.safety_command = nav2_monitor::SafetyCommandType::SOFT_STOP;
+  nav2_monitor::EventExecutionPlan plan;
+  plan.plan_id = "plan:test";
+  plan.signature = "test";
+  plan.safety_update = nav2_monitor::SafetyCommandUpdate{
+    true,
+    nav2_monitor::SafetyCommandType::SOFT_STOP,
+    0.0,
+    "Collision zone hit"};
 
-  coordinator.update({safety_fault});
-  ASSERT_EQ(published_updates.size(), 1u);
-  EXPECT_TRUE(published_updates.back().active);
-  EXPECT_EQ(published_updates.back().command, nav2_monitor::SafetyCommandType::SOFT_STOP);
-  EXPECT_EQ(published_updates.back().reason, "Collision zone hit");
+  auto first = executor.execute(plan, rclcpp::Time(0, 0, RCL_ROS_TIME));
+  ASSERT_TRUE(first.safety_cmd.has_value());
+  EXPECT_EQ(first.safety_cmd->action, nav2_monitor::msg::SafetyCmd::SOFT_STOP);
+  EXPECT_EQ(first.safety_cmd->reason, "Collision zone hit");
 
-  std::this_thread::sleep_for(std::chrono::milliseconds(80));
-  coordinator.update({safety_fault});
-  ASSERT_EQ(published_updates.size(), 2u);
-  EXPECT_TRUE(published_updates.back().active);
-  EXPECT_EQ(published_updates.back().command, nav2_monitor::SafetyCommandType::SOFT_STOP);
+  auto suppressed = executor.execute(plan, rclcpp::Time(static_cast<int64_t>(30000000), RCL_ROS_TIME));
+  EXPECT_FALSE(suppressed.safety_cmd.has_value());
+
+  auto republished = executor.execute(plan, rclcpp::Time(static_cast<int64_t>(80000000), RCL_ROS_TIME));
+  ASSERT_TRUE(republished.safety_cmd.has_value());
+  EXPECT_EQ(republished.safety_cmd->action, nav2_monitor::msg::SafetyCmd::SOFT_STOP);
+
+  plan.safety_update = nav2_monitor::SafetyCommandUpdate{
+    false,
+    nav2_monitor::SafetyCommandType::NONE,
+    0.0,
+    "All safety events recovered"};
+  auto resume = executor.execute(plan, rclcpp::Time(static_cast<int64_t>(90000000), RCL_ROS_TIME));
+  ASSERT_TRUE(resume.safety_cmd.has_value());
+  EXPECT_EQ(resume.safety_cmd->action, nav2_monitor::msg::SafetyCmd::RESUME);
 }
 
 }  // namespace

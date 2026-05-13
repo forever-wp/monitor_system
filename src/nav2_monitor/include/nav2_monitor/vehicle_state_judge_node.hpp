@@ -3,7 +3,6 @@
 
 #include <map>
 #include <memory>
-#include <set>
 #include <string>
 #include <vector>
 
@@ -40,7 +39,6 @@ private:
     const std::vector<FaultInfo> & faults,
     const ChassisRuntimeState & chassis_state,
     const rclcpp::Time & now);
-  void publish_human_intervention_request(const FaultInfo & fault, const rclcpp::Time & now);
 
   double parse_command_speed(const std::string & payload) const;
   bool decode_moto_info(
@@ -58,7 +56,6 @@ private:
   std::string resolved_fault_config_path_;
   std::string config_profile_topic_{"/monitor/config_profile"};
   std::string publish_topic_{"/monitor/vehicle_state"};
-  std::string human_intervention_topic_{"/nav2_monitor/human_intervention"};
   double check_rate_hz_{10.0};
 
   FaultDetector fault_detector_;
@@ -68,7 +65,6 @@ private:
   MultiValueJudgeConfig multi_value_cfg_{2, 2};
 
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr state_pub_;
-  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr human_intervention_pub_;
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr config_profile_sub_;
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr command_sub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
@@ -78,8 +74,6 @@ private:
   rclcpp::TimerBase::SharedPtr moto_retry_timer_;
 
   std::string moto_topic_type_;
-  std::set<std::string> active_human_fault_keys_;
-
   rclcpp::Time imu_last_stamp_{0, 0, RCL_ROS_TIME};
   rclcpp::Time imu_last_process_time_{0, 0, RCL_ROS_TIME};
   bool imu_time_initialized_{false};

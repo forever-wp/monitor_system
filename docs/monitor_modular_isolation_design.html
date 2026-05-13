@@ -306,7 +306,7 @@
 <li><code>collision_voxel_layer</code> 已支持至少一个数据源可用时继续发布体素，避免单源缺失导致整条体素链路断流。</li>
 </ul>
 <ul>
-<li><code>nav2_monitor</code> 已新增 <code>/nav2_monitor/human_intervention</code>，供外部上报模块订阅。</li>
+<li><code>nav2_monitor</code> 已新增 <code>/nav2_monitor/reporter/human_takeover_json</code>，供外部上报模块订阅。</li>
 </ul>
 <p>但从安全运行角度看，仍有几个结构性问题：</p>
 <ul>
@@ -985,7 +985,7 @@ recover_ttc_threshold &gt; enter_ttc_threshold
 <g id="node22" class="node">
 
 <path fill="#fff1ec" stroke="#d26a56" stroke-width="1.45" d="M576.5,-299C576.5,-299 447.5,-299 447.5,-299 441.5,-299 435.5,-293 435.5,-287 435.5,-287 435.5,-275 435.5,-275 435.5,-269 441.5,-263 447.5,-263 447.5,-263 576.5,-263 576.5,-263 582.5,-263 588.5,-269 588.5,-275 588.5,-275 588.5,-287 588.5,-287 588.5,-293 582.5,-299 576.5,-299"/>
-<text text-anchor="middle" x="512" y="-277.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#7c2f25">fault_state_coordinator</text>
+<text text-anchor="middle" x="512" y="-277.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#7c2f25">event_codex + event_executor</text>
 </g>
 <!-- Status -->
 <g id="node23" class="node">
@@ -1003,7 +1003,7 @@ recover_ttc_threshold &gt; enter_ttc_threshold
 <g id="node25" class="node">
 
 <path fill="#eaf7ef" stroke="#61a87d" stroke-width="1.45" d="M584,-216C584,-216 384,-216 384,-216 378,-216 372,-210 372,-204 372,-204 372,-192 372,-192 372,-186 378,-180 384,-180 384,-180 584,-180 584,-180 590,-180 596,-186 596,-192 596,-192 596,-204 596,-204 596,-210 590,-216 584,-216"/>
-<text text-anchor="middle" x="484" y="-194.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">/nav2_monitor/human_intervention</text>
+<text text-anchor="middle" x="484" y="-194.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">/nav2_monitor/reporter/human_takeover_json</text>
 </g>
 <!-- NodeManager -->
 <g id="node26" class="node">
@@ -1143,7 +1143,7 @@ recover_ttc_threshold &gt; enter_ttc_threshold
 <li><code>/monitor/vehicle_state</code></li>
 </ul>
 <ul>
-<li><code>/nav2_monitor/human_intervention</code></li>
+<li><code>/nav2_monitor/reporter/human_takeover_json</code></li>
 </ul>
 <ul>
 <li>必要时输出 <code>/nav2_monitor/fault_event</code></li>
@@ -1332,7 +1332,7 @@ recover_ttc_threshold &gt; enter_ttc_threshold
 <li>触发节点管理器请求。</li>
 </ul>
 <ul>
-<li>将安全故障交给 <code>FaultStateCoordinator</code> 仲裁。</li>
+<li>将事件事实交给 <code>EventCodexArbiter</code> 仲裁，并由 <code>EventExecutor</code> 执行。</li>
 </ul>
 <p>输入：</p>
 <ul>
@@ -1361,7 +1361,7 @@ recover_ttc_threshold &gt; enter_ttc_threshold
 <li><code>/nav2_monitor/fault_event</code></li>
 </ul>
 <ul>
-<li><code>/nav2_monitor/human_intervention</code></li>
+<li><code>/nav2_monitor/reporter/human_takeover_json</code></li>
 </ul>
 <ul>
 <li><code>/nodemanager/cmd</code></li>
@@ -1462,7 +1462,7 @@ keep_last 1
 <li><code>/nav2_monitor/fault_event</code></li>
 </ul>
 <ul>
-<li><code>/nav2_monitor/human_intervention</code></li>
+<li><code>/nav2_monitor/reporter/human_takeover_json</code></li>
 </ul>
 <ul>
 <li><code>/nodemanager/cmd</code></li>
@@ -1593,7 +1593,7 @@ requires_human_intervention
 <tr><td><code>/monitor/node_tf_state</code></td><td><code>NodeTfState</code> 或 JSON</td><td>reliable + transient_local + keep_last 1</td><td><code>node_tf_monitor_node</code></td><td>aggregator / 上层</td><td>节点与 TF 健康状态</td></tr>
 <tr><td><code>/nav2_monitor/status</code></td><td><code>MonitorStatus</code></td><td>reliable + transient_local + keep_last 1</td><td>aggregator</td><td>上层</td><td>汇总状态</td></tr>
 <tr><td><code>/nav2_monitor/fault_event</code></td><td><code>FaultEvent</code></td><td>reliable + volatile + keep_last 50/100</td><td>各模块或 aggregator</td><td>上层事件中心</td><td>故障触发/恢复边沿</td></tr>
-<tr><td><code>/nav2_monitor/human_intervention</code></td><td><code>std_msgs/String</code> 或专用 msg</td><td>reliable + volatile + keep_last 50/100</td><td><code>vehicle_state_judge_node</code></td><td>上层事件中心</td><td>人工介入提醒</td></tr>
+<tr><td><code>/nav2_monitor/reporter/human_takeover_json</code></td><td><code>std_msgs/String</code></td><td>reliable + volatile + keep_last 50/100</td><td><code>nav2_monitor_aggregator_node</code></td><td>上层事件中心</td><td>人工接管建议统一上报</td></tr>
 <tr><td><code>/nodemanager/cmd</code></td><td><code>std_msgs/String</code></td><td>reliable + volatile + keep_last 50/100</td><td>aggregator</td><td>nodemanager 节点管理器 / 上层</td><td>模块重启请求</td></tr>
 <tr><td><code>/navigation_mode</code></td><td><code>std_msgs/String</code></td><td>reliable + transient_local + keep_last 1</td><td><code>collision_monitor_node</code></td><td>导航控制器切换模块</td><td><code>FAST</code> / <code>SAFE</code> 当前模式</td></tr>
 </tbody></table></div>
@@ -1979,7 +1979,7 @@ UNKNOWN
 <g id="node7" class="node">
 
 <path fill="#eaf7ef" stroke="#61a87d" stroke-width="1.45" d="M551,-104C551,-104 351,-104 351,-104 345,-104 339,-98 339,-92 339,-92 339,-80 339,-80 339,-74 345,-68 351,-68 351,-68 551,-68 551,-68 557,-68 563,-74 563,-80 563,-80 563,-92 563,-92 563,-98 557,-104 551,-104"/>
-<text text-anchor="middle" x="451" y="-82.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">/nav2_monitor/human_intervention</text>
+<text text-anchor="middle" x="451" y="-82.9" font-family="Noto Sans CJK SC, Microsoft YaHei, Arial" font-size="12.00" fill="#1f6f50">/nav2_monitor/reporter/human_takeover_json</text>
 </g>
 <!-- Agg -->
 <g id="node8" class="node">
@@ -2151,10 +2151,10 @@ UNKNOWN
 <li>新文档、日志、JSON 字段使用 <code>nodemanager</code>。</li>
 </ul>
 <ul>
-<li>旧 <code>/supervisor/cmd</code>、<code>supervisor_cmd_topic</code>、<code>supervisor_cooldown_s</code>、<code>actions: ["supervisor"]</code> 作为兼容别名保留一个迁移周期。</li>
+<li>节点管理命令统一由 <code>/nodemanager/cmd</code> 和 <code>nodemanager_cmd_topic</code> 表达。</li>
 </ul>
 <ul>
-<li>迁移期内如果新旧参数同时存在，以 <code>nodemanager_*</code> 为准，并打印兼容提示日志。</li>
+<li>新版本配置以 <code>nodemanager_*</code> 为准；规则动作建议统一使用 <code>actions: ["nodemanager"]</code>。</li>
 </ul>
 <p>推荐模块名：</p>
 <pre><code class="language-text">
@@ -2252,7 +2252,7 @@ safety_emergency_executor
 <li>新增 <code>vehicle_state_judge_node</code>。</li>
 </ul>
 <ul>
-<li>独立发布 <code>/monitor/vehicle_state</code> 和 <code>/nav2_monitor/human_intervention</code>。</li>
+<li>独立发布 <code>/monitor/vehicle_state</code>；人工接管建议由 reporter 统一发布到 <code>/nav2_monitor/reporter/human_takeover_json</code>。</li>
 </ul>
 <ul>
 <li>aggregator 只汇总状态。</li>
@@ -2603,7 +2603,7 @@ env ROS_DOMAIN_ID=66 ros2 topic echo /nav2_monitor/status
 </code></pre>
 <p>查看人工介入提醒：</p>
 <pre><code class="language-bash">
-env ROS_DOMAIN_ID=66 ros2 topic echo /nav2_monitor/human_intervention
+env ROS_DOMAIN_ID=66 ros2 topic echo /nav2_monitor/reporter/human_takeover_json
 </code></pre>
 <p>发布导航模式切换测试：</p>
 <pre><code class="language-bash">

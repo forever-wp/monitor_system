@@ -8,7 +8,6 @@
 #include <fstream>
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -57,37 +56,6 @@ uint8_t action_to_msg(ActionType action)
     default:
       return msg::FaultEvent::NONE;
   }
-}
-
-std::string fault_level_to_string(FaultLevel level)
-{
-  switch (level) {
-    case FaultLevel::WARNING:
-      return "WARNING";
-    case FaultLevel::ERROR:
-      return "ERROR";
-    case FaultLevel::CRITICAL:
-      return "CRITICAL";
-    case FaultLevel::NORMAL:
-    default:
-      return "NORMAL";
-  }
-}
-
-std::string json_escape(const std::string & input)
-{
-  std::ostringstream oss;
-  for (const auto ch : input) {
-    switch (ch) {
-      case '"': oss << "\\\""; break;
-      case '\\': oss << "\\\\"; break;
-      case '\n': oss << "\\n"; break;
-      case '\r': oss << "\\r"; break;
-      case '\t': oss << "\\t"; break;
-      default: oss << ch; break;
-    }
-  }
-  return oss.str();
 }
 
 std::optional<std::string> extract_json_string_field(const std::string & json, const std::string & key)
@@ -389,17 +357,14 @@ std::string durability_to_string(rclcpp::DurabilityPolicy durability)
 }  // namespace
 
 Nav2MonitorAggregatorNode::Nav2MonitorAggregatorNode()
-: Node("nav2_monitor"), timeout_(5.0), safety_cooldown_s_(2.0), nodemanager_cooldown_s_(5.0),
+: Node("nav2_monitor"), timeout_(5.0), nodemanager_cooldown_s_(5.0),
   sys_monitor_(), fault_detector_(this)
 {
   timeout_ = this->declare_parameter<double>("timeout", 5.0);
   double scan_rate = this->declare_parameter<double>("scan_rate", 0.5);
   double check_rate = this->declare_parameter<double>("check_rate", 1.0);
-  safety_cooldown_s_ = this->declare_parameter<double>("safety_cooldown_s", 2.0);
-  const double legacy_supervisor_cooldown_s =
-    this->declare_parameter<double>("supervisor_cooldown_s", 5.0);
   nodemanager_cooldown_s_ =
-    this->declare_parameter<double>("nodemanager_cooldown_s", legacy_supervisor_cooldown_s);
+    this->declare_parameter<double>("nodemanager_cooldown_s", 5.0);
   topic_states_topic_ = this->declare_parameter<std::string>(
     "topic_states_topic", "/monitor/topic_states");
   vehicle_state_topic_ = this->declare_parameter<std::string>(
@@ -426,17 +391,12 @@ Nav2MonitorAggregatorNode::Nav2MonitorAggregatorNode()
     "config_profile_topic", "/monitor/config_profile");
   const auto fault_event_topic = this->declare_parameter<std::string>(
     "fault_event_topic", "/nav2_monitor/fault_event");
-  const auto legacy_supervisor_cmd_topic = this->declare_parameter<std::string>(
-    "supervisor_cmd_topic", "/supervisor/cmd");
   const auto nodemanager_cmd_topic = this->declare_parameter<std::string>(
-    "nodemanager_cmd_topic", legacy_supervisor_cmd_topic == "/supervisor/cmd" ?
-    "/nodemanager/cmd" : legacy_supervisor_cmd_topic);
+    "nodemanager_cmd_topic", "/nodemanager/cmd");
   const auto safety_cmd_topic = this->declare_parameter<std::string>(
     "safety_cmd_topic", "/safety_system/cmd");
-  const auto safety_cmd_republish_period_s = std::max(
+  safety_cmd_republish_period_s_ = std::max(
     0.05, this->declare_parameter<double>("safety_cmd_republish_period_s", 0.2));
-  const auto human_intervention_topic = this->declare_parameter<std::string>(
-    "human_intervention_topic", "/nav2_monitor/human_intervention");
   load_topic_qos_overrides();
 
   fallback_target_nodes_ = this->declare_parameter<std::vector<std::string>>(
@@ -469,10 +429,9 @@ Nav2MonitorAggregatorNode::Nav2MonitorAggregatorNode()
   fault_event_pub_ = this->create_publisher<msg::FaultEvent>(fault_event_topic, 10);
   config_profile_pub_ = this->create_publisher<std_msgs::msg::String>(
     config_profile_topic_, rclcpp::QoS(1).reliable().transient_local());
-  nodemanager_pub_ = this->create_publisher<std_msgs::msg::String>(nodemanager_cmd_topic, 10);
-  human_intervention_pub_ =
-    this->create_publisher<std_msgs::msg::String>(human_intervention_topic, 10);
-  fault_state_coordinator_.configure(this, safety_cmd_topic, safety_cmd_republish_period_s);
+  event_executor_.configure(
+    this, safety_cmd_topic, nodemanager_cmd_topic,
+    safety_cmd_republish_period_s_, nodemanager_cooldown_s_);
   monitor_reporter_.configure(this);
 
   base_fault_config_path_ = this->declare_parameter<std::string>("fault_config", "");
@@ -879,48 +838,6 @@ rclcpp::QoS Nav2MonitorAggregatorNode::apply_topic_qos_override(
     durability_to_string(out.durability()).c_str(),
     static_cast<size_t>(out.get_rmw_qos_profile().depth));
   return out;
-}
-
-bool Nav2MonitorAggregatorNode::should_publish_action(
-  const std::string & module_name, ActionType action, const rclcpp::Time & now)
-{
-  double cooldown_s = nodemanager_cooldown_s_;
-  if (action == ActionType::SAFETY_SYSTEM) {
-    cooldown_s = safety_cooldown_s_;
-  } else if (action == ActionType::SUPERVISOR) {
-    cooldown_s = nodemanager_cooldown_s_;
-  }
-
-  const std::string key = module_name + ":" + std::to_string(static_cast<int>(action));
-  auto it = last_action_publish_time_.find(key);
-  if (it != last_action_publish_time_.end() && (now - it->second).seconds() < cooldown_s) {
-    return false;
-  }
-
-  last_action_publish_time_[key] = now;
-  return true;
-}
-
-void Nav2MonitorAggregatorNode::publish_human_intervention_request(
-  const FaultInfo & fault, const rclcpp::Time & now)
-{
-  if (!human_intervention_pub_) {
-    return;
-  }
-
-  std_msgs::msg::String msg;
-  std::ostringstream oss;
-  oss << '{'
-      << "\"timestamp\":\"" << json_escape(std::to_string(now.seconds())) << "\","
-      << "\"request\":\"human_intervention\","
-      << "\"module_name\":\"" << json_escape(fault.module_name) << "\","
-      << "\"fault_key\":\"" << json_escape(fault.fault_key) << "\","
-      << "\"fault_level\":\"" << json_escape(fault_level_to_string(fault.level)) << "\","
-      << "\"reason\":\"" << json_escape(fault.reason) << "\","
-      << "\"suggested_action\":\"manual_check\""
-      << '}';
-  msg.data = oss.str();
-  human_intervention_pub_->publish(msg);
 }
 
 bool Nav2MonitorAggregatorNode::update_current_nav_task_locked(
@@ -1334,6 +1251,7 @@ void Nav2MonitorAggregatorNode::apply_loaded_fault_config()
     }
 
   }
+  event_codex_arbiter_.set_combined_fault_rules(fault_detector_.get_combined_fault_rules());
 }
 
 void Nav2MonitorAggregatorNode::scan_topology()
@@ -1347,11 +1265,7 @@ void Nav2MonitorAggregatorNode::check_health()
   const auto vehicle_status = vehicle_monitor_->get_status();
 
   msg::MonitorStatus status_msg;
-  std::vector<FaultInfo> pending_faults;
-  pending_faults.reserve(8);
   std::vector<FaultInfo> faults;
-  std::vector<FaultEdgeEvent> fault_edge_events;
-  std::optional<SafetyCommandUpdate> safety_update;
   std::vector<std::string> target_nodes_snapshot;
   std::vector<std::string> watch_topics_snapshot;
   std::vector<std::pair<std::string, std::string>> target_transforms_snapshot;
@@ -1610,57 +1524,42 @@ void Nav2MonitorAggregatorNode::check_health()
       std::make_move_iterator(vehicle_faults_snapshot.begin()),
       std::make_move_iterator(vehicle_faults_snapshot.end()));
   }
-  std::unordered_map<std::string, size_t> nodemanager_fault_by_module;
-  for (const auto & fault : faults) {
-    if (fault.action != ActionType::SUPERVISOR) {
-      continue;
-    }
-    const auto it = nodemanager_fault_by_module.find(fault.module_name);
-    if (it == nodemanager_fault_by_module.end()) {
-      if (should_publish_action(fault.module_name, fault.action, now)) {
-        nodemanager_fault_by_module[fault.module_name] = pending_faults.size();
-        pending_faults.push_back(fault);
-      }
-      continue;
-    }
 
-    auto & merged_fault = pending_faults[it->second];
-    if (merged_fault.fault_key.find(fault.fault_key) == std::string::npos) {
-      merged_fault.fault_key += ";" + fault.fault_key;
-    }
-    if (merged_fault.reason.find(fault.reason) == std::string::npos) {
-      merged_fault.reason += " | " + fault.reason;
+  auto arbitration = event_codex_arbiter_.update(faults);
+  auto execution_result = event_executor_.execute(arbitration.plan, now);
+
+  if (execution_result.safety_cmd.has_value()) {
+    monitor_reporter_.cache_safety_cmd(*execution_result.safety_cmd, now);
+    if (execution_result.safety_cmd->action == nav2_monitor::msg::SafetyCmd::RESUME) {
+      RCLCPP_WARN(
+        get_logger(), "Event executor safety recovered: %s",
+        execution_result.safety_cmd->reason.c_str());
+    } else {
+      RCLCPP_ERROR(
+        get_logger(), "Event executor safety command: action=%u reason=%s",
+        execution_result.safety_cmd->action,
+        execution_result.safety_cmd->reason.c_str());
     }
   }
 
-  auto state_update = fault_state_coordinator_.update(faults);
-  fault_edge_events = std::move(state_update.edge_events);
-  safety_update = std::move(state_update.safety_update);
+  for (size_t idx = 0; idx < execution_result.nodemanager_json_payloads.size(); ++idx) {
+    monitor_reporter_.cache_nodemanager_json(execution_result.nodemanager_json_payloads[idx], now);
+    const auto & decision = execution_result.nodemanager_decisions[idx];
+    RCLCPP_WARN(
+      get_logger(), "Event executor nodemanager request: module=%s reason=%s",
+      decision.module_name.c_str(), decision.reason.c_str());
+  }
+
+  if (arbitration.plan_changed) {
+    for (const auto & takeover : arbitration.plan.human_takeovers) {
+      monitor_reporter_.publish_human_takeover(takeover, arbitration.plan.plan_id, now);
+    }
+  }
 
   pub_->publish(status_msg);
   monitor_reporter_.publish_heartbeat(status_msg, now);
 
-  if (safety_update.has_value()) {
-    nav2_monitor::msg::SafetyCmd reporter_safety_cmd;
-    if (safety_update->active) {
-      reporter_safety_cmd.action = static_cast<uint8_t>(safety_update->command);
-      reporter_safety_cmd.slow_down_percentage = static_cast<float>(safety_update->slow_down_percentage);
-      reporter_safety_cmd.reason = safety_update->reason;
-    } else {
-      reporter_safety_cmd.action = nav2_monitor::msg::SafetyCmd::RESUME;
-      reporter_safety_cmd.slow_down_percentage = 0.0F;
-      reporter_safety_cmd.reason = safety_update->reason;
-    }
-    monitor_reporter_.cache_safety_cmd(reporter_safety_cmd, now);
-    if (!safety_update->active) {
-      RCLCPP_WARN(get_logger(), "Safety state recovered: %s", safety_update->reason.c_str());
-    } else {
-      RCLCPP_ERROR(get_logger(), "Safety state updated: command=%d reason=%s",
-        static_cast<int>(safety_update->command), safety_update->reason.c_str());
-    }
-  }
-
-  for (const auto & edge_event : fault_edge_events) {
+  for (const auto & edge_event : arbitration.edge_events) {
     msg::FaultEvent event;
     const auto now_ns = now.nanoseconds();
     event.stamp.sec = static_cast<int32_t>(now_ns / 1000000000LL);
@@ -1673,27 +1572,6 @@ void Nav2MonitorAggregatorNode::check_health()
       msg::FaultEvent::EDGE_TRIGGER : msg::FaultEvent::EDGE_RECOVER;
     fault_event_pub_->publish(event);
     monitor_reporter_.publish_fault_event_json(event, now);
-  }
-
-  for (const auto & fault : pending_faults) {
-    if (fault.action == ActionType::SUPERVISOR) {
-      std_msgs::msg::String cmd;
-      std::ostringstream oss;
-      oss << '{'
-          << "\"module_name\":\"" << json_escape(fault.module_name) << "\","
-          << "\"fault_keys\":\"" << json_escape(fault.fault_key) << "\","
-          << "\"nodes_to_restart\":[],"
-          << "\"reason\":\"" << json_escape(fault.reason) << "\"}";
-      cmd.data = oss.str();
-      nodemanager_pub_->publish(cmd);
-      monitor_reporter_.cache_nodemanager_json(cmd.data, now);
-      if (is_vehicle_state_judge_fault(fault)) {
-        publish_human_intervention_request(fault, now);
-      }
-      RCLCPP_WARN(
-        get_logger(), "NodeManager restart request: %s - %s",
-        fault.module_name.c_str(), fault.reason.c_str());
-    }
   }
 }
 
@@ -1819,18 +1697,16 @@ rcl_interfaces::msg::SetParametersResult Nav2MonitorAggregatorNode::on_parameter
         timeout_ = param.as_double();
         fault_detector_.set_feedback_default_max_stale(timeout_);
         RCLCPP_INFO(get_logger(), "Updated timeout: %.1f seconds", timeout_);
-      } else if (param.get_name() == "safety_cooldown_s") {
-        safety_cooldown_s_ = std::max(0.0, param.as_double());
-        RCLCPP_INFO(get_logger(), "Updated safety_cooldown_s: %.2f", safety_cooldown_s_);
+      } else if (param.get_name() == "safety_cmd_republish_period_s") {
+        safety_cmd_republish_period_s_ = std::max(0.05, param.as_double());
+        event_executor_.update_timing(safety_cmd_republish_period_s_, nodemanager_cooldown_s_);
+        RCLCPP_INFO(
+          get_logger(), "Updated safety_cmd_republish_period_s: %.2f",
+          safety_cmd_republish_period_s_);
       } else if (param.get_name() == "nodemanager_cooldown_s") {
         nodemanager_cooldown_s_ = std::max(0.0, param.as_double());
+        event_executor_.update_timing(safety_cmd_republish_period_s_, nodemanager_cooldown_s_);
         RCLCPP_INFO(get_logger(), "Updated nodemanager_cooldown_s: %.2f", nodemanager_cooldown_s_);
-      } else if (param.get_name() == "supervisor_cooldown_s") {
-        nodemanager_cooldown_s_ = std::max(0.0, param.as_double());
-        RCLCPP_INFO(
-          get_logger(),
-          "Updated legacy supervisor_cooldown_s alias; nodemanager_cooldown_s: %.2f",
-          nodemanager_cooldown_s_);
       }
     }
   }

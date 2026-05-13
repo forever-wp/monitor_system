@@ -226,11 +226,13 @@ struct CombinedFaultRuleConfig
 {
   std::string name;
   std::vector<std::string> when_all_fault_keys;
+  int priority{100};
   FaultLevel level{FaultLevel::ERROR};
   std::vector<ActionType> actions;
   SafetyCommandType safety_command{SafetyCommandType::NONE};
   double safety_slow_down_percentage{0.0};
   std::string reason;
+  bool manual_takeover{false};
 };
 
 struct FaultInfo
@@ -277,6 +279,7 @@ public:
   bool is_watch_topic_frequency_required(const std::string & topic) const;
   double get_watch_topic_min_hz(const std::string & topic) const;
   const MultiValueJudgeConfig & get_multi_value_judge_config() const;
+  const std::vector<CombinedFaultRuleConfig> & get_combined_fault_rules() const;
   bool collision_detection_enabled() const;
   const CollisionDetectionConfig & get_collision_detection_config() const;
   const CollisionTtcVisualizationState & get_collision_ttc_visualization() const;
@@ -296,11 +299,6 @@ private:
     const ModuleConfig & module,
     const MonitorDataStore & store,
     const rclcpp::Time & now) const;
-  void append_combined_faults(
-    const std::vector<FaultInfo> & base_faults,
-    const rclcpp::Time & now,
-    std::vector<FaultInfo> & faults) const;
-
   rclcpp::Node * node_;
   std::vector<ModuleConfig> modules_;
   CollisionDetectionConfig collision_cfg_;

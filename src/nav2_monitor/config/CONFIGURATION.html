@@ -132,9 +132,9 @@
 <div class="table-wrap"><table>
 <thead><tr><th>文件</th><th>顶层节点名</th><th>作用</th></tr></thead>
 <tbody>
-<tr><td><code>nav2_monitor_params.yaml</code></td><td><code>nav2_monitor_aggregator</code></td><td>聚合器参数，消费 <code>/monitor/*_state</code>，发布状态、故障事件、节点管理器命令和安全命令。</td></tr>
+<tr><td><code>nav2_monitor_params.yaml</code></td><td><code>nav2_monitor_aggregator</code></td><td>聚合器参数，消费 <code>/monitor/*_state</code>，发布状态、故障事件，并驱动事件仲裁器与事件执行层。</td></tr>
 <tr><td><code>topic_frequency_monitor_params.yaml</code></td><td><code>topic_frequency_monitor</code></td><td>topic 数据源、频率、新鲜度监测参数。</td></tr>
-<tr><td><code>vehicle_state_judge_params.yaml</code></td><td><code>vehicle_state_judge</code></td><td>小车状态判断节点参数，检测有指令不动、无指令仍运动、数据源缺失等。</td></tr>
+<tr><td><code>vehicle_state_judge_params.yaml</code></td><td><code>vehicle_state_judge</code></td><td>小车状态判断事件发现器参数，检测有指令不动、无指令仍运动、数据源缺失等，只输出状态事实。</td></tr>
 <tr><td><code>node_tf_monitor_params.yaml</code></td><td><code>node_tf_monitor</code></td><td>ROS 节点在线状态和 TF 可用性监测参数。</td></tr>
 <tr><td><code>battery_monitor_params.yaml</code></td><td><code>battery_monitor</code></td><td>电池 topic 订阅和状态输出参数。</td></tr>
 <tr><td><code>algorithm_feedback_monitor_params.yaml</code></td><td><code>algorithm_feedback_monitor</code></td><td>算法反馈状态监测参数。</td></tr>
@@ -149,7 +149,7 @@
 /monitor/feedback_state
 /monitor/collision_state
 </code></pre>
-<p>聚合器不再直接订阅高频传感器、底盘反馈、算法反馈原始输入或碰撞原始输入。</p>
+<p>聚合器不再直接订阅高频传感器、底盘反馈、算法反馈原始输入或碰撞原始输入。聚合器内部执行链路固定为 <code>EventCodexArbiter</code> 生成最终执行计划，<code>EventExecutor</code> 统一发布 <code>/safety_system/cmd</code> 和 <code>/nodemanager/cmd</code>。</p>
 <h2 id="2-业务规则层">2. 业务规则层</h2>
 <p>这些文件不是 ROS 2 参数文件，不包含 <code>ros__parameters</code>。</p>
 <div class="table-wrap"><table>
@@ -169,7 +169,8 @@ collision_detection:
 vehicle_state_judge:
 modules:
 </code></pre>
-<p><code>modules</code> 中每个模块描述节点、topic 和反馈规则。当前格式只使用 <code>nodemanager</code>，不使用旧 <code>supervisor</code> 字段。</p>
+<p><code>modules</code> 中每个模块描述节点、topic 和反馈规则。当前格式只使用 <code>nodemanager</code>，不使用旧 <code>supervisor</code> 字段。故障规则只表达事件事实和动作意图，最终是否执行、执行哪个组合策略，由事件法典仲裁器统一决定。</p>
+<p><code>combined_fault_rules</code> 是法典规则的一部分，支持 <code>priority</code>、<code>when_all</code>、<code>actions</code>、<code>safety_system</code> 和 <code>manual_takeover</code>。当组合规则命中时，仲裁器会抑制与组合规则重叠的单事件执行，避免同一批事件重复触发多套动作。</p>
 <h2 id="3-任务切换">3. 任务切换</h2>
 <p>任务切换入口在 <code>nav2_monitor_params.yaml</code>：</p>
 <pre><code class="language-yaml">
@@ -229,6 +230,9 @@ task_fault_configs.reverse: &quot;/opt/ry/config/Monitor/nav2_monitor/profiles/f
 </ul>
 <ul>
 <li>部署路径统一使用 <code>/opt/ry/config/Monitor/nav2_monitor/</code>。</li>
+</ul>
+<ul>
+<li>人工接管不再由 <code>vehicle_state_judge</code> 直发，统一由 reporter 发布到 <code>/nav2_monitor/reporter/human_takeover_json</code>。</li>
 </ul>
       <div class="meta">本文档已统一为 HTML 形式，便于浏览、打印和后续可视化扩展。</div>
     </article>

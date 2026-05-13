@@ -445,6 +445,11 @@ const MultiValueJudgeConfig & FaultDetector::get_multi_value_judge_config() cons
   return multi_value_cfg_;
 }
 
+const std::vector<CombinedFaultRuleConfig> & FaultDetector::get_combined_fault_rules() const
+{
+  return combined_fault_rules_;
+}
+
 
 void FaultDetector::load_config(const std::string & config_file)
 {
@@ -533,6 +538,9 @@ void FaultDetector::load_config(const std::string & config_file)
           if (!parse_fault_level(rule_node["level"], rule.level)) {
             rule.level = FaultLevel::ERROR;
           }
+          if (rule_node["priority"]) {
+            rule.priority = std::max(1, rule_node["priority"].as<int>());
+          }
           rule.actions = parse_actions(
             rule_node["actions"],
             "[combined_fault_rules][" + rule.name + "]",
@@ -547,6 +555,9 @@ void FaultDetector::load_config(const std::string & config_file)
           }
           if (rule_node["reason"] && rule_node["reason"].IsScalar()) {
             rule.reason = rule_node["reason"].as<std::string>();
+          }
+          if (rule_node["manual_takeover"]) {
+            rule.manual_takeover = parse_bool(rule_node["manual_takeover"], false);
           }
 
           combined_fault_rules_.push_back(std::move(rule));
@@ -1346,9 +1357,6 @@ std::vector<FaultInfo> FaultDetector::detect_faults(
       std::make_move_iterator(collision_faults.end()));
   }
 
-  const auto base_faults = faults;
-  append_combined_faults(base_faults, now, faults);
-
   return faults;
 }
 
@@ -1377,74 +1385,5 @@ std::vector<FaultInfo> FaultDetector::detect_collision_faults(
   }
   return collision_evaluator_->evaluate(collision_cfg_, store, now);
 }
-
-void FaultDetector::append_combined_faults(
-  const std::vector<FaultInfo> & base_faults,
-  const rclcpp::Time & now,
-  std::vector<FaultInfo> & faults) const
-{
-  if (combined_fault_rules_.empty()) {
-    return;
-  }
-
-  std::set<std::string> active_fault_keys;
-  for (const auto & fault : base_faults) {
-    active_fault_keys.insert(fault.fault_key);
-  }
-
-  for (const auto & rule : combined_fault_rules_) {
-    const bool matched = std::all_of(
-      rule.when_all_fault_keys.begin(), rule.when_all_fault_keys.end(),
-      [&active_fault_keys](const std::string & fault_key) {
-        return active_fault_keys.count(fault_key) > 0;
-      });
-    if (!matched) {
-      continue;
-    }
-
-    const std::string reason =
-      rule.reason.empty() ? ("Combined fault triggered: " + rule.name) : rule.reason;
-    if (rule.actions.empty()) {
-      FaultInfo fault;
-      fault.fault_key = "combined_fault|" + rule.name + "|action=0";
-      fault.module_name = "combined_fault";
-      fault.level = rule.level;
-      fault.reason = reason;
-      fault.fault_type = "combined_fault";
-      fault.fault_model = "combined";
-      fault.fault_name = rule.name;
-      fault.action = ActionType::NONE;
-      fault.safety_command = SafetyCommandType::NONE;
-      fault.safety_slow_down_percentage = 0.0;
-      fault.timestamp = now;
-      faults.push_back(std::move(fault));
-      continue;
-    }
-
-    for (const auto & action : rule.actions) {
-      if (action == ActionType::SAFETY_SYSTEM && rule.safety_command == SafetyCommandType::NONE) {
-        continue;
-      }
-
-      FaultInfo fault;
-      fault.fault_key = "combined_fault|" + rule.name + "|action=" +
-        std::to_string(static_cast<int>(action));
-      fault.module_name = "combined_fault";
-      fault.level = rule.level;
-      fault.reason = reason;
-      fault.fault_type = "combined_fault";
-      fault.fault_model = "combined";
-      fault.fault_name = rule.name;
-      fault.action = action;
-      fault.safety_command =
-        action == ActionType::SAFETY_SYSTEM ? rule.safety_command : SafetyCommandType::NONE;
-      fault.safety_slow_down_percentage =
-        action == ActionType::SAFETY_SYSTEM ? rule.safety_slow_down_percentage : 0.0;
-      fault.timestamp = now;
-      faults.push_back(std::move(fault));
-    }
-  }
-}
-
 
 }  // namespace nav2_monitor

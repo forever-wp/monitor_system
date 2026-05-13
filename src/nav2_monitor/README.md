@@ -31,7 +31,7 @@
 - `watch_topics` 频率与发布者监控
 - `feedback_rules` 统一反馈规则判断
 - 底盘异常与久停判断
-- 多故障组合与安全动作仲裁
+- 多故障组合、法典仲裁与事件执行层
 - 自动恢复与 `RESUME`
 - 碰撞检测：`LaserScan` / `PointCloud2` / `ultrasonic_eight(JSON)` / `collision_voxel_layer/VoxelGrid`
 - 碰撞策略：`slowdown zone` / `stop zone` / `dynamic ttc`
@@ -42,24 +42,25 @@
 
 当前默认主链路：
 
-`ROS输入 -> 独立监控模块 -> /monitor/*_state -> nav2_monitor_aggregator -> FaultStateCoordinator -> SafetyCmd -> safety_emergency_executor`
+`ROS输入 -> 独立事件发现器 -> /monitor/*_state -> nav2_monitor_aggregator -> EventCodexArbiter -> EventExecutor -> safety_emergency_executor / nodemanager`
 
 模块职责：
 
 - `topic_frequency_monitor_node`：从当前 `fault_config` 的 `modules[].watch_topics` 自动生成清单，统计高频 topic 频率、新鲜度和发布者状态
-- `vehicle_state_judge_node`：小车状态判断检测与人工介入提醒
+- `vehicle_state_judge_node`：小车状态判断检测事件发现器，只发布 `/monitor/vehicle_state`
 - `node_tf_monitor_node`：节点/TF 状态检测
 - `battery_monitor_node`：电池状态标准化
 - `algorithm_feedback_monitor_node`：统一算法反馈规则判断
 - `collision_monitor_node`：碰撞/TTC 判断、`/navigation_mode` 切换和 TTC 可视化
-- `nav2_monitor_aggregator_node`：消费低频标准状态，发布总状态、事件、节点管理器请求和安全动作
+- `nav2_monitor_aggregator_node`：消费低频标准状态，发布总状态、故障边沿事件、法典仲裁结果关联上报
 - `MonitorDataStore`：统一保存最新有效快照
 - `FaultDetector`：加载配置并编排 evaluator
 - `WatchTopicEvaluator`：直接监控 topic 规则
 - `FeedbackRuleEvaluator`：统一反馈规则
 - `ChassisEvaluator`：底盘异常 / 久停规则
 - `CollisionEvaluator`：碰撞检测规则
-- `FaultStateCoordinator`：故障边沿、状态机、安全动作发布
+- `EventCodexArbiter`：法院角色，基于 active event set 和法典规则生成唯一最终执行计划
+- `EventExecutor`：警察角色，唯一负责发布 `/safety_system/cmd` 和 `/nodemanager/cmd`
 - `safety_emergency_executor`：执行 `SLOW_DOWN / SOFT_STOP / EMERGENCY_STOP / RESUME`
 
 详细职责见 [architecture.html](docs/architecture.html)。
@@ -67,11 +68,11 @@
 ## 快速启动
 
 ```bash
-colcon build --packages-select nav2_monitor safety_emergency_executor
+env ROS_DOMAIN_ID=66 colcon build --packages-select nav2_monitor safety_emergency_executor
 source install/setup.bash
 
-ros2 launch nav2_monitor nav2_monitor.launch.py
-ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
+env ROS_DOMAIN_ID=66 ros2 launch nav2_monitor nav2_monitor.launch.py
+env ROS_DOMAIN_ID=66 ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
 ```
 
 `nav2_monitor.launch.py` 默认启动全部独立监控模块和 `nav2_monitor_aggregator_node`。单独调试聚合器时可使用 `nav2_monitor_aggregator.launch.py`。
@@ -100,9 +101,8 @@ ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
 - `collision_state_topic`
 - `fault_event_topic`
 - `nodemanager_cmd_topic`
-- `supervisor_cmd_topic`（兼容旧字段）
 - `safety_cmd_topic`
-- `human_intervention_topic`
+- `reporter.human_takeover_json_topic`
 - `reporter.heartbeat_json_topic`
 - `reporter.event_json_topic`
 - `fault_config`
@@ -145,8 +145,8 @@ ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
 
 - `vehicle_state_judge`
   - 小车状态判断检测，用于对比“速度指令意图”和“实际运动状态”
-  - 有速度指令但实际不动：通过 `/nav2_monitor/human_intervention` 上报人工介入，可能是急停或底盘异常
-  - 无速度指令但实际仍动：超过 `coast_grace_s` 刹车惯性宽限后通过 `/nav2_monitor/human_intervention` 上报，避免制动过程误报
+  - 有速度指令但实际不动：先通过 `/monitor/vehicle_state` 输出事件事实，聚合器仲裁后由 reporter 通过 `/nav2_monitor/reporter/human_takeover_json` 统一上报人工接管建议
+  - 无速度指令但实际仍动：超过 `coast_grace_s` 刹车惯性宽限后输出事件事实，避免制动过程误报
   - 实际运动来源优先级为 IMU、odom、moto feedback，任一可用来源都可参与判断
 
 - `collision_detection.ultrasonic_topic`
@@ -216,10 +216,11 @@ ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
 |---|---|---|---|---|
 | `/nav2_monitor/status` | `nav2_monitor/msg/MonitorStatus` | 周期发布整体监控状态 | 周期发布（`check_rate`） | `all_ok=true`, `cpu_usage=12.3`, `battery_percentage=0.86` |
 | `/nav2_monitor/fault_event` | `nav2_monitor/msg/FaultEvent` | 发布故障触发/恢复边沿事件 | 边沿发布（触发 / 恢复） | `module_name=navigation`, `fault_level=ERROR`, `edge=TRIGGER` |
-| `/nodemanager/cmd` | `std_msgs/msg/String` | 向节点管理器下发重启请求 | 故障触发后按 cooldown 发布 | `{"module_name":"navigation","nodes_to_restart":[],"reason":"Node inactive"}` |
-| `/safety_system/cmd` | `nav2_monitor/msg/SafetyCmd` | 向安全执行链路下发动作 | 安全状态变化时发布 | `action=2`, `slow_down_percentage=0.0`, `reason="Node inactive"` |
+| `/nodemanager/cmd` | `std_msgs/msg/String` | 事件执行层向节点管理器下发重启请求 | 法典仲裁后按 cooldown 发布 | `{"module_name":"navigation","nodes_to_restart":[],"reason":"Node inactive"}` |
+| `/safety_system/cmd` | `nav2_monitor/msg/SafetyCmd` | 事件执行层向安全执行链路下发动作 | 安全状态变化或激活保持时发布 | `action=2`, `slow_down_percentage=0.0`, `reason="Node inactive"` |
 | `/nav2_monitor/reporter/heartbeat_json` | `std_msgs/msg/String` | 发布系统心跳 JSON，上报系统资源/电池/导航状态 | 周期发布（随 `/nav2_monitor/status`） | `{"all_ok":true,"system":{"cpu_usage":12.3},"battery":{"percentage":0.86},"navigation":{"active":true}}` |
 | `/nav2_monitor/reporter/event_json` | `std_msgs/msg/String` | 发布异常/恢复事件 JSON | 边沿发布（随 `/nav2_monitor/fault_event`） | `{"edge":"TRIGGER","fault_type":"node_inactive","fault_module":"navigation","fault_level":"CRITICAL"}` |
+| `/nav2_monitor/reporter/human_takeover_json` | `std_msgs/msg/String` | 发布人工接管建议 JSON | 仲裁计划变化且需要人工介入时发布 | `{"event_type":"human_takeover_required","request":"human_intervention"}` |
 | `collision_detection.zones[*].polygon_pub_topic` | `geometry_msgs/msg/PolygonStamped` | 发布碰撞区可视化轮廓 | 周期发布（随 `check_health()`） | `/nav2_monitor/collision_zone/front_stop` |
 | `/nav2_monitor/collision_ttc_markers` | `visualization_msgs/msg/MarkerArray` | 发布 TTC 动态 corridor / footprint / 最近碰撞点 / 文本 | 周期发布（开启 `ttc_visualization_enabled` 后） | `front_ttc ttc=1.42 clr=0.08` |
 | `/monitor/topic_states` | `std_msgs/msg/String` | 独立频率监测输出所有 watch topic 状态 | `topic_frequency_monitor_node` 周期发布 | `{"source_module":"topic_frequency_monitor","items":[...]}` |
@@ -245,6 +246,21 @@ ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
 | `module_name` | string | 触发节点管理器重启的模块名 |
 | `nodes_to_restart` | array | 预留字段，当前通常为空数组 |
 | `reason` | string | 触发该次重启的原因说明 |
+
+### `/nav2_monitor/reporter/human_takeover_json` 字段
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `timestamp` | string | 上报时刻 |
+| `event_type` | string | 固定为 `human_takeover_required` |
+| `request` | string | 固定为 `human_intervention` |
+| `plan_id` | string | 事件仲裁器本轮最终执行计划 ID |
+| `rule_id` | string | 触发人工接管建议的法典规则 ID |
+| `module_name` | string | 来源模块 |
+| `fault_key` | string | 触发事件 key，组合规则中以 `;` 连接 |
+| `fault_level` | string | 错误等级 |
+| `reason` | string | 人工接管原因 |
+| `suggested_action` | string | 建议动作，当前为 `manual_check` |
 
 ### `/nav2_monitor/reporter/heartbeat_json` 字段
 
@@ -361,21 +377,22 @@ ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
 
 - `/nav2_monitor/status`
 - `/nav2_monitor/fault_event`
-- `/nodemanager/cmd`（JSON 字符串，旧 `/supervisor/cmd` 可通过兼容参数回退）
+- `/nodemanager/cmd`（JSON 字符串）
   - 示例：`{"module_name":"navigation","nodes_to_restart":[],"reason":"Node inactive"}`
 - `/safety_system/cmd`
+- `/nav2_monitor/reporter/human_takeover_json`
 - `collision_detection.zones[*].polygon_pub_topic`
 
 ## 安全动作语义
 
-`FaultStateCoordinator` 会聚合所有当前激活的安全故障，统一选择最高安全动作：
+`EventCodexArbiter` 会基于当前 active event set 匹配法典规则并生成唯一执行计划；`EventExecutor` 是唯一发布 `/safety_system/cmd` 的执行边界。
 
 - `EMERGENCY_STOP > SOFT_STOP > SLOW_DOWN > NORMAL`
 
 恢复逻辑：
 
 - 同一故障消失时发 `RECOVER` 边沿事件
-- 所有安全故障恢复后自动发布 `RESUME`
+- 当前安全相关事件全部结束后，由事件执行层自动发布 `RESUME`
 
 ## 碰撞检测说明
 
@@ -406,18 +423,19 @@ ros2 launch safety_emergency_executor safety_emergency_executor.launch.py
 ## 常用调试命令
 
 ```bash
-ros2 topic echo /nav2_monitor/status
-ros2 topic echo /nav2_monitor/fault_event
-ros2 topic echo /safety_system/cmd
-ros2 topic echo /nodemanager/cmd
-ros2 topic echo /monitor/topic_states
-ros2 topic echo /monitor/vehicle_state
+env ROS_DOMAIN_ID=66 ros2 topic echo /nav2_monitor/status
+env ROS_DOMAIN_ID=66 ros2 topic echo /nav2_monitor/fault_event
+env ROS_DOMAIN_ID=66 ros2 topic echo /safety_system/cmd
+env ROS_DOMAIN_ID=66 ros2 topic echo /nodemanager/cmd
+env ROS_DOMAIN_ID=66 ros2 topic echo /nav2_monitor/reporter/human_takeover_json
+env ROS_DOMAIN_ID=66 ros2 topic echo /monitor/topic_states
+env ROS_DOMAIN_ID=66 ros2 topic echo /monitor/vehicle_state
 ```
 
 统一反馈测试示例：
 
 ```bash
-ros2 topic pub /nav2_monitor/algorithm_feedback nav2_monitor/msg/AlgorithmFeedback \
+env ROS_DOMAIN_ID=66 ros2 topic pub /nav2_monitor/algorithm_feedback nav2_monitor/msg/AlgorithmFeedback \
   "{module_name: navigation, topic_name: /controller/feedback, metric_name: tracking_error, value: 0.95, valid: true}"
 ```
 
@@ -434,13 +452,13 @@ ros2 topic pub /nav2_monitor/algorithm_feedback nav2_monitor/msg/AlgorithmFeedba
 示例：
 
 ```bash
-python3 src/nav2_monitor/scripts/imu_frequency_repro.py   /home/tokou/claude/rosbag2_2026_03_12-20_15_08/rosbag2_2026_03_12-20_15_08   --topic /livox/imu
+env ROS_DOMAIN_ID=66 python3 src/nav2_monitor/scripts/imu_frequency_repro.py   /home/tokou/claude/rosbag2_2026_03_12-20_15_08/rosbag2_2026_03_12-20_15_08   --topic /livox/imu
 ```
 
 ## 测试
 
 ```bash
-colcon test --packages-select nav2_monitor --event-handlers console_direct+
+env ROS_DOMAIN_ID=66 colcon test --packages-select nav2_monitor --event-handlers console_direct+
 ```
 
 当前该包核心测试覆盖：

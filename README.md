@@ -25,7 +25,7 @@
 |---|---|---|
 | `algorithm_feedback_adapter` | 订阅算法/业务 topic，拆字段，发布 `/nav2_monitor/algorithm_feedback` | 故障判断、MQTT 上报 |
 | `collision_voxel_layer` | 融合 scan/depth cloud，发布 `VoxelGrid` | 安全动作、导航控制器切换 |
-| `nav2_monitor` | 数据源检测、规则判断、故障事件、人工介入提醒、安全仲裁 | 直接控制底盘 |
+| `nav2_monitor` | 数据源检测、事件发现、法典仲裁、执行计划、人工接管上报 | 直接控制底盘 |
 | `safety_emergency_executor` | 执行减速、缓停、急停、恢复，输出 `/command` | 故障判断 |
 | `master_interfaces` | 外部接口消息和服务定义 | 业务逻辑 |
 
@@ -35,9 +35,9 @@
 算法/业务 topic
   -> algorithm_feedback_adapter
   -> /nav2_monitor/algorithm_feedback
-  -> nav2_monitor feedback_rules
-  -> FaultInfo
-  -> FaultStateCoordinator
+  -> nav2_monitor 事件发现器
+  -> EventCodexArbiter
+  -> EventExecutor
   -> /safety_system/cmd
   -> safety_emergency_executor
   -> /command
@@ -52,7 +52,9 @@
   -> /collision_voxel_layer/voxels
   -> nav2_monitor collision_detection
   -> zone / TTC
-  -> /safety_system/cmd + /navigation_mode
+  -> EventCodexArbiter
+  -> EventExecutor
+  -> /safety_system/cmd
 ```
 
 小车状态检测链路：
@@ -60,8 +62,10 @@
 ```text
 /command + /livox/imu + /odom + /moto_info
   -> nav2_monitor vehicle_state_judge
-  -> /nav2_monitor/fault_event
-  -> /nav2_monitor/human_intervention
+  -> /monitor/vehicle_state
+  -> nav2_monitor_aggregator
+  -> EventCodexArbiter
+  -> /nav2_monitor/reporter/human_takeover_json
 ```
 
 ## 常用构建与测试

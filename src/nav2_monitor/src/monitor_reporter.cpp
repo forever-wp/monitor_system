@@ -14,8 +14,11 @@ void MonitorReporter::configure(rclcpp::Node * node)
   cmd_correlation_window_s_ = std::max(0.0, node_->declare_parameter<double>("reporter.cmd_correlation_window_s", 2.0));
   const auto heartbeat_topic = node_->declare_parameter<std::string>("reporter.heartbeat_json_topic", "/nav2_monitor/reporter/heartbeat_json");
   const auto event_topic = node_->declare_parameter<std::string>("reporter.event_json_topic", "/nav2_monitor/reporter/event_json");
+  const auto human_takeover_topic = node_->declare_parameter<std::string>(
+    "reporter.human_takeover_json_topic", "/nav2_monitor/reporter/human_takeover_json");
   heartbeat_pub_ = node_->create_publisher<std_msgs::msg::String>(heartbeat_topic, 10);
   event_pub_ = node_->create_publisher<std_msgs::msg::String>(event_topic, 10);
+  human_takeover_pub_ = node_->create_publisher<std_msgs::msg::String>(human_takeover_topic, 10);
 }
 
 std::string MonitorReporter::json_escape(const std::string & input)
@@ -289,6 +292,35 @@ void MonitorReporter::publish_fault_event_json(const msg::FaultEvent & event, co
         fault_level.c_str(), action.c_str(), event.reason.c_str());
     }
   }
+}
+
+void MonitorReporter::publish_human_takeover(
+  const EventHumanTakeoverDecision & decision,
+  const std::string & plan_id,
+  const rclcpp::Time & now) const
+{
+  if (!human_takeover_pub_) {
+    return;
+  }
+
+  std::ostringstream oss;
+  oss << '{'
+      << "\"timestamp\":\"" << json_escape(std::to_string(now.seconds())) << "\","
+      << "\"event_type\":\"human_takeover_required\","
+      << "\"request\":\"human_intervention\","
+      << "\"plan_id\":\"" << json_escape(plan_id) << "\","
+      << "\"rule_id\":\"" << json_escape(decision.rule_id) << "\","
+      << "\"module_name\":\"" << json_escape(decision.module_name) << "\","
+      << "\"fault_key\":\"" << json_escape(decision.fault_key) << "\","
+      << "\"fault_level\":\""
+      << fault_level_to_string(static_cast<uint8_t>(decision.level)) << "\","
+      << "\"reason\":\"" << json_escape(decision.reason) << "\","
+      << "\"suggested_action\":\"manual_check\""
+      << '}';
+
+  std_msgs::msg::String out;
+  out.data = oss.str();
+  human_takeover_pub_->publish(out);
 }
 
 }  // namespace nav2_monitor
