@@ -44,7 +44,8 @@ collision_detection:
   navigation_safe_clear_duration_s: 1.0  # TTC 连续清除退出 SAFE 的确认时间
   navigation_safe_min_hold_s: 1.5  # SAFE 最小保持时间，防止边缘抖动
   navigation_mode_publish_cooldown_s: 0.5  # FAST/SAFE 状态重复发布冷却时间
-  auto_footprint_zones_enabled: 1  # front_slow/front_stop 基于 footprint 自动生成；SAFE 模式自动缩小
+  auto_footprint_zones_enabled: 1  # front_ttc/front_slow/front_stop 基于 footprint 自动生成；SAFE 模式自动缩小
+  auto_footprint_zone_size_multiplier: 1.0  # 自动生成框体整体倍率；关闭自动后改用 zones[].points 手动调框
   footprint_points: [-0.37, -0.28, -0.37, 0.28, 0.37, 0.28, 0.37, -0.28]  # 车体 footprint，用于 TTC 计算时扣除车体范围
   ultrasonic_widget: [0.95, 1.0, 0.95, 0.7, 0.25, 0.2, 0.25, 0.7]  # 到门任务：前视和前侧更敏感
   # zones 字段说明见主配置 fault_detector_config.yaml，对所有任务 profile 含义一致
@@ -52,7 +53,10 @@ collision_detection:
     - name: "front_ttc"
       enabled: 1
       model: "ttc"
+      auto_footprint_zone: "front_ttc"  # 绕障基础框：FAST/SAFE 固定大小，保证低速/无预测速度时仍有基础 TTC 保护范围
+      navigation_safe_hold_zone: 1  # 动态 TTC 前向范围小于基础框时进入/保持 SAFE；减速动作仍按 actions 保留
       motion_direction: "forward"
+      min_points: 2.5
       level: "WARNING"
       safety_system: 1
       safety_slow_down_percentage: 50.0
@@ -63,6 +67,8 @@ collision_detection:
       corridor_margin: 0.10
       candidate_downsample_resolution: 0.08
       actions: ["safety_system"]
+      visualize: 1
+      polygon_pub_topic: "/nav2_monitor/collision_zone/front_ttc_base"
     - name: "front_slow"
       enabled: 1
       auto_footprint_zone: "front_slow"  # FAST=前向1个车身；SAFE=前向0.5个车身

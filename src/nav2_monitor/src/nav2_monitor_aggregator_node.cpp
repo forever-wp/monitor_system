@@ -1525,7 +1525,7 @@ void Nav2MonitorAggregatorNode::check_health()
       std::make_move_iterator(vehicle_faults_snapshot.end()));
   }
 
-  auto arbitration = event_codex_arbiter_.update(faults);
+  auto arbitration = event_codex_arbiter_.update(faults, now);
   auto execution_result = event_executor_.execute(arbitration.plan, now);
 
   if (execution_result.safety_cmd.has_value()) {
@@ -1551,9 +1551,12 @@ void Nav2MonitorAggregatorNode::check_health()
   }
 
   if (arbitration.plan_changed) {
+    monitor_reporter_.publish_codex_event_json(arbitration.plan, execution_result, now);
     for (const auto & takeover : arbitration.plan.human_takeovers) {
       monitor_reporter_.publish_human_takeover(takeover, arbitration.plan.plan_id, now);
     }
+  } else if (!execution_result.target_results.empty()) {
+    monitor_reporter_.publish_codex_event_json(arbitration.plan, execution_result, now);
   }
 
   pub_->publish(status_msg);

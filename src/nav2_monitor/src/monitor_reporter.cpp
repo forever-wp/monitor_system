@@ -294,6 +294,81 @@ void MonitorReporter::publish_fault_event_json(const msg::FaultEvent & event, co
   }
 }
 
+void MonitorReporter::publish_codex_event_json(
+  const EventExecutionPlan & plan,
+  const EventExecutionResult & execution_result,
+  const rclcpp::Time & now) const
+{
+  if (!event_pub_) {
+    return;
+  }
+
+  std::ostringstream oss;
+  oss << '{'
+      << "\"timestamp\":\"" << json_escape(std::to_string(now.seconds())) << "\","
+      << "\"event_type\":\"codex_execution_plan\","
+      << "\"plan_id\":\"" << json_escape(plan.plan_id) << "\","
+      << "\"plan_signature\":\"" << json_escape(plan.signature) << "\",";
+
+  oss << "\"active_event_keys\":[";
+  for (size_t i = 0; i < plan.active_event_keys.size(); ++i) {
+    if (i > 0) {
+      oss << ',';
+    }
+    oss << "\"" << json_escape(plan.active_event_keys[i]) << "\"";
+  }
+  oss << "],";
+
+  oss << "\"selected_rules\":[";
+  for (size_t i = 0; i < plan.selected_rules.size(); ++i) {
+    const auto & rule = plan.selected_rules[i];
+    if (i > 0) {
+      oss << ',';
+    }
+    oss << '{'
+        << "\"rule_id\":\"" << json_escape(rule.rule_id) << "\","
+        << "\"rule_name\":\"" << json_escape(rule.rule_name) << "\","
+        << "\"combined\":" << (rule.combined ? "true" : "false") << ','
+        << "\"manual_takeover\":" << (rule.manual_takeover ? "true" : "false") << ','
+        << "\"level\":\"" << fault_level_to_string(static_cast<uint8_t>(rule.level)) << "\","
+        << "\"reason\":\"" << json_escape(rule.report_reason.empty() ? rule.reason : rule.report_reason) << "\","
+        << "\"event_keys\":[";
+    for (size_t key_idx = 0; key_idx < rule.event_keys.size(); ++key_idx) {
+      if (key_idx > 0) {
+        oss << ',';
+      }
+      oss << "\"" << json_escape(rule.event_keys[key_idx]) << "\"";
+    }
+    oss << "]}";
+  }
+  oss << "],";
+
+  oss << "\"execution_results\":[";
+  for (size_t i = 0; i < execution_result.target_results.size(); ++i) {
+    const auto & result = execution_result.target_results[i];
+    if (i > 0) {
+      oss << ',';
+    }
+    oss << '{'
+        << "\"target\":\"" << json_escape(result.target) << "\","
+        << "\"requested\":" << (result.requested ? "true" : "false") << ','
+        << "\"published\":" << (result.published ? "true" : "false") << ','
+        << "\"latched\":" << (result.latched ? "true" : "false") << ','
+        << "\"action\":\"" << json_escape(result.action) << "\","
+        << "\"reason\":\"" << json_escape(result.reason) << "\"}";
+  }
+  oss << "],";
+
+  oss << "\"human_takeover_count\":" << plan.human_takeovers.size() << ','
+      << "\"safety_active\":"
+      << (plan.safety_update.has_value() && plan.safety_update->active ? "true" : "false")
+      << '}';
+
+  std_msgs::msg::String out;
+  out.data = oss.str();
+  event_pub_->publish(out);
+}
+
 void MonitorReporter::publish_human_takeover(
   const EventHumanTakeoverDecision & decision,
   const std::string & plan_id,

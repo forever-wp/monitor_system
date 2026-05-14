@@ -7,22 +7,26 @@ multi_value_judge:
   trigger_count: 2  # 同一规则连续异常多少次后才正式触发
   recover_count: 2  # 同一规则连续恢复多少次后才正式清除
 
-# 多错误组合策略（第一版）
-# - name: 组合规则唯一名称
-# - when_all: 需要同时存在的 fault_key 列表；当前仅支持精确匹配 fault_key
-# - level: 组合故障等级 WARNING/ERROR/CRITICAL
-# - actions: 组合故障动作列表，可选 nodemanager/safety_system/none
-# - safety_system: 当 actions 包含 safety_system 时生效，0=NONE 1=SLOW_DOWN 2=SOFT_STOP 3=EMERGENCY_STOP
-# - safety_slow_down_percentage: 组合故障触发减速时使用的百分比
-# - reason: 组合故障上报原因；未配置时默认 "Combined fault triggered: <name>"
-combined_fault_rules:
-  - name: "camera_and_lidar_missing"
+# 事件法典规则：事件发现器只输出事实，最终执行由 EventCodexArbiter 统一仲裁。
+# - rule_id/name: 规则唯一名称
+# - when_all/when_any: 支持 event_key/fault_key 精确匹配，也支持 module、fault_type、fault_model、fault_name、prefix、contains、action 条件
+# - execution_plan.targets: 可选 safety/nodemanager/none
+# - execution_plan.safety.action: NONE/SLOW_DOWN/SOFT_STOP/EMERGENCY_STOP
+# - execution_plan.nodemanager.modules: 需要交给 nodemanager 的模块列表
+# - report_policy: 上报严重等级、人工接管建议和展示原因
+event_codex_rules:
+  - rule_id: "camera_and_lidar_missing"
+    name: "camera_and_lidar_missing"
     when_all:
       - "usb_cam|topic_legacy:/front_camera/image_raw|action=0"
       - "livox|topic_legacy:/livox/points|action=1"
-    level: "CRITICAL"
-    actions: ["nodemanager"]
-    reason: "Combined fault: front camera and livox points both unavailable"
+    execution_plan:
+      targets: ["nodemanager"]
+      nodemanager:
+        modules: ["usb_cam", "livox"]
+    report_policy:
+      severity: "CRITICAL"
+      reason: "Codex rule: front camera and livox points both unavailable"
 
 # 需要持续监控的 TF 变换对，格式为 "parent->child"
 target_transforms:
@@ -66,15 +70,18 @@ collision_detection:
   navigation_safe_clear_duration_s: 1.0  # TTC 连续清除多久才允许退出 SAFE；用于避免障碍物边缘反复跳变
   navigation_safe_min_hold_s: 1.5  # 进入 SAFE 后最少保持时间；给高避障控制器足够接管和规划时间
   navigation_mode_publish_cooldown_s: 0.5  # FAST/SAFE 状态重复发布冷却时间；publisher 使用 transient_local，晚启动订阅者仍可拿到最近状态
-  auto_footprint_zones_enabled: 1  # front_slow/front_stop 由 footprint 自动生成，避免手工框体歧义
+  auto_footprint_zones_enabled: 1  # front_ttc/front_slow/front_stop 由 footprint 自动生成，避免手工框体歧义
+  auto_footprint_zone_size_multiplier: 1.0  # 自动生成框体整体倍率；同时放大前向长度和左右宽度，关闭自动后改用 zones[].points 手动调框
   footprint_points: [-0.37, -0.28, -0.37, 0.28, 0.37, 0.28, 0.37, -0.28]  # 车体 footprint，用于 TTC 计算时扣除车体范围
   ultrasonic_widget: [0.9, 1.0, 0.9, 0.55, 0.25, 0.2, 0.25, 0.55]  # 1号左前，顺时针编号；前视和前侧更高
   # zones 字段说明：
   # - name: 区域唯一名称
   # - enabled: 是否启用该区域
   # - model: zone/ttc；ttc 表示动态 TTC 预警模型
-  # - auto_footprint_zone: 可选 front_slow/front_stop；启用后 points 由 footprint 自动生成，SAFE 模式下自动缩小
-  # - points: zone 模式的多边形顶点，按 [x1, y1, x2, y2, ...] 展开；配置 auto_footprint_zone 时通常不需要手写
+  # - auto_footprint_zone: 可选 front_ttc/front_slow/front_stop；启用后 points 由 footprint 自动生成，SAFE 模式下可自动缩小
+  # - auto_footprint_fast_scale/auto_footprint_safe_scale: 单区自动框前向长度，单位为车身长度倍数；不填时使用默认值
+  # - auto_footprint_zone_size_multiplier: 单区自动框整体倍率；会叠乘全局 auto_footprint_zone_size_multiplier
+  # - points: 多边形顶点，按 [x1, y1, x2, y2, ...] 展开；关闭 auto_footprint_zones_enabled 后可用 points 手动调框
   # - min_points: 命中阈值；对超声波/voxel 是加权点数，对 scan/pointcloud 是点数量/权重和
   # - level: 故障等级 WARNING/ERROR/CRITICAL
   # - safety_system: 0=NONE 1=SLOW_DOWN 2=SOFT_STOP 3=EMERGENCY_STOP
@@ -87,7 +94,10 @@ collision_detection:
     - name: "front_ttc"
       enabled: 1  # 启用前向接近预警区
       model: "ttc"  # 按动态 TTC 方式触发
+      auto_footprint_zone: "front_ttc"  # 绕障基础框：FAST/SAFE 均为前向1个车身，作为动态 TTC 的固定下限
+      navigation_safe_hold_zone: 1  # 当动态 TTC 前向范围小于基础框时，基础框作为 SAFE 下限接管；无速度预测时按 0 处理，减速动作按 actions 保留
       motion_direction: "forward"
+      min_points: 3
       level: "WARNING"  # 触发时按 WARNING 上报
       safety_system: 1  # 触发后执行减速
       safety_slow_down_percentage: 50.0  # 减速到 50%
@@ -98,6 +108,8 @@ collision_detection:
       corridor_margin: 0.10
       candidate_downsample_resolution: 0.08
       actions: ["safety_system"]  # 仅执行安全动作
+      visualize: 1
+      polygon_pub_topic: "/nav2_monitor/collision_zone/front_ttc_base"
     - name: "front_slow"
       enabled: 1
       auto_footprint_zone: "front_slow"  # FAST=前向1个车身；SAFE=前向0.5个车身

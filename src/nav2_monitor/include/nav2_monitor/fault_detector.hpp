@@ -91,7 +91,8 @@ enum class AutoFootprintZoneType
 {
   NONE = 0,
   FRONT_SLOW = 1,
-  FRONT_STOP = 2
+  FRONT_STOP = 2,
+  FRONT_TTC = 3
 };
 
 struct UltrasonicSensorConfig
@@ -109,8 +110,12 @@ struct CollisionZoneConfig
 {
   std::string name;
   CollisionModelType model{CollisionModelType::ZONE};
+  bool legacy_approach_model{false};
   CollisionMotionDirectionType motion_direction{CollisionMotionDirectionType::BOTH};
   AutoFootprintZoneType auto_footprint_zone{AutoFootprintZoneType::NONE};
+  double auto_footprint_fast_scale{0.0};
+  double auto_footprint_safe_scale{0.0};
+  double auto_footprint_zone_size_multiplier{1.0};
   std::vector<CollisionPoint> points;
   std::vector<CollisionPoint> fast_points;
   std::vector<CollisionPoint> safe_points;
@@ -121,6 +126,7 @@ struct CollisionZoneConfig
   std::vector<ActionType> actions;
   bool enabled{true};
   bool visualize{true};
+  bool navigation_safe_hold_zone{false};
   std::string polygon_pub_topic;
   double time_before_collision{1.0};
   double recover_time_before_collision{0.0};
@@ -166,6 +172,7 @@ struct CollisionDetectionConfig
   double navigation_safe_min_hold_s{1.5};
   double navigation_mode_publish_cooldown_s{0.5};
   bool auto_footprint_zones_enabled{false};
+  double auto_footprint_zone_size_multiplier{1.0};
   FaultLevel source_level{FaultLevel::ERROR};
   std::vector<ActionType> source_actions{ActionType::SUPERVISOR};
   std::vector<CollisionPoint> footprint_points;
@@ -222,10 +229,27 @@ struct MultiValueJudgeConfig
   size_t recover_count;
 };
 
+struct EventCodexConditionConfig
+{
+  std::string event_key;
+  std::string module_name;
+  std::string fault_type;
+  std::string fault_model;
+  std::string fault_name;
+  std::string fault_key_prefix;
+  std::string fault_key_contains;
+  ActionType action{ActionType::NONE};
+  bool action_set{false};
+};
+
 struct CombinedFaultRuleConfig
 {
   std::string name;
   std::vector<std::string> when_all_fault_keys;
+  std::vector<std::string> when_any_fault_keys;
+  std::vector<EventCodexConditionConfig> when_all_conditions;
+  std::vector<EventCodexConditionConfig> when_any_conditions;
+  size_t min_match_count{0};
   int priority{100};
   FaultLevel level{FaultLevel::ERROR};
   std::vector<ActionType> actions;
@@ -233,6 +257,11 @@ struct CombinedFaultRuleConfig
   double safety_slow_down_percentage{0.0};
   std::string reason;
   bool manual_takeover{false};
+  double enter_hold_s{0.0};
+  double clear_hold_s{0.0};
+  double min_hold_s{0.0};
+  std::string report_reason;
+  std::vector<std::string> nodemanager_modules;
 };
 
 struct FaultInfo

@@ -698,21 +698,21 @@
 <ul>
 <li>状态组装进一步独立成 <code>StatusAssembler</code></li>
 </ul>
-<h3 id="多错误组合策略已支持第一版">多错误组合策略（已支持第一版）</h3>
+<h3 id="多错误组合策略已支持第一版">事件法典仲裁策略（已支持）</h3>
 <ul>
-<li>配置入口：<code>combined_fault_rules</code></li>
+<li>配置入口：<code>event_codex_rules</code>，旧 <code>combined_fault_rules</code> 仅兼容旧配置</li>
 </ul>
 <ul>
-<li>匹配方式：按 <code>fault_key</code> 精确匹配 <code>when_all</code></li>
+<li>匹配方式：<code>when_all</code>、<code>when_any</code>、<code>min_match_count</code>，支持精确 <code>event_key/fault_key</code> 和 <code>module/fault_type/fault_model/fault_name/prefix/contains/action</code> 条件匹配</li>
 </ul>
 <ul>
-<li>输出方式：命中后附加一条新的 <code>FaultInfo</code>，<code>module_name</code> 固定为 <code>combined_fault</code></li>
+<li>输出方式：仲裁器生成唯一 <code>EventExecutionPlan</code>，事件执行层再发布 <code>/safety_system/cmd</code> 与 <code>/nodemanager/cmd</code></li>
 </ul>
 <ul>
 <li>仲裁方式：由 <code>EventCodexArbiter</code> 独立完成组合规则、交叉规则和恢复降级仲裁</li>
 </ul>
 <ul>
-<li>当前边界：不支持 <code>when_any</code>、层级表达式、时间窗聚合、排除条件</li>
+<li>当前边界：下游 safety/nodemanager 尚未提供独立 ACK topic，因此执行结果目前表示发布级结果、锁存状态和冷却抑制状态</li>
 </ul>
 <p>---</p>
 <h2 id="7-性能设计原则">7. 性能设计原则</h2>

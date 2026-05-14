@@ -155,7 +155,7 @@
 <div class="table-wrap"><table>
 <thead><tr><th>文件</th><th>作用</th></tr></thead>
 <tbody>
-<tr><td><code>fault_detector_config.yaml</code></td><td>默认业务规则，定义模块、topic、TF、碰撞、小车状态、组合故障等规则。</td></tr>
+<tr><td><code>fault_detector_config.yaml</code></td><td>默认业务规则，定义模块、topic、TF、碰撞、小车状态、事件法典等规则。</td></tr>
 <tr><td><code>profiles/fault_detector_todoor.yaml</code></td><td>到门任务规则。</td></tr>
 <tr><td><code>profiles/fault_detector_elevator.yaml</code></td><td>电梯任务规则。</td></tr>
 <tr><td><code>profiles/fault_detector_reverse.yaml</code></td><td>倒车任务规则。</td></tr>
@@ -163,14 +163,14 @@
 <p>业务规则顶层结构：</p>
 <pre><code class="language-yaml">
 multi_value_judge:
-combined_fault_rules:
+event_codex_rules:
 target_transforms:
 collision_detection:
 vehicle_state_judge:
 modules:
 </code></pre>
 <p><code>modules</code> 中每个模块描述节点、topic 和反馈规则。当前格式只使用 <code>nodemanager</code>，不使用旧 <code>supervisor</code> 字段。故障规则只表达事件事实和动作意图，最终是否执行、执行哪个组合策略，由事件法典仲裁器统一决定。</p>
-<p><code>combined_fault_rules</code> 是法典规则的一部分，支持 <code>priority</code>、<code>when_all</code>、<code>actions</code>、<code>safety_system</code> 和 <code>manual_takeover</code>。当组合规则命中时，仲裁器会抑制与组合规则重叠的单事件执行，避免同一批事件重复触发多套动作。</p>
+<p><code>event_codex_rules</code> 是事件法典入口，支持 <code>priority</code>、<code>when_all</code>、<code>when_any</code>、<code>min_match_count</code>、<code>enter_hold_s</code>、<code>clear_hold_s</code>、<code>min_hold_s</code>、<code>execution_plan</code> 和 <code>report_policy</code>。条件既可以精确写 <code>event_key/fault_key</code>，也可以用 <code>module</code>、<code>fault_type</code>、<code>fault_model</code>、<code>fault_name</code>、<code>prefix</code>、<code>contains</code>、<code>action</code> 组合匹配。旧 <code>combined_fault_rules</code> 仅为兼容入口，新配置不要再使用。</p>
 <h2 id="3-任务切换">3. 任务切换</h2>
 <p>任务切换入口在 <code>nav2_monitor_params.yaml</code>：</p>
 <pre><code class="language-yaml">
@@ -208,6 +208,12 @@ task_fault_configs.reverse: &quot;/opt/ry/config/Monitor/nav2_monitor/profiles/f
 </ul>
 <ul>
 <li>改 TTC、碰撞源、导航 FAST/SAFE 切换：修改 <code>collision_detection</code> 段，必要时同步 <code>collision_monitor_params.yaml</code> 中的基础参数。</li>
+</ul>
+<ul>
+<li>自动碰撞框：打开 <code>auto_footprint_zones_enabled</code> 后，<code>front_ttc/front_slow/front_stop</code> 可由 <code>footprint_points</code> 自动生成；<code>auto_footprint_zone_size_multiplier</code> 用于整体放大框体。关闭自动后，<code>zones[].points</code> 保持手动配置，不会被覆盖。</li>
+</ul>
+<ul>
+<li>TTC 绕障基础框：<code>model: ttc</code> 可同时配置 <code>auto_footprint_zone: front_ttc</code> 或手动 <code>points</code>；当动态 TTC 前向范围小于基础框时，基础框作为 SAFE 下限接管，避免狭窄区域或无速度预测时过早切回 FAST。</li>
 </ul>
 <ul>
 <li>改小车状态判断阈值：修改 <code>vehicle_state_judge</code> 段。</li>

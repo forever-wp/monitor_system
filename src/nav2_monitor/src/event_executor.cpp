@@ -7,6 +7,25 @@
 namespace nav2_monitor
 {
 
+namespace
+{
+std::string safety_cmd_to_string(uint8_t action)
+{
+  switch (action) {
+    case msg::SafetyCmd::SLOW_DOWN:
+      return "SLOW_DOWN";
+    case msg::SafetyCmd::SOFT_STOP:
+      return "SOFT_STOP";
+    case msg::SafetyCmd::EMERGENCY_STOP:
+      return "EMERGENCY_STOP";
+    case msg::SafetyCmd::RESUME:
+      return "RESUME";
+    default:
+      return "NONE";
+  }
+}
+}  // namespace
+
 void EventExecutor::configure(
   rclcpp::Node * node,
   const std::string & safety_cmd_topic,
@@ -97,7 +116,8 @@ std::string EventExecutor::build_nodemanager_payload(
         }
         return joined.str();
       }()) << "\","
-      << "\"nodes_to_restart\":[],"
+      << "\"modules_to_restart\":[\"" << json_escape(decision.module_name) << "\"],"
+      << "\"nodes_to_restart\":[\"" << json_escape(decision.module_name) << "\"],"
       << "\"reason\":\"" << json_escape(decision.reason) << "\"}";
   return oss.str();
 }
@@ -172,11 +192,20 @@ EventExecutionResult EventExecutor::execute(
     last_safety_publish_time_ = now;
     safety_state_known_ = true;
     result.safety_cmd = msg;
+    result.target_results.push_back(EventExecutionResult::TargetResult{
+      "safety", true, safety_pub_ != nullptr, plan.safety_update->active,
+      safety_cmd_to_string(msg.action), msg.reason});
+  } else if (plan.safety_update.has_value()) {
+    result.target_results.push_back(EventExecutionResult::TargetResult{
+      "safety", plan.safety_update->active, false, plan.safety_update->active,
+      plan.safety_update->active ? "LATCHED" : "RESUME", plan.safety_update->reason});
   }
 
   for (const auto & decision : plan.nodemanager_decisions) {
     const auto signature = nodemanager_signature(decision);
     if (!should_publish_nodemanager(decision, signature, now)) {
+      result.target_results.push_back(EventExecutionResult::TargetResult{
+        "nodemanager", true, false, false, decision.module_name, decision.reason});
       continue;
     }
 
@@ -190,6 +219,9 @@ EventExecutionResult EventExecutor::execute(
       NodeManagerPublishState{now, signature};
     result.nodemanager_json_payloads.push_back(payload);
     result.nodemanager_decisions.push_back(decision);
+    result.target_results.push_back(EventExecutionResult::TargetResult{
+      "nodemanager", true, nodemanager_pub_ != nullptr, false,
+      decision.module_name, decision.reason});
   }
 
   return result;

@@ -1339,8 +1339,9 @@
         <section id="config" class="section">
           <h2>9. 推荐配置样例</h2>
           <p>配置既要能表达组合关系，也要能控制触发和恢复节奏。</p>
-          <pre class="code">combined_fault_rules:
-  - name: "collision_and_navigation_unhealthy"
+          <pre class="code">event_codex_rules:
+  - rule_id: "collision_and_navigation_unhealthy"
+    name: "collision_and_navigation_unhealthy"
     priority: 90
     when_all:
       - module: "collision_detection"
@@ -1351,11 +1352,15 @@
     enter_hold_s: 0.1
     clear_hold_s: 0.5
     min_hold_s: 1.0
-    suppress_base_actions: true
-    level: "CRITICAL"
-    actions: ["safety_system", "nodemanager"]
-    safety_system: 2
-    reason: "Collision risk and navigation degraded"</pre>
+    execution_plan:
+      targets: ["safety", "nodemanager"]
+      safety:
+        action: "SOFT_STOP"
+      nodemanager:
+        modules: ["navigation"]
+    report_policy:
+      severity: "CRITICAL"
+      reason: "Collision risk and navigation degraded"</pre>
           <table>
             <thead>
               <tr>
@@ -1370,18 +1375,18 @@
               <tr><td>enter_hold_s</td><td>进入组合前的确认时间。</td></tr>
               <tr><td>clear_hold_s</td><td>解除组合前的确认时间。</td></tr>
               <tr><td>min_hold_s</td><td>组合激活后的最小保持时间。</td></tr>
-              <tr><td>suppress_base_actions</td><td>组合命中后是否抑制覆盖范围内的基础错误动作。</td></tr>
+              <tr><td>execution_plan</td><td>组合命中后的最终审判结果，交由事件执行层执行。</td></tr>
             </tbody>
           </table>
         </section>
 
         <section id="implementation" class="section">
           <h2>10. 实现计划细化</h2>
-          <p>建议把组合策略仲裁做成独立类，不继续堆在 `FaultDetector::append_combined_faults` 里。</p>
+          <p>组合策略仲裁已收敛为 <code>EventCodexArbiter</code>，不再通过 <code>FaultDetector</code> 附加虚拟组合故障。</p>
           <div class="summary">
             <div class="mini-card">
               <b>第一步</b>
-              <p>新增 `CombinedFaultPolicyArbiter`，先兼容现有 `when_all fault_key`。</p>
+              <p>由 <code>EventCodexArbiter</code> 统一处理 <code>event_codex_rules</code>，兼容旧 <code>combined_fault_rules</code>。</p>
             </div>
             <div class="mini-card">
               <b>第二步</b>
@@ -1392,9 +1397,9 @@
               <p>加入状态机、组合恢复、动作抑制和交叉策略优先级。</p>
             </div>
           </div>
-          <pre class="code">src/nav2_monitor/include/nav2_monitor/combined_fault_policy_arbiter.hpp
-src/nav2_monitor/src/combined_fault_policy_arbiter.cpp
-src/nav2_monitor/test/test_combined_fault_policy_arbiter.cpp</pre>
+          <pre class="code">src/nav2_monitor/include/nav2_monitor/event_codex_arbiter.hpp
+src/nav2_monitor/src/event_codex_arbiter.cpp
+src/nav2_monitor/test/test_fault_detector.cpp</pre>
         </section>
       </main>
     </div>

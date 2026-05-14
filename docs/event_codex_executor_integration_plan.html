@@ -819,7 +819,7 @@ reason: "emergency stop command sent"</code></pre>
             </div>
           </div>
           <div class="callout">
-            事件执行层必须保证幂等、锁存、超时、冷却时间、ACK 和执行反馈。即使上报器异常，已经进入执行层的安全动作也不能被影响。
+            事件执行层必须保证幂等、锁存、超时、冷却时间和发布级执行反馈。当前 safety / nodemanager 下游尚未提供独立 ACK topic，因此现阶段上报的是发布结果、锁存状态和冷却抑制状态；后续只要下游补 ACK，执行层再接入真实确认即可。即使上报器异常，已经进入执行层的安全动作也不能被影响。
           </div>
         </section>
 
@@ -833,7 +833,7 @@ reason: "emergency stop command sent"</code></pre>
             <tbody>
               <tr><td>触犯法典信息</td><td>事件仲裁器</td><td>规则 ID、规则名称、触发事件集、严重等级、原因。</td></tr>
               <tr><td>执行计划</td><td>事件仲裁器</td><td>计划 ID、目标通道、安全动作、节点动作、人工接管建议。</td></tr>
-              <tr><td>执行结果</td><td>事件执行层</td><td>ACK、执行成功/失败、锁存状态、失败原因。</td></tr>
+              <tr><td>执行结果</td><td>事件执行层</td><td>发布结果、锁存状态、冷却抑制状态；真实 ACK 等下游接口提供后接入。</td></tr>
               <tr><td>上下文快照</td><td>事件事实集</td><td>速度指令、底盘反馈、碰撞状态、topic 健康状态等证据。</td></tr>
             </tbody>
           </table>
@@ -898,7 +898,7 @@ reason: "emergency stop command sent"</code></pre>
             </div>
             <div class="step">
               <div class="num">阶段 5</div>
-              <div><h3>事件执行层整合</h3><p>把 nodemanager 与 safety 归入事件执行层双通道，由事件执行层发布 <code>/nodemanager/cmd</code> 和 <code>/safety_system/cmd</code>，统一 ACK、冷却、锁存和执行结果。</p></div>
+              <div><h3>事件执行层整合</h3><p>把 nodemanager 与 safety 归入事件执行层双通道，由事件执行层发布 <code>/nodemanager/cmd</code> 和 <code>/safety_system/cmd</code>，统一冷却、锁存和发布级执行结果；真实 ACK 等下游接口提供后接入。</p></div>
             </div>
             <div class="step">
               <div class="num">阶段 6</div>
@@ -923,7 +923,7 @@ reason: "emergency stop command sent"</code></pre>
               <tr><td>逐步出现</td><td>A 先出现，B 后出现</td><td>先按 A 仲裁，满足 A+B 后升级组合计划。</td></tr>
               <tr><td>同批出现</td><td>A+B 同一周期出现</td><td>直接进入组合规则，不输出多条单项执行。</td></tr>
               <tr><td>恢复降级</td><td>B 事件结束，A 仍 active</td><td>B 的恢复已随事件结束完成，系统重新基于剩余事实集仲裁，不乱发恢复命令。</td></tr>
-              <tr><td>执行失败</td><td>safety 或 nodemanager 拒绝/超时</td><td>上报器包含执行失败原因，执行层状态不丢失。</td></tr>
+              <tr><td>执行失败</td><td>safety 或 nodemanager 发布失败 / 后续 ACK 失败</td><td>现阶段上报发布结果；下游 ACK 接口接入后，上报器包含执行失败原因，执行层状态不丢失。</td></tr>
               <tr><td>高负载</td><td>CPU 满载、topic 抖动</td><td>事件执行层不被上报器或发现器阻塞。</td></tr>
             </tbody>
           </table>

@@ -284,7 +284,7 @@ private:
       publish_navigation_mode(true);
     }
     for (const auto & zone : cfg_.zones) {
-      if (zone.model == CollisionModelType::TTC || !zone.visualize || zone.points.size() < 3) {
+      if (!zone.visualize || zone.polygon_pub_topic.empty()) {
         continue;
       }
       collision_zone_pubs_[zone.name] = create_publisher<geometry_msgs::msg::PolygonStamped>(
@@ -600,6 +600,7 @@ private:
         navigation_safe_mode_active_ = true;
         navigation_safe_mode_since_ = now_time;
         fault_detector_.set_collision_navigation_safe_mode(true);
+        cfg_ = fault_detector_.get_collision_detection_config();
         publish_navigation_mode(true);
         RCLCPP_WARN(
           get_logger(), "Navigation mode switched to %s by TTC: duration=%.3fs",
@@ -617,6 +618,7 @@ private:
       {
         navigation_safe_mode_active_ = false;
         fault_detector_.set_collision_navigation_safe_mode(false);
+        cfg_ = fault_detector_.get_collision_detection_config();
         publish_navigation_mode(true);
         RCLCPP_WARN(
           get_logger(), "Navigation mode recovered to %s: clear_duration=%.3fs hold_duration=%.3fs",
@@ -647,7 +649,7 @@ private:
   void publish_collision_zones()
   {
     for (const auto & zone : cfg_.zones) {
-      if (zone.model == CollisionModelType::TTC || !zone.visualize || zone.points.size() < 3) {
+      if (!zone.visualize || zone.points.size() < 3) {
         continue;
       }
       const auto pub_it = collision_zone_pubs_.find(zone.name);

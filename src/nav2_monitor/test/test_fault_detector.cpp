@@ -422,7 +422,7 @@ modules:
   EXPECT_EQ(arbitration.plan.selected_rules[0].rule_id, "combined|nav_and_plan_both_low");
   EXPECT_TRUE(arbitration.plan.selected_rules[0].combined);
   ASSERT_EQ(arbitration.plan.nodemanager_decisions.size(), 1u);
-  EXPECT_EQ(arbitration.plan.nodemanager_decisions[0].module_name, "combined_fault");
+  EXPECT_EQ(arbitration.plan.nodemanager_decisions[0].module_name, "navigation");
   EXPECT_EQ(arbitration.plan.nodemanager_decisions[0].reason, "Combined fault: cmd_vel and plan both low");
 
   std::remove(config_path.c_str());
@@ -474,7 +474,7 @@ modules:
   ASSERT_EQ(arbitration.plan.selected_rules.size(), 1u);
   EXPECT_EQ(arbitration.plan.selected_rules[0].rule_id, "combined|nav_and_plan_both_low");
   ASSERT_EQ(arbitration.plan.nodemanager_decisions.size(), 1u);
-  EXPECT_EQ(arbitration.plan.nodemanager_decisions[0].module_name, "combined_fault");
+  EXPECT_EQ(arbitration.plan.nodemanager_decisions[0].module_name, "navigation");
   EXPECT_EQ(arbitration.plan.selected_rules[0].level, nav2_monitor::FaultLevel::CRITICAL);
 
   std::remove(config_path.c_str());
@@ -1778,6 +1778,58 @@ modules:
   std::remove(config_path.c_str());
 }
 
+TEST_F(FaultDetectorTest, CollisionDetectionTtcBaseFootprintStaysFixedInSafeMode)
+{
+  const std::string config_text = R"(
+collision_detection:
+  enabled: 1
+  module_name: "collision_detection"
+  auto_footprint_zones_enabled: 1
+  footprint_points: [-0.4, -0.2, -0.4, 0.2, 0.4, 0.2, 0.4, -0.2]
+  zones:
+    - name: "front_ttc"
+      enabled: 1
+      model: "ttc"
+      auto_footprint_zone: "front_ttc"
+      navigation_safe_hold_zone: 1
+      motion_direction: "forward"
+      min_points: 1
+      safety_system: 1
+      actions: ["safety_system"]
+    - name: "front_slow"
+      enabled: 1
+      auto_footprint_zone: "front_slow"
+      motion_direction: "forward"
+      min_points: 1
+      safety_system: 1
+      actions: ["safety_system"]
+modules:
+  - name: "dummy"
+    supervisor: 0
+    safety_system: 0
+)";
+  const std::string config_path = write_temp_config(
+    config_text, "collision_ttc_base_fixed_safe_mode");
+
+  auto node = std::make_shared<rclcpp::Node>(
+    "fault_detector_test_collision_ttc_base_fixed_safe_mode");
+  nav2_monitor::FaultDetector detector(node.get());
+  detector.load_config(config_path);
+
+  const auto & fast_cfg = detector.get_collision_detection_config();
+  ASSERT_EQ(fast_cfg.zones.size(), 2u);
+  EXPECT_DOUBLE_EQ(fast_cfg.zones[0].points[0].x, 1.2);
+  EXPECT_DOUBLE_EQ(fast_cfg.zones[1].points[0].x, 1.2);
+
+  detector.set_collision_navigation_safe_mode(true);
+  const auto & safe_cfg = detector.get_collision_detection_config();
+  ASSERT_EQ(safe_cfg.zones.size(), 2u);
+  EXPECT_DOUBLE_EQ(safe_cfg.zones[0].points[0].x, 1.2);
+  EXPECT_DOUBLE_EQ(safe_cfg.zones[1].points[0].x, 0.8);
+
+  std::remove(config_path.c_str());
+}
+
 TEST_F(FaultDetectorTest, CollisionDetectionUltrasonicWidgetUsesBuiltInLayout)
 {
   const std::string config_text = R"(
@@ -2375,6 +2427,353 @@ modules:
 
   auto faults = detector.detect_faults(store, now);
   EXPECT_TRUE(faults.empty());
+
+  std::remove(config_path.c_str());
+}
+
+TEST_F(FaultDetectorTest, CollisionDetectionAutoFootprintZoneSizeMultiplierExpandsBox)
+{
+  const std::string config_text = R"(
+collision_detection:
+  enabled: 1
+  module_name: "collision_detection"
+  auto_footprint_zones_enabled: 1
+  auto_footprint_zone_size_multiplier: 1.25
+  footprint_points: [-0.4, -0.2, -0.4, 0.2, 0.4, 0.2, 0.4, -0.2]
+  zones:
+    - name: "front_slow"
+      enabled: 1
+      auto_footprint_zone: "front_slow"
+      auto_footprint_fast_scale: 1.5
+      auto_footprint_safe_scale: 0.75
+      auto_footprint_zone_size_multiplier: 1.2
+      min_points: 1
+      safety_system: 1
+modules:
+  - name: "dummy"
+    supervisor: 0
+    safety_system: 0
+)";
+  const std::string config_path = write_temp_config(
+    config_text, "collision_auto_footprint_multiplier");
+
+  auto node = std::make_shared<rclcpp::Node>(
+    "fault_detector_test_collision_auto_footprint_multiplier");
+  nav2_monitor::FaultDetector detector(node.get());
+  detector.load_config(config_path);
+
+  const auto & fast_cfg = detector.get_collision_detection_config();
+  ASSERT_EQ(fast_cfg.zones.size(), 1u);
+  ASSERT_EQ(fast_cfg.zones[0].points.size(), 4u);
+  // body_length=0.8, front_x=0.4, scale=1.5, multiplier=1.25*1.2=1.5
+  EXPECT_DOUBLE_EQ(fast_cfg.zones[0].points[0].x, 2.2);
+  EXPECT_DOUBLE_EQ(fast_cfg.zones[0].points[0].y, 0.3);
+  EXPECT_DOUBLE_EQ(fast_cfg.zones[0].points[1].y, -0.3);
+
+  detector.set_collision_navigation_safe_mode(true);
+  const auto & safe_cfg = detector.get_collision_detection_config();
+  // safe scale=0.75 with the same total multiplier.
+  EXPECT_DOUBLE_EQ(safe_cfg.zones[0].points[0].x, 1.3);
+
+  std::remove(config_path.c_str());
+}
+
+TEST_F(FaultDetectorTest, CollisionDetectionManualPointsRemainWhenAutoFootprintDisabled)
+{
+  const std::string config_text = R"(
+collision_detection:
+  enabled: 1
+  module_name: "collision_detection"
+  auto_footprint_zones_enabled: 0
+  footprint_points: [-0.4, -0.2, -0.4, 0.2, 0.4, 0.2, 0.4, -0.2]
+  zones:
+    - name: "front_slow"
+      enabled: 1
+      auto_footprint_zone: "front_slow"
+      points: [1.6, 0.35, 1.6, -0.35, 0.4, -0.35, 0.4, 0.35]
+      min_points: 1
+      safety_system: 1
+modules:
+  - name: "dummy"
+    supervisor: 0
+    safety_system: 0
+)";
+  const std::string config_path = write_temp_config(
+    config_text, "collision_manual_points_auto_disabled");
+
+  auto node = std::make_shared<rclcpp::Node>(
+    "fault_detector_test_collision_manual_points_auto_disabled");
+  nav2_monitor::FaultDetector detector(node.get());
+  detector.load_config(config_path);
+
+  const auto & cfg = detector.get_collision_detection_config();
+  ASSERT_EQ(cfg.zones.size(), 1u);
+  ASSERT_EQ(cfg.zones[0].points.size(), 4u);
+  EXPECT_DOUBLE_EQ(cfg.zones[0].points[0].x, 1.6);
+  EXPECT_DOUBLE_EQ(cfg.zones[0].points[0].y, 0.35);
+  EXPECT_TRUE(cfg.zones[0].fast_points.empty());
+  EXPECT_TRUE(cfg.zones[0].safe_points.empty());
+
+  std::remove(config_path.c_str());
+}
+
+TEST_F(FaultDetectorTest, CollisionTtcBaseZoneTriggersWithoutPredictionSpeed)
+{
+  const std::string config_text = R"(
+multi_value_judge:
+  trigger_count: 1
+  recover_count: 1
+collision_detection:
+  enabled: 1
+  module_name: "collision_detection"
+  source_timeout_s: 1.0
+  auto_footprint_zones_enabled: 1
+  footprint_points: [-0.3, -0.2, -0.3, 0.2, 0.3, 0.2, 0.3, -0.2]
+  zones:
+    - name: "front_ttc"
+      enabled: 1
+      model: "ttc"
+      auto_footprint_zone: "front_ttc"
+      motion_direction: "forward"
+      min_points: 1
+      time_before_collision: 2.0
+      ttc_horizon_s: 2.0
+      safety_system: 1
+      actions: ["safety_system"]
+modules:
+  - name: "dummy"
+    supervisor: 0
+    safety_system: 0
+)";
+  const std::string config_path = write_temp_config(
+    config_text, "collision_ttc_base_zone_without_speed");
+
+  auto node = std::make_shared<rclcpp::Node>(
+    "fault_detector_test_collision_ttc_base_zone_without_speed");
+  nav2_monitor::FaultDetector detector(node.get());
+  nav2_monitor::MonitorDataStore store;
+  detector.load_config(config_path);
+
+  const auto now = node->now();
+  store.set_collision_points("scan", {
+    nav2_monitor::CollisionPoint{0.55, 0.0, 1.0}
+  }, now);
+
+  auto faults = detector.detect_faults(store, now);
+  ASSERT_EQ(faults.size(), 1u);
+  EXPECT_EQ(faults[0].fault_model, "ttc");
+  EXPECT_NE(faults[0].reason.find("Collision TTC base zone hit"), std::string::npos);
+
+  std::remove(config_path.c_str());
+}
+
+TEST_F(FaultDetectorTest, CollisionTtcHoldZoneTriggersSafeAndSlowdownWithoutPredictionSpeed)
+{
+  const std::string config_text = R"(
+multi_value_judge:
+  trigger_count: 1
+  recover_count: 1
+collision_detection:
+  enabled: 1
+  module_name: "collision_detection"
+  source_timeout_s: 1.0
+  auto_footprint_zones_enabled: 1
+  footprint_points: [-0.3, -0.2, -0.3, 0.2, 0.3, 0.2, 0.3, -0.2]
+  zones:
+    - name: "front_ttc"
+      enabled: 1
+      model: "ttc"
+      auto_footprint_zone: "front_ttc"
+      navigation_safe_hold_zone: 1
+      motion_direction: "forward"
+      min_points: 1
+      time_before_collision: 2.0
+      ttc_horizon_s: 2.0
+      safety_system: 1
+      actions: ["safety_system"]
+modules:
+  - name: "dummy"
+    supervisor: 0
+    safety_system: 0
+)";
+  const std::string config_path = write_temp_config(
+    config_text, "collision_ttc_hold_zone_fast_triggers");
+
+  auto node = std::make_shared<rclcpp::Node>(
+    "fault_detector_test_collision_ttc_hold_zone_fast_triggers");
+  nav2_monitor::FaultDetector detector(node.get());
+  nav2_monitor::MonitorDataStore store;
+  detector.load_config(config_path);
+
+  const auto now = node->now();
+  store.set_collision_points("scan", {
+    nav2_monitor::CollisionPoint{0.55, 0.0, 1.0}
+  }, now);
+
+  auto faults = detector.detect_faults(store, now);
+  ASSERT_EQ(faults.size(), 1u);
+  EXPECT_EQ(faults[0].fault_model, "ttc");
+  EXPECT_EQ(faults[0].fault_type, "collision_detection");
+  EXPECT_EQ(faults[0].safety_command, nav2_monitor::SafetyCommandType::SLOW_DOWN);
+  EXPECT_NE(faults[0].reason.find("Navigation SAFE hold zone hit"), std::string::npos);
+
+  std::remove(config_path.c_str());
+}
+
+TEST_F(FaultDetectorTest, CollisionTtcHoldZoneKeepsSafeAndSlowdownWithoutPredictionSpeed)
+{
+  const std::string config_text = R"(
+multi_value_judge:
+  trigger_count: 1
+  recover_count: 1
+collision_detection:
+  enabled: 1
+  module_name: "collision_detection"
+  source_timeout_s: 1.0
+  auto_footprint_zones_enabled: 1
+  footprint_points: [-0.3, -0.2, -0.3, 0.2, 0.3, 0.2, 0.3, -0.2]
+  zones:
+    - name: "front_ttc"
+      enabled: 1
+      model: "ttc"
+      auto_footprint_zone: "front_ttc"
+      navigation_safe_hold_zone: 1
+      motion_direction: "forward"
+      min_points: 1
+      time_before_collision: 2.0
+      ttc_horizon_s: 2.0
+      safety_system: 1
+      safety_slow_down_percentage: 45.0
+      actions: ["safety_system"]
+modules:
+  - name: "dummy"
+    supervisor: 0
+    safety_system: 0
+)";
+  const std::string config_path = write_temp_config(
+    config_text, "collision_ttc_hold_zone_safe_keeps_slowdown");
+
+  auto node = std::make_shared<rclcpp::Node>(
+    "fault_detector_test_collision_ttc_hold_zone_safe_keeps_slowdown");
+  nav2_monitor::FaultDetector detector(node.get());
+  nav2_monitor::MonitorDataStore store;
+  detector.load_config(config_path);
+  detector.set_collision_navigation_safe_mode(true);
+
+  const auto now = node->now();
+  store.set_collision_points("scan", {
+    nav2_monitor::CollisionPoint{0.45, 0.0, 1.0}
+  }, now);
+
+  auto faults = detector.detect_faults(store, now);
+  ASSERT_EQ(faults.size(), 1u);
+  EXPECT_EQ(faults[0].fault_model, "ttc");
+  EXPECT_EQ(faults[0].fault_type, "collision_detection");
+  EXPECT_EQ(faults[0].safety_command, nav2_monitor::SafetyCommandType::SLOW_DOWN);
+  EXPECT_DOUBLE_EQ(faults[0].safety_slow_down_percentage, 45.0);
+  EXPECT_NE(faults[0].reason.find("Navigation SAFE hold zone hit"), std::string::npos);
+
+  std::remove(config_path.c_str());
+}
+
+TEST_F(FaultDetectorTest, CollisionTtcHoldZoneDoesNotOverrideLongerDynamicTtc)
+{
+  const std::string config_text = R"(
+multi_value_judge:
+  trigger_count: 1
+  recover_count: 1
+collision_detection:
+  enabled: 1
+  module_name: "collision_detection"
+  source_timeout_s: 1.0
+  direction_confirm_count: 1
+  auto_footprint_zones_enabled: 1
+  footprint_points: [-0.3, -0.2, -0.3, 0.2, 0.3, 0.2, 0.3, -0.2]
+  zones:
+    - name: "front_ttc"
+      enabled: 1
+      model: "ttc"
+      auto_footprint_zone: "front_ttc"
+      navigation_safe_hold_zone: 1
+      motion_direction: "forward"
+      min_points: 1
+      time_before_collision: 2.0
+      ttc_horizon_s: 2.0
+      safety_system: 1
+      actions: ["safety_system"]
+modules:
+  - name: "dummy"
+    supervisor: 0
+    safety_system: 0
+)";
+  const std::string config_path = write_temp_config(
+    config_text, "collision_ttc_hold_zone_dynamic_longer");
+
+  auto node = std::make_shared<rclcpp::Node>(
+    "fault_detector_test_collision_ttc_hold_zone_dynamic_longer");
+  nav2_monitor::FaultDetector detector(node.get());
+  nav2_monitor::MonitorDataStore store;
+  detector.load_config(config_path);
+
+  const auto now = node->now();
+  store.set_prediction_speed(1.0, now);
+  store.set_collision_points("scan", {
+    nav2_monitor::CollisionPoint{0.55, 0.0, 1.0}
+  }, now);
+
+  auto faults = detector.detect_faults(store, now);
+  ASSERT_EQ(faults.size(), 1u);
+  EXPECT_NE(faults[0].reason.find("Collision approach alert"), std::string::npos);
+  EXPECT_EQ(faults[0].reason.find("Navigation SAFE hold zone hit"), std::string::npos);
+
+  std::remove(config_path.c_str());
+}
+
+TEST_F(FaultDetectorTest, CollisionTtcManualBaseZoneTriggersWhenAutoFootprintDisabled)
+{
+  const std::string config_text = R"(
+multi_value_judge:
+  trigger_count: 1
+  recover_count: 1
+collision_detection:
+  enabled: 1
+  module_name: "collision_detection"
+  source_timeout_s: 1.0
+  auto_footprint_zones_enabled: 0
+  zones:
+    - name: "front_ttc"
+      enabled: 1
+      model: "ttc"
+      points: [0.9, 0.3, 0.9, -0.3, 0.3, -0.3, 0.3, 0.3]
+      motion_direction: "forward"
+      min_points: 1
+      time_before_collision: 2.0
+      ttc_horizon_s: 2.0
+      safety_system: 1
+      actions: ["safety_system"]
+modules:
+  - name: "dummy"
+    supervisor: 0
+    safety_system: 0
+)";
+  const std::string config_path = write_temp_config(
+    config_text, "collision_ttc_manual_base_auto_disabled");
+
+  auto node = std::make_shared<rclcpp::Node>(
+    "fault_detector_test_collision_ttc_manual_base_auto_disabled");
+  nav2_monitor::FaultDetector detector(node.get());
+  nav2_monitor::MonitorDataStore store;
+  detector.load_config(config_path);
+
+  const auto now = node->now();
+  store.set_collision_points("scan", {
+    nav2_monitor::CollisionPoint{0.55, 0.0, 1.0}
+  }, now);
+
+  auto faults = detector.detect_faults(store, now);
+  ASSERT_EQ(faults.size(), 1u);
+  EXPECT_EQ(faults[0].fault_model, "ttc");
+  EXPECT_NE(faults[0].reason.find("Collision TTC base zone hit"), std::string::npos);
 
   std::remove(config_path.c_str());
 }
@@ -3756,6 +4155,231 @@ TEST_F(FaultDetectorTest, EventCodexArbiterChoosesMostStrictSafetyCommand)
   EXPECT_FALSE(resume_update.plan.safety_update->active);
 }
 
+TEST_F(FaultDetectorTest, EventCodexRulesLoadExecutionPlanAndReportPolicy)
+{
+  const std::string config_text = R"(
+event_codex_rules:
+  - rule_id: "collision_and_chassis"
+    name: "collision and chassis abnormal"
+    priority: 1200
+    when_all:
+      - event_key: "collision_detection|collision:front_stop|action=2"
+      - event_key: "vehicle_state_judge|vehicle_state_anomaly|action=1"
+    enter_hold_s: 0.05
+    clear_hold_s: 0.5
+    min_hold_s: 1.0
+    execution_plan:
+      targets: ["safety", "nodemanager"]
+      safety:
+        action: "EMERGENCY_STOP"
+      nodemanager:
+        module_keys: ["chassis_node"]
+    report_policy:
+      human_takeover: true
+      severity: "CRITICAL"
+      reason: "collision risk with abnormal chassis feedback"
+modules:
+  - name: "dummy"
+    nodemanager: 0
+    safety_system: 0
+)";
+  const std::string config_path = write_temp_config(config_text, "event_codex_rules_load");
+
+  auto node = std::make_shared<rclcpp::Node>("fault_detector_test_event_codex_rules_load");
+  nav2_monitor::FaultDetector detector(node.get());
+  detector.load_config(config_path);
+
+  const auto & rules = detector.get_combined_fault_rules();
+  ASSERT_EQ(rules.size(), 1u);
+  EXPECT_EQ(rules[0].name, "collision_and_chassis");
+  EXPECT_EQ(rules[0].when_all_fault_keys.size(), 2u);
+  EXPECT_EQ(rules[0].priority, 1200);
+  EXPECT_EQ(rules[0].level, nav2_monitor::FaultLevel::CRITICAL);
+  EXPECT_DOUBLE_EQ(rules[0].enter_hold_s, 0.05);
+  EXPECT_DOUBLE_EQ(rules[0].clear_hold_s, 0.5);
+  EXPECT_DOUBLE_EQ(rules[0].min_hold_s, 1.0);
+  EXPECT_TRUE(rules[0].manual_takeover);
+  EXPECT_EQ(rules[0].safety_command, nav2_monitor::SafetyCommandType::EMERGENCY_STOP);
+  ASSERT_EQ(rules[0].nodemanager_modules.size(), 1u);
+  EXPECT_EQ(rules[0].nodemanager_modules[0], "chassis_node");
+  EXPECT_EQ(rules[0].report_reason, "collision risk with abnormal chassis feedback");
+
+  std::remove(config_path.c_str());
+}
+
+TEST_F(FaultDetectorTest, EventCodexArbiterSupportsHoldStateAndRecoveryDowngrade)
+{
+  nav2_monitor::CombinedFaultRuleConfig rule;
+  rule.name = "combo";
+  rule.when_all_fault_keys = {"fault_a", "fault_b"};
+  rule.priority = 1000;
+  rule.level = nav2_monitor::FaultLevel::CRITICAL;
+  rule.actions = {nav2_monitor::ActionType::SAFETY_SYSTEM};
+  rule.safety_command = nav2_monitor::SafetyCommandType::EMERGENCY_STOP;
+  rule.enter_hold_s = 0.1;
+  rule.clear_hold_s = 0.2;
+  rule.min_hold_s = 0.3;
+  rule.reason = "combo active";
+
+  nav2_monitor::EventCodexArbiter arbiter;
+  arbiter.set_combined_fault_rules({rule});
+
+  nav2_monitor::FaultInfo fault_a;
+  fault_a.fault_key = "fault_a";
+  fault_a.module_name = "module_a";
+  fault_a.level = nav2_monitor::FaultLevel::ERROR;
+  fault_a.reason = "A";
+  fault_a.action = nav2_monitor::ActionType::SAFETY_SYSTEM;
+  fault_a.safety_command = nav2_monitor::SafetyCommandType::SLOW_DOWN;
+  fault_a.safety_slow_down_percentage = 40.0;
+
+  nav2_monitor::FaultInfo fault_b = fault_a;
+  fault_b.fault_key = "fault_b";
+  fault_b.module_name = "module_b";
+  fault_b.reason = "B";
+  fault_b.action = nav2_monitor::ActionType::SUPERVISOR;
+  fault_b.safety_command = nav2_monitor::SafetyCommandType::NONE;
+
+  auto t0 = rclcpp::Time(1000000000LL, RCL_ROS_TIME);
+  auto pending = arbiter.update({fault_a, fault_b}, t0);
+  ASSERT_TRUE(pending.plan.safety_update.has_value());
+  EXPECT_EQ(pending.plan.safety_update->command, nav2_monitor::SafetyCommandType::SLOW_DOWN);
+
+  auto active = arbiter.update({fault_a, fault_b}, t0 + rclcpp::Duration::from_seconds(0.11));
+  ASSERT_TRUE(active.plan.safety_update.has_value());
+  EXPECT_EQ(active.plan.selected_rules.size(), 1u);
+  EXPECT_TRUE(active.plan.selected_rules[0].combined);
+  EXPECT_EQ(active.plan.safety_update->command, nav2_monitor::SafetyCommandType::EMERGENCY_STOP);
+
+  auto min_hold = arbiter.update({fault_a}, t0 + rclcpp::Duration::from_seconds(0.20));
+  ASSERT_TRUE(min_hold.plan.safety_update.has_value());
+  EXPECT_EQ(min_hold.plan.safety_update->command, nav2_monitor::SafetyCommandType::EMERGENCY_STOP);
+
+  auto clear_hold = arbiter.update({fault_a}, t0 + rclcpp::Duration::from_seconds(0.35));
+  ASSERT_TRUE(clear_hold.plan.safety_update.has_value());
+  EXPECT_EQ(clear_hold.plan.safety_update->command, nav2_monitor::SafetyCommandType::EMERGENCY_STOP);
+
+  auto downgraded = arbiter.update({fault_a}, t0 + rclcpp::Duration::from_seconds(0.82));
+  ASSERT_TRUE(downgraded.plan.safety_update.has_value());
+  EXPECT_EQ(downgraded.plan.safety_update->command, nav2_monitor::SafetyCommandType::SLOW_DOWN);
+}
+
+TEST_F(FaultDetectorTest, EventCodexArbiterSupportsWhenAnyMinMatchAndNodeManagerModules)
+{
+  nav2_monitor::CombinedFaultRuleConfig rule;
+  rule.name = "two_of_three";
+  rule.when_any_fault_keys = {"fault_a", "fault_b", "fault_c"};
+  rule.min_match_count = 2;
+  rule.priority = 1000;
+  rule.level = nav2_monitor::FaultLevel::ERROR;
+  rule.actions = {nav2_monitor::ActionType::SUPERVISOR};
+  rule.nodemanager_modules = {"navigation", "localization"};
+  rule.reason = "two faults active";
+
+  nav2_monitor::EventCodexArbiter arbiter;
+  arbiter.set_combined_fault_rules({rule});
+
+  nav2_monitor::FaultInfo fault_a;
+  fault_a.fault_key = "fault_a";
+  fault_a.module_name = "module_a";
+  fault_a.level = nav2_monitor::FaultLevel::ERROR;
+  fault_a.reason = "A";
+  fault_a.action = nav2_monitor::ActionType::NONE;
+  fault_a.safety_command = nav2_monitor::SafetyCommandType::NONE;
+
+  nav2_monitor::FaultInfo fault_b = fault_a;
+  fault_b.fault_key = "fault_b";
+  fault_b.module_name = "module_b";
+
+  auto single = arbiter.update({fault_a}, rclcpp::Time(1000000000LL, RCL_ROS_TIME));
+  EXPECT_TRUE(single.plan.nodemanager_decisions.empty());
+
+  auto combo = arbiter.update({fault_a, fault_b}, rclcpp::Time(1100000000LL, RCL_ROS_TIME));
+  ASSERT_EQ(combo.plan.nodemanager_decisions.size(), 2u);
+  EXPECT_EQ(combo.plan.nodemanager_decisions[0].module_name, "localization");
+  EXPECT_EQ(combo.plan.nodemanager_decisions[1].module_name, "navigation");
+  ASSERT_EQ(combo.plan.selected_rules.size(), 1u);
+  EXPECT_EQ(combo.plan.selected_rules[0].event_keys.size(), 2u);
+}
+
+TEST_F(FaultDetectorTest, EventCodexRulesMatchFactConditionsWithoutExactFaultKeys)
+{
+  const std::string config_text = R"(
+event_codex_rules:
+  - rule_id: "collision_plus_vehicle_state"
+    priority: 1500
+    when_all:
+      - module: "collision_detection"
+        fault_type: "collision_detection"
+        fault_model: "zone"
+      - module: "vehicle_state_judge"
+        fault_model: "vehicle_state"
+        action: "nodemanager"
+    execution_plan:
+      targets: ["safety", "nodemanager"]
+      safety:
+        action: "SOFT_STOP"
+      nodemanager:
+        modules: ["chassis_node"]
+    report_policy:
+      human_takeover: true
+      severity: "CRITICAL"
+      reason: "collision with abnormal vehicle state"
+modules:
+  - name: "dummy"
+    nodemanager: 0
+    safety_system: 0
+)";
+  const std::string config_path = write_temp_config(config_text, "event_codex_condition_match");
+
+  auto node = std::make_shared<rclcpp::Node>("fault_detector_test_event_codex_condition_match");
+  nav2_monitor::FaultDetector detector(node.get());
+  detector.load_config(config_path);
+
+  const auto & rules = detector.get_combined_fault_rules();
+  ASSERT_EQ(rules.size(), 1u);
+  ASSERT_EQ(rules[0].when_all_conditions.size(), 2u);
+  EXPECT_EQ(rules[0].when_all_conditions[0].module_name, "collision_detection");
+  EXPECT_EQ(rules[0].when_all_conditions[0].fault_model, "zone");
+  EXPECT_TRUE(rules[0].when_all_conditions[1].action_set);
+
+  nav2_monitor::FaultInfo collision_fault;
+  collision_fault.fault_key = "collision_detection|collision:front_stop|action=2";
+  collision_fault.module_name = "collision_detection";
+  collision_fault.level = nav2_monitor::FaultLevel::CRITICAL;
+  collision_fault.reason = "front_stop hit";
+  collision_fault.fault_type = "collision_detection";
+  collision_fault.fault_model = "zone";
+  collision_fault.fault_name = "front_stop";
+  collision_fault.action = nav2_monitor::ActionType::SAFETY_SYSTEM;
+  collision_fault.safety_command = nav2_monitor::SafetyCommandType::SOFT_STOP;
+
+  nav2_monitor::FaultInfo vehicle_fault;
+  vehicle_fault.fault_key = "vehicle_state_judge|vehicle_state_anomaly|action=1";
+  vehicle_fault.module_name = "vehicle_state_judge";
+  vehicle_fault.level = nav2_monitor::FaultLevel::ERROR;
+  vehicle_fault.reason = "commanded but not moving";
+  vehicle_fault.fault_type = "vehicle_state_anomaly";
+  vehicle_fault.fault_model = "vehicle_state";
+  vehicle_fault.fault_name = "vehicle_state_anomaly";
+  vehicle_fault.action = nav2_monitor::ActionType::SUPERVISOR;
+  vehicle_fault.safety_command = nav2_monitor::SafetyCommandType::NONE;
+
+  nav2_monitor::EventCodexArbiter arbiter;
+  arbiter.set_combined_fault_rules(detector.get_combined_fault_rules());
+  const auto arbitration = arbiter.update({collision_fault, vehicle_fault}, node->now());
+
+  ASSERT_EQ(arbitration.plan.selected_rules.size(), 1u);
+  EXPECT_EQ(arbitration.plan.selected_rules[0].rule_id, "combined|collision_plus_vehicle_state");
+  ASSERT_TRUE(arbitration.plan.safety_update.has_value());
+  EXPECT_EQ(arbitration.plan.safety_update->command, nav2_monitor::SafetyCommandType::SOFT_STOP);
+  ASSERT_EQ(arbitration.plan.nodemanager_decisions.size(), 1u);
+  EXPECT_EQ(arbitration.plan.nodemanager_decisions[0].module_name, "chassis_node");
+  ASSERT_EQ(arbitration.plan.human_takeovers.size(), 1u);
+
+  std::remove(config_path.c_str());
+}
+
 TEST_F(FaultDetectorTest, EventExecutorPublishesResumeAndRepublishesActiveState)
 {
   nav2_monitor::EventExecutor executor;
@@ -3790,6 +4414,9 @@ TEST_F(FaultDetectorTest, EventExecutorPublishesResumeAndRepublishesActiveState)
   auto resume = executor.execute(plan, rclcpp::Time(static_cast<int64_t>(90000000), RCL_ROS_TIME));
   ASSERT_TRUE(resume.safety_cmd.has_value());
   EXPECT_EQ(resume.safety_cmd->action, nav2_monitor::msg::SafetyCmd::RESUME);
+  ASSERT_FALSE(resume.target_results.empty());
+  EXPECT_EQ(resume.target_results.back().target, "safety");
+  EXPECT_FALSE(resume.target_results.back().published);
 }
 
 }  // namespace

@@ -20,6 +20,32 @@ static const char * collision_model_name(CollisionModelType model)
   return model == CollisionModelType::TTC ? "ttc" : "zone";
 }
 
+static double max_x_value(const std::vector<CollisionPoint> & points)
+{
+  double max_x = -std::numeric_limits<double>::infinity();
+  for (const auto & point : points) {
+    max_x = std::max(max_x, point.x);
+  }
+  return max_x;
+}
+
+static double ttc_base_forward_extension(
+  const std::vector<CollisionPoint> & footprint,
+  const std::vector<CollisionPoint> & zone_points)
+{
+  const double zone_front_x = max_x_value(zone_points);
+  if (!std::isfinite(zone_front_x)) {
+    return 0.0;
+  }
+
+  const double footprint_front_x = max_x_value(footprint);
+  if (!std::isfinite(footprint_front_x)) {
+    return std::max(0.0, zone_front_x);
+  }
+
+  return std::max(0.0, zone_front_x - footprint_front_x);
+}
+
 
 void CollisionEvaluator::set_multi_value_config(const MultiValueJudgeConfig & config)
 {
@@ -750,16 +776,54 @@ std::vector<FaultInfo> CollisionEvaluator::evaluate(
     const bool zone_direction_matches =
       zone_matches_motion_direction(zone.motion_direction, runtime_direction, !is_ttc_zone) ||
       keep_latched_without_fresh_speed;
+    const bool ttc_base_zone_direction_matches =
+      is_ttc_zone && !zone.legacy_approach_model && zone.points.size() >= 3 &&
+      (zone_matches_motion_direction(zone.motion_direction, runtime_direction, true) ||
+      keep_latched_without_fresh_speed);
     bool abnormal = false;
+    const bool navigation_hold_zone = is_ttc_zone && zone.navigation_safe_hold_zone;
     std::string reason;
     if (is_ttc_zone) {
-      if (!zone_direction_matches) {
+      if (!zone_direction_matches && !ttc_base_zone_direction_matches) {
         continue;
       }
+      const double active_threshold =
+        (currently_latched && zone.recover_time_before_collision > zone.time_before_collision) ?
+        zone.recover_time_before_collision : zone.time_before_collision;
+      const double dynamic_ttc_forward_range = prediction_speed_fresh ?
+        current_speed * active_threshold : 0.0;
+      const double base_forward_range =
+        ttc_base_forward_extension(cfg.footprint_points, zone.points);
+      const bool base_zone_as_ttc_floor =
+        !zone.navigation_safe_hold_zone ||
+        dynamic_ttc_forward_range + 1e-6 < base_forward_range;
+      double base_inside_weight = 0.0;
+      size_t base_inside_count = 0;
+      if (ttc_base_zone_direction_matches && base_zone_as_ttc_floor) {
+        for (const auto & point : points) {
+          if (!is_point_inside_polygon(point, zone.points)) {
+            continue;
+          }
+          base_inside_count++;
+          base_inside_weight += std::max(0.0, point.weight);
+        }
+        if (base_inside_weight >= zone.min_points) {
+          abnormal = true;
+          std::ostringstream oss;
+          oss << (navigation_hold_zone ?
+            "Navigation SAFE hold zone hit: zone=" :
+            "Collision TTC base zone hit: zone=") << zone.name
+              << " weighted_points=" << base_inside_weight
+              << " raw_points=" << base_inside_count
+              << " min_points=" << zone.min_points;
+          reason = oss.str();
+        }
+      }
+
       const double evaluation_speed =
         (prediction_speed_fresh || keep_latched_without_fresh_speed) ?
         std::fabs(chassis_state.prediction_speed) : 0.0;
-      if (evaluation_speed > 1e-3) {
+      if (!abnormal && zone_direction_matches && evaluation_speed > 1e-3) {
         if (cfg.footprint_points.empty()) {
           RCLCPP_ERROR(
             rclcpp::get_logger("nav2_monitor.collision_evaluator"),
@@ -771,9 +835,6 @@ std::vector<FaultInfo> CollisionEvaluator::evaluate(
         double min_collision_time = std::numeric_limits<double>::infinity();
         double min_clearance = std::numeric_limits<double>::infinity();
         CollisionPoint best_point;
-        const double active_threshold =
-          (currently_latched && zone.recover_time_before_collision > zone.time_before_collision) ?
-          zone.recover_time_before_collision : zone.time_before_collision;
 
         const double active_horizon = std::max(
           active_threshold,

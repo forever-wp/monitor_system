@@ -10,12 +10,127 @@ namespace
 {
 constexpr int kSingleRulePriority = 100;
 constexpr int kCombinedRulePriority = 1000;
+
+bool time_is_set(const rclcpp::Time & time)
+{
+  return time.nanoseconds() != 0;
+}
+
+double elapsed_s(const rclcpp::Time & now, const rclcpp::Time & since)
+{
+  if (!time_is_set(since)) {
+    return 0.0;
+  }
+  return (now - since).seconds();
+}
+
+EventCodexConditionConfig exact_key_condition(const std::string & key)
+{
+  EventCodexConditionConfig condition;
+  condition.event_key = key;
+  return condition;
+}
+
+std::vector<EventCodexConditionConfig> effective_conditions(
+  const std::vector<EventCodexConditionConfig> & configured_conditions,
+  const std::vector<std::string> & exact_keys)
+{
+  if (!configured_conditions.empty()) {
+    return configured_conditions;
+  }
+
+  std::vector<EventCodexConditionConfig> conditions;
+  conditions.reserve(exact_keys.size());
+  for (const auto & key : exact_keys) {
+    conditions.push_back(exact_key_condition(key));
+  }
+  return conditions;
+}
+
+bool condition_matches(
+  const std::string & key,
+  const FaultInfo & fact,
+  const EventCodexConditionConfig & condition)
+{
+  if (!condition.event_key.empty() && key != condition.event_key) {
+    return false;
+  }
+  if (!condition.module_name.empty() && fact.module_name != condition.module_name) {
+    return false;
+  }
+  if (!condition.fault_type.empty() && fact.fault_type != condition.fault_type) {
+    return false;
+  }
+  if (!condition.fault_model.empty() && fact.fault_model != condition.fault_model) {
+    return false;
+  }
+  if (!condition.fault_name.empty() && fact.fault_name != condition.fault_name) {
+    return false;
+  }
+  if (!condition.fault_key_prefix.empty() &&
+    key.rfind(condition.fault_key_prefix, 0) != 0)
+  {
+    return false;
+  }
+  if (!condition.fault_key_contains.empty() &&
+    key.find(condition.fault_key_contains) == std::string::npos)
+  {
+    return false;
+  }
+  if (condition.action_set && fact.action != condition.action) {
+    return false;
+  }
+  return true;
+}
+
+std::string condition_label(const EventCodexConditionConfig & condition)
+{
+  if (!condition.event_key.empty()) {
+    return condition.event_key;
+  }
+
+  std::vector<std::string> parts;
+  auto add_part = [&parts](const std::string & name, const std::string & value) {
+      if (!value.empty()) {
+        parts.push_back(name + "=" + value);
+      }
+    };
+  add_part("module", condition.module_name);
+  add_part("fault_type", condition.fault_type);
+  add_part("fault_model", condition.fault_model);
+  add_part("fault_name", condition.fault_name);
+  add_part("prefix", condition.fault_key_prefix);
+  add_part("contains", condition.fault_key_contains);
+  if (condition.action_set) {
+    parts.push_back("action=" + std::to_string(static_cast<int>(condition.action)));
+  }
+
+  std::ostringstream oss;
+  for (size_t i = 0; i < parts.size(); ++i) {
+    if (i > 0) {
+      oss << ",";
+    }
+    oss << parts[i];
+  }
+  return oss.str();
+}
 }
 
 void EventCodexArbiter::set_combined_fault_rules(
   const std::vector<CombinedFaultRuleConfig> & rules)
 {
   combined_rules_ = rules;
+  std::set<std::string> valid_rule_ids;
+  for (const auto & rule : combined_rules_) {
+    valid_rule_ids.insert("combined|" + rule.name);
+  }
+  for (auto it = rule_states_.begin(); it != rule_states_.end(); ) {
+    if (valid_rule_ids.count(it->first) == 0 && it->first.rfind("single|", 0) != 0) {
+      it = rule_states_.erase(it);
+    } else {
+      ++it;
+    }
+  }
 }
 
 std::string EventCodexArbiter::fallback_fault_key(const FaultInfo & fault)
@@ -109,8 +224,60 @@ void EventCodexArbiter::append_unique(std::vector<std::string> & values, const s
   }
 }
 
+bool EventCodexArbiter::update_candidate_runtime(
+  Candidate & candidate,
+  bool matched,
+  const rclcpp::Time & now)
+{
+  auto & state = rule_states_[candidate.rule.rule_id];
+  candidate.was_active = state.active;
+
+  if (matched) {
+    state.first_clear_time = rclcpp::Time(0, 0, RCL_ROS_TIME);
+    if (!state.active) {
+      if (!time_is_set(state.first_match_time)) {
+        state.first_match_time = now;
+      }
+      if (elapsed_s(now, state.first_match_time) + 1e-9 < candidate.rule.enter_hold_s) {
+        candidate.ready = false;
+        return false;
+      }
+      state.active = true;
+      state.activated_time = now;
+    }
+    return true;
+  }
+
+  state.first_match_time = rclcpp::Time(0, 0, RCL_ROS_TIME);
+  if (!state.active) {
+    return false;
+  }
+
+  if (elapsed_s(now, state.activated_time) + 1e-9 < candidate.rule.min_hold_s) {
+    candidate.ready = true;
+    candidate.clearing = false;
+    return true;
+  }
+
+  if (!time_is_set(state.first_clear_time)) {
+    state.first_clear_time =
+      state.activated_time + rclcpp::Duration::from_seconds(candidate.rule.min_hold_s);
+  }
+  if (elapsed_s(now, state.first_clear_time) + 1e-9 < candidate.rule.clear_hold_s) {
+    candidate.ready = true;
+    candidate.clearing = true;
+    return true;
+  }
+
+  state.active = false;
+  state.activated_time = rclcpp::Time(0, 0, RCL_ROS_TIME);
+  state.first_clear_time = rclcpp::Time(0, 0, RCL_ROS_TIME);
+  return false;
+}
+
 std::vector<EventCodexArbiter::Candidate> EventCodexArbiter::build_candidates(
-  const std::map<std::string, FaultInfo> & active_facts) const
+  const std::map<std::string, FaultInfo> & active_facts,
+  const rclcpp::Time & now)
 {
   std::vector<Candidate> candidates;
 
@@ -122,6 +289,7 @@ std::vector<EventCodexArbiter::Candidate> EventCodexArbiter::build_candidates(
     rule.module_names = {fact.module_name};
     rule.level = fact.level;
     rule.reason = fact.reason;
+    rule.report_reason = fact.reason;
     rule.combined = false;
     rule.manual_takeover = is_vehicle_state_judge_fault(fact);
     if (fact.action != ActionType::NONE) {
@@ -145,32 +313,72 @@ std::vector<EventCodexArbiter::Candidate> EventCodexArbiter::build_candidates(
   }
 
   for (const auto & config : combined_rules_) {
-    bool matched = true;
+    const auto all_conditions =
+      effective_conditions(config.when_all_conditions, config.when_all_fault_keys);
+    const auto any_conditions =
+      effective_conditions(config.when_any_conditions, config.when_any_fault_keys);
+
+    bool all_matched = true;
     std::vector<FaultInfo> matched_facts;
-    matched_facts.reserve(config.when_all_fault_keys.size());
-    for (const auto & fault_key : config.when_all_fault_keys) {
-      const auto it = active_facts.find(fault_key);
-      if (it == active_facts.end()) {
-        matched = false;
+    std::set<std::string> matched_keys;
+    matched_facts.reserve(all_conditions.size() + any_conditions.size());
+    for (const auto & condition : all_conditions) {
+      bool condition_matched = false;
+      for (const auto & [key, fact] : active_facts) {
+        if (!condition_matches(key, fact, condition)) {
+          continue;
+        }
+        condition_matched = true;
+        if (matched_keys.insert(key).second) {
+          matched_facts.push_back(fact);
+        }
+      }
+      if (!condition_matched) {
+        all_matched = false;
         break;
       }
-      matched_facts.push_back(it->second);
     }
-    if (!matched || matched_facts.empty()) {
-      continue;
+    bool any_matched = any_conditions.empty();
+    for (const auto & condition : any_conditions) {
+      for (const auto & [key, fact] : active_facts) {
+        if (!condition_matches(key, fact, condition)) {
+          continue;
+        }
+        any_matched = true;
+        if (matched_keys.insert(key).second) {
+          matched_facts.push_back(fact);
+        }
+      }
     }
+    const size_t required_count = config.min_match_count > 0 ? config.min_match_count :
+      (!any_conditions.empty() && all_conditions.empty() ? 1 : 0);
+    const bool matched =
+      all_matched && any_matched && (required_count == 0 || matched_keys.size() >= required_count);
 
     EventCodexSelectedRule rule;
     rule.rule_id = "combined|" + config.name;
     rule.rule_name = config.name;
-    rule.event_keys = config.when_all_fault_keys;
+    rule.event_keys.assign(matched_keys.begin(), matched_keys.end());
+    if (rule.event_keys.empty()) {
+      for (const auto & condition : all_conditions) {
+        append_unique(rule.event_keys, condition_label(condition));
+      }
+      for (const auto & condition : any_conditions) {
+        append_unique(rule.event_keys, condition_label(condition));
+      }
+    }
     rule.level = config.level;
     rule.actions = config.actions;
     rule.safety_command = config.safety_command;
     rule.safety_slow_down_percentage = config.safety_slow_down_percentage;
     rule.reason = config.reason.empty() ? ("Combined fault triggered: " + config.name) : config.reason;
+    rule.report_reason = config.report_reason.empty() ? rule.reason : config.report_reason;
     rule.combined = true;
     rule.manual_takeover = config.manual_takeover;
+    rule.enter_hold_s = config.enter_hold_s;
+    rule.clear_hold_s = config.clear_hold_s;
+    rule.min_hold_s = config.min_hold_s;
+    rule.nodemanager_modules = config.nodemanager_modules;
     for (const auto & fact : matched_facts) {
       append_unique(rule.module_names, fact.module_name);
       rule.manual_takeover = rule.manual_takeover || is_vehicle_state_judge_fault(fact);
@@ -185,7 +393,9 @@ std::vector<EventCodexArbiter::Candidate> EventCodexArbiter::build_candidates(
     candidate.priority = config.priority > 0 ? config.priority : kCombinedRulePriority;
     candidate.execution_level = execution_level(candidate);
     candidate.was_active = previous_selected_rule_ids_.count(candidate.rule.rule_id) > 0;
-    candidates.push_back(std::move(candidate));
+    if (update_candidate_runtime(candidate, matched, now)) {
+      candidates.push_back(std::move(candidate));
+    }
   }
 
   return candidates;
@@ -255,6 +465,9 @@ EventExecutionPlan EventCodexArbiter::build_plan(const std::vector<Candidate> & 
     const auto & rule = candidate.rule;
     plan.selected_rules.push_back(rule);
     signature_parts.push_back(rule.rule_id);
+    for (const auto & key : rule.event_keys) {
+      append_unique(plan.active_event_keys, key);
+    }
 
     if (has_action(rule, ActionType::SAFETY_SYSTEM) &&
       rule.safety_command != SafetyCommandType::NONE)
@@ -275,20 +488,26 @@ EventExecutionPlan EventCodexArbiter::build_plan(const std::vector<Candidate> & 
     }
 
     if (has_action(rule, ActionType::SUPERVISOR)) {
-      const std::string module_name =
-        rule.combined ? std::string("combined_fault") :
-        (!rule.module_names.empty() ? rule.module_names.front() : std::string("unknown"));
-      auto & decision = nodemanager_by_module[module_name];
-      decision.module_name = module_name;
-      decision.level = rule.level;
-      append_unique(decision.rule_ids, rule.rule_id);
-      for (const auto & key : rule.event_keys) {
-        append_unique(decision.fault_keys, key);
+      std::vector<std::string> target_modules = rule.nodemanager_modules;
+      if (target_modules.empty()) {
+        target_modules = rule.module_names;
       }
-      if (decision.reason.empty()) {
-        decision.reason = rule.reason;
-      } else if (decision.reason.find(rule.reason) == std::string::npos) {
-        decision.reason += " | " + rule.reason;
+      if (target_modules.empty()) {
+        target_modules.push_back(rule.combined ? "combined_fault" : "unknown");
+      }
+      for (const auto & module_name : target_modules) {
+        auto & decision = nodemanager_by_module[module_name];
+        decision.module_name = module_name;
+        decision.level = rule.level;
+        append_unique(decision.rule_ids, rule.rule_id);
+        for (const auto & key : rule.event_keys) {
+          append_unique(decision.fault_keys, key);
+        }
+        if (decision.reason.empty()) {
+          decision.reason = rule.reason;
+        } else if (decision.reason.find(rule.reason) == std::string::npos) {
+          decision.reason += " | " + rule.reason;
+        }
       }
     }
 
@@ -329,6 +548,13 @@ EventExecutionPlan EventCodexArbiter::build_plan(const std::vector<Candidate> & 
 
 EventArbitrationResult EventCodexArbiter::update(const std::vector<FaultInfo> & facts)
 {
+  return update(facts, rclcpp::Clock(RCL_ROS_TIME).now());
+}
+
+EventArbitrationResult EventCodexArbiter::update(
+  const std::vector<FaultInfo> & facts,
+  const rclcpp::Time & now)
+{
   EventArbitrationResult result;
   std::map<std::string, FaultInfo> current_facts;
   for (const auto & fact : facts) {
@@ -351,7 +577,7 @@ EventArbitrationResult EventCodexArbiter::update(const std::vector<FaultInfo> & 
     }
   }
 
-  const auto candidates = build_candidates(current_facts);
+  const auto candidates = build_candidates(current_facts, now);
   const auto winners = select_winners(candidates);
   result.plan = build_plan(winners);
   result.plan_changed = result.plan.signature != last_plan_signature_;

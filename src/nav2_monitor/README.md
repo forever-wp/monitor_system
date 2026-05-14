@@ -121,6 +121,7 @@ env ROS_DOMAIN_ID=66 ros2 launch safety_emergency_executor safety_emergency_exec
 
 当前主要配置块：
 
+- `event_codex_rules`
 - `collision_detection`
 - `vehicle_state_judge`
 - `modules`
@@ -142,6 +143,12 @@ env ROS_DOMAIN_ID=66 ros2 launch safety_emergency_executor safety_emergency_exec
   - `metric_name` 对应 `AlgorithmFeedback.metric_name`
   - 当前 `light-lm` 已支持 `/drift_status` 的两条独立规则：
     `drift_state` 与 `drift_delta_norm`
+
+- `event_codex_rules`
+  - 事件法典规则入口，最终执行由 `EventCodexArbiter` 统一仲裁，由 `EventExecutor` 统一发布 `/safety_system/cmd` 与 `/nodemanager/cmd`
+  - `when_all` / `when_any` 可写精确 `event_key` / `fault_key`，也可用 `module`、`fault_type`、`fault_model`、`fault_name`、`prefix`、`contains`、`action` 组合匹配
+  - `execution_plan` 描述目标执行通道，`report_policy` 描述人工接管建议、严重等级和上报原因
+  - 旧 `combined_fault_rules` 仅作为兼容入口，新配置统一使用 `event_codex_rules`
 
 - `vehicle_state_judge`
   - 小车状态判断检测，用于对比“速度指令意图”和“实际运动状态”
@@ -167,7 +174,14 @@ env ROS_DOMAIN_ID=66 ros2 launch safety_emergency_executor safety_emergency_exec
   - 车体 footprint 多边形，格式与 zone 的 `points` 一致
   - `ttc` 模型要求配置该字段；未配置时该 TTC 规则会被安全跳过
   - 当前 `ttc` 会使用轻量预测轨迹（常速度 / 常角速度离散前推）生成动态 corridor，并基于车体 footprint 计算 TTC
+  - `ttc` 区也可以配置 `points` 或 `auto_footprint_zone` 作为基础框；当动态 TTC 前向范围小于基础框时，基础框作为 SAFE 下限接管，防止狭窄区域/无速度预测时过早切回 FAST
   - 可额外配置 `recover_time_before_collision` 作为退出阈值，以及 `min_hold_time_s` 作为最小保持时间
+- `collision_detection.auto_footprint_zones_enabled`
+  - 打开后可用 `auto_footprint_zone` 从 `footprint_points` 自动生成 `front_ttc/front_slow/front_stop` 基础框
+  - 关闭后不会覆盖 `zones[].points`，可直接用 `points` 手动调整框体大小
+- `collision_detection.auto_footprint_zone_size_multiplier`
+  - 自动生成框体整体倍率，会同时放大前向长度和左右宽度
+  - 单个 zone 可用同名字段继续叠加；也可用 `auto_footprint_fast_scale` / `auto_footprint_safe_scale` 覆盖 FAST/SAFE 下的前向车身倍数
 - `collision_detection.direction_speed_threshold`
   - `zone` 模式前后向判断阈值
   - 当 `|prediction_linear_x|` 小于该值时，保持当前稳定方向；若尚未建立稳定方向，则只匹配 `motion_direction=both`
@@ -196,6 +210,10 @@ env ROS_DOMAIN_ID=66 ros2 launch safety_emergency_executor safety_emergency_exec
   - `model` 支持：
     - 默认 zone 命中
     - `ttc`
+  - `auto_footprint_zone` 支持：
+    - `front_ttc`
+    - `front_slow`
+    - `front_stop`
   - `actions` 支持：
     - `safety_system`
     - `supervisor`

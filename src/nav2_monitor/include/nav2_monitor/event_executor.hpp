@@ -17,11 +17,22 @@ namespace nav2_monitor
 
 struct EventExecutionResult
 {
+  struct TargetResult
+  {
+    std::string target;
+    bool requested{false};
+    bool published{false};
+    bool latched{false};
+    std::string action;
+    std::string reason;
+  };
+
   std::string plan_id;
   std::string plan_signature;
   std::optional<msg::SafetyCmd> safety_cmd;
   std::vector<std::string> nodemanager_json_payloads;
   std::vector<EventNodeManagerDecision> nodemanager_decisions;
+  std::vector<TargetResult> target_results;
 };
 
 class EventExecutor

@@ -21,13 +21,18 @@ struct EventCodexSelectedRule
   std::string rule_name;
   std::vector<std::string> event_keys;
   std::vector<std::string> module_names;
+  std::vector<std::string> nodemanager_modules;
   FaultLevel level{FaultLevel::NORMAL};
   std::vector<ActionType> actions;
   SafetyCommandType safety_command{SafetyCommandType::NONE};
   double safety_slow_down_percentage{0.0};
   std::string reason;
+  std::string report_reason;
   bool combined{false};
   bool manual_takeover{false};
+  double enter_hold_s{0.0};
+  double clear_hold_s{0.0};
+  double min_hold_s{0.0};
 };
 
 struct EventNodeManagerDecision
@@ -53,6 +58,7 @@ struct EventExecutionPlan
   std::string plan_id;
   std::string signature;
   std::vector<EventCodexSelectedRule> selected_rules;
+  std::vector<std::string> active_event_keys;
   std::optional<SafetyCommandUpdate> safety_update;
   std::vector<EventNodeManagerDecision> nodemanager_decisions;
   std::vector<EventHumanTakeoverDecision> human_takeovers;
@@ -72,6 +78,7 @@ public:
 
   void set_combined_fault_rules(const std::vector<CombinedFaultRuleConfig> & rules);
   EventArbitrationResult update(const std::vector<FaultInfo> & facts);
+  EventArbitrationResult update(const std::vector<FaultInfo> & facts, const rclcpp::Time & now);
 
 private:
   struct Candidate
@@ -81,6 +88,16 @@ private:
     int priority{0};
     int execution_level{0};
     bool was_active{false};
+    bool ready{true};
+    bool clearing{false};
+  };
+
+  struct RuleRuntimeState
+  {
+    bool active{false};
+    rclcpp::Time first_match_time{0, 0, RCL_ROS_TIME};
+    rclcpp::Time activated_time{0, 0, RCL_ROS_TIME};
+    rclcpp::Time first_clear_time{0, 0, RCL_ROS_TIME};
   };
 
   static std::string fallback_fault_key(const FaultInfo & fault);
@@ -94,13 +111,16 @@ private:
   static void append_unique(std::vector<std::string> & values, const std::string & value);
 
   std::vector<Candidate> build_candidates(
-    const std::map<std::string, FaultInfo> & active_facts) const;
+    const std::map<std::string, FaultInfo> & active_facts,
+    const rclcpp::Time & now);
   std::vector<Candidate> select_winners(std::vector<Candidate> candidates) const;
   EventExecutionPlan build_plan(const std::vector<Candidate> & winners) const;
+  bool update_candidate_runtime(Candidate & candidate, bool matched, const rclcpp::Time & now);
 
   std::vector<CombinedFaultRuleConfig> combined_rules_;
   std::map<std::string, FaultInfo> active_facts_;
   std::set<std::string> previous_selected_rule_ids_;
+  std::map<std::string, RuleRuntimeState> rule_states_;
   std::string last_plan_signature_;
 };
 

@@ -12,6 +12,7 @@
 #include "nav2_monitor/msg/fault_event.hpp"
 #include "nav2_monitor/msg/safety_cmd.hpp"
 #include "nav2_monitor/event_codex_arbiter.hpp"
+#include "nav2_monitor/event_executor.hpp"
 
 namespace nav2_monitor
 {
@@ -27,6 +28,10 @@ public:
   void cache_supervisor_json(const std::string & json_payload, const rclcpp::Time & now);
   void cache_safety_cmd(const msg::SafetyCmd & msg, const rclcpp::Time & now);
   void publish_fault_event_json(const msg::FaultEvent & event, const rclcpp::Time & now) const;
+  void publish_codex_event_json(
+    const EventExecutionPlan & plan,
+    const EventExecutionResult & execution_result,
+    const rclcpp::Time & now) const;
   void publish_human_takeover(
     const EventHumanTakeoverDecision & decision,
     const std::string & plan_id,

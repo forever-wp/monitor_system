@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <initializer_list>
 #include <limits>
 #include <set>
 #include <sstream>
@@ -63,11 +64,13 @@ bool parse_fault_level(const YAML::Node & node, FaultLevel & level)
 bool parse_action(const std::string & raw_action, ActionType & action)
 {
   const std::string action_str = to_lower(raw_action);
-  if (action_str == "nodemanager" || action_str == "node_manager" || action_str == "supervisor") {
+  if (action_str == "nodemanager" || action_str == "node_manager" || action_str == "supervisor" ||
+    action_str == "node")
+  {
     action = ActionType::SUPERVISOR;
     return true;
   }
-  if (action_str == "safety_system") {
+  if (action_str == "safety_system" || action_str == "safety") {
     action = ActionType::SAFETY_SYSTEM;
     return true;
   }
@@ -172,9 +175,10 @@ bool parse_bool(const YAML::Node & node, bool fallback)
 
 std::vector<CollisionPoint> make_forward_footprint_zone(
   const std::vector<CollisionPoint> & footprint,
-  double forward_body_scale)
+  double forward_body_scale,
+  double size_multiplier)
 {
-  if (footprint.size() < 3 || forward_body_scale <= 0.0) {
+  if (footprint.size() < 3 || forward_body_scale <= 0.0 || size_multiplier <= 0.0) {
     return {};
   }
 
@@ -195,14 +199,19 @@ std::vector<CollisionPoint> make_forward_footprint_zone(
   }
 
   const double body_length = max_x - min_x;
+  const double body_width = max_y - min_y;
   const double front_x = max_x;
-  const double forward_x = front_x + body_length * forward_body_scale;
+  const double forward_x = front_x + body_length * forward_body_scale * size_multiplier;
+  const double center_y = 0.5 * (min_y + max_y);
+  const double half_y = 0.5 * body_width * size_multiplier;
+  const double expanded_min_y = center_y - half_y;
+  const double expanded_max_y = center_y + half_y;
 
   return {
-    CollisionPoint{forward_x, max_y},
-    CollisionPoint{forward_x, min_y},
-    CollisionPoint{front_x, min_y},
-    CollisionPoint{front_x, max_y}
+    CollisionPoint{forward_x, expanded_max_y},
+    CollisionPoint{forward_x, expanded_min_y},
+    CollisionPoint{front_x, expanded_min_y},
+    CollisionPoint{front_x, expanded_max_y}
   };
 }
 
@@ -219,6 +228,9 @@ AutoFootprintZoneType parse_auto_footprint_zone_type(const YAML::Node & node)
   if (raw == "front_stop" || raw == "stop") {
     return AutoFootprintZoneType::FRONT_STOP;
   }
+  if (raw == "front_ttc" || raw == "ttc" || raw == "front_avoid" || raw == "avoid") {
+    return AutoFootprintZoneType::FRONT_TTC;
+  }
   return AutoFootprintZoneType::NONE;
 }
 
@@ -227,7 +239,6 @@ void apply_auto_footprint_zone_points(
   const CollisionDetectionConfig & cfg)
 {
   if (!cfg.auto_footprint_zones_enabled ||
-    zone.model != CollisionModelType::ZONE ||
     zone.auto_footprint_zone == AutoFootprintZoneType::NONE)
   {
     return;
@@ -241,10 +252,24 @@ void apply_auto_footprint_zone_points(
   } else if (zone.auto_footprint_zone == AutoFootprintZoneType::FRONT_STOP) {
     fast_scale = 0.5;
     safe_scale = 0.35;
+  } else if (zone.auto_footprint_zone == AutoFootprintZoneType::FRONT_TTC) {
+    fast_scale = 1.0;
+    safe_scale = 1.0;
   }
 
-  zone.fast_points = make_forward_footprint_zone(cfg.footprint_points, fast_scale);
-  zone.safe_points = make_forward_footprint_zone(cfg.footprint_points, safe_scale);
+  if (zone.auto_footprint_fast_scale > 0.0) {
+    fast_scale = zone.auto_footprint_fast_scale;
+  }
+  if (zone.auto_footprint_safe_scale > 0.0) {
+    safe_scale = zone.auto_footprint_safe_scale;
+  }
+
+  const double size_multiplier =
+    cfg.auto_footprint_zone_size_multiplier * zone.auto_footprint_zone_size_multiplier;
+  zone.fast_points = make_forward_footprint_zone(
+    cfg.footprint_points, fast_scale, size_multiplier);
+  zone.safe_points = make_forward_footprint_zone(
+    cfg.footprint_points, safe_scale, size_multiplier);
   zone.points = cfg.navigation_safe_mode_active && !zone.safe_points.empty() ?
     zone.safe_points : zone.fast_points;
 }
@@ -303,6 +328,223 @@ void apply_ultrasonic_widget(
       RCLCPP_ERROR(logger, "[collision_detection] ultrasonic_widget[%zu] invalid: %s", idx, e.what());
     }
   }
+}
+
+std::vector<std::string> parse_string_sequence(
+  const YAML::Node & node,
+  const std::string & scalar_key = "")
+{
+  std::vector<std::string> values;
+  if (!node || !node.IsSequence()) {
+    return values;
+  }
+
+  for (const auto & item : node) {
+    try {
+      std::string value;
+      if (item.IsScalar()) {
+        value = item.as<std::string>();
+      } else if (!scalar_key.empty() && item[scalar_key] && item[scalar_key].IsScalar()) {
+        value = item[scalar_key].as<std::string>();
+      } else if (item["fault_key"] && item["fault_key"].IsScalar()) {
+        value = item["fault_key"].as<std::string>();
+      } else if (item["event_key"] && item["event_key"].IsScalar()) {
+        value = item["event_key"].as<std::string>();
+      }
+      if (!value.empty() && std::find(values.begin(), values.end(), value) == values.end()) {
+        values.push_back(value);
+      }
+    } catch (...) {
+    }
+  }
+  return values;
+}
+
+std::string parse_condition_string(
+  const YAML::Node & node,
+  std::initializer_list<const char *> keys)
+{
+  for (const auto * key : keys) {
+    if (node[key] && node[key].IsScalar()) {
+      return node[key].as<std::string>();
+    }
+  }
+  return {};
+}
+
+std::vector<EventCodexConditionConfig> parse_codex_conditions(
+  const YAML::Node & node,
+  const std::string & scope,
+  rclcpp::Logger logger)
+{
+  std::vector<EventCodexConditionConfig> conditions;
+  if (!node || !node.IsSequence()) {
+    return conditions;
+  }
+
+  for (size_t idx = 0; idx < node.size(); ++idx) {
+    const auto & item = node[idx];
+    EventCodexConditionConfig condition;
+    try {
+      if (item.IsScalar()) {
+        condition.event_key = item.as<std::string>();
+      } else if (item.IsMap()) {
+        condition.event_key = parse_condition_string(
+          item, {"event_key", "fault_key"});
+        condition.module_name = parse_condition_string(item, {"module", "module_name"});
+        condition.fault_type = parse_condition_string(item, {"fault_type", "type"});
+        condition.fault_model = parse_condition_string(item, {"fault_model", "model"});
+        condition.fault_name = parse_condition_string(item, {"fault_name", "name"});
+        condition.fault_key_prefix = parse_condition_string(
+          item, {"fault_key_prefix", "event_key_prefix", "prefix"});
+        condition.fault_key_contains = parse_condition_string(
+          item, {"fault_key_contains", "event_key_contains", "contains"});
+        if (item["action"]) {
+          ActionType action = ActionType::NONE;
+          if (parse_action(item["action"].as<std::string>(), action)) {
+            condition.action = action;
+            condition.action_set = true;
+          }
+        }
+      }
+    } catch (const std::exception & e) {
+      RCLCPP_ERROR(
+        logger, "[%s][%zu] invalid codex condition: %s", scope.c_str(), idx, e.what());
+      continue;
+    }
+
+    if (condition.event_key.empty() && condition.module_name.empty() &&
+      condition.fault_type.empty() && condition.fault_model.empty() &&
+      condition.fault_name.empty() && condition.fault_key_prefix.empty() &&
+      condition.fault_key_contains.empty() && !condition.action_set)
+    {
+      RCLCPP_ERROR(
+        logger, "[%s][%zu] empty codex condition ignored", scope.c_str(), idx);
+      continue;
+    }
+    conditions.push_back(std::move(condition));
+  }
+
+  return conditions;
+}
+
+bool parse_codex_rule(
+  const YAML::Node & rule_node,
+  const std::string & scope,
+  CombinedFaultRuleConfig & rule,
+  rclcpp::Logger logger)
+{
+  if ((!rule_node["name"] || !rule_node["name"].IsScalar()) &&
+    (!rule_node["rule_id"] || !rule_node["rule_id"].IsScalar()))
+  {
+    RCLCPP_ERROR(logger, "Skip %s rule: missing name/rule_id", scope.c_str());
+    return false;
+  }
+
+  if (rule_node["name"] && rule_node["name"].IsScalar()) {
+    rule.name = rule_node["name"].as<std::string>();
+  }
+  if (rule_node["rule_id"] && rule_node["rule_id"].IsScalar()) {
+    rule.name = rule_node["rule_id"].as<std::string>();
+  }
+
+  rule.when_all_fault_keys = parse_string_sequence(rule_node["when_all"]);
+  rule.when_any_fault_keys = parse_string_sequence(rule_node["when_any"]);
+  rule.when_all_conditions = parse_codex_conditions(rule_node["when_all"], scope + ":" + rule.name + ":when_all", logger);
+  rule.when_any_conditions = parse_codex_conditions(rule_node["when_any"], scope + ":" + rule.name + ":when_any", logger);
+  if (rule_node["min_match_count"]) {
+    rule.min_match_count = std::max(1, rule_node["min_match_count"].as<int>());
+  }
+  if (rule.when_all_conditions.empty() && rule.when_any_conditions.empty()) {
+    RCLCPP_ERROR(logger, "[%s][%s] missing when_all/when_any sequence", scope.c_str(), rule.name.c_str());
+    return false;
+  }
+
+  if (!parse_fault_level(rule_node["level"], rule.level)) {
+    rule.level = FaultLevel::ERROR;
+  }
+  if (rule_node["priority"]) {
+    rule.priority = std::max(1, rule_node["priority"].as<int>());
+  }
+  if (rule_node["enter_hold_s"]) {
+    rule.enter_hold_s = std::max(0.0, rule_node["enter_hold_s"].as<double>());
+  }
+  if (rule_node["clear_hold_s"]) {
+    rule.clear_hold_s = std::max(0.0, rule_node["clear_hold_s"].as<double>());
+  }
+  if (rule_node["min_hold_s"]) {
+    rule.min_hold_s = std::max(0.0, rule_node["min_hold_s"].as<double>());
+  }
+
+  rule.actions = parse_actions(rule_node["actions"], "[" + scope + "][" + rule.name + "]", logger);
+  if (const auto plan = rule_node["execution_plan"]) {
+    auto plan_actions = parse_actions(plan["targets"], "[" + scope + "][" + rule.name + "][execution_plan]", logger);
+    for (const auto action : plan_actions) {
+      if (std::find(rule.actions.begin(), rule.actions.end(), action) == rule.actions.end()) {
+        rule.actions.push_back(action);
+      }
+    }
+    if (const auto safety = plan["safety"]) {
+      SafetyCommandType safety_command = SafetyCommandType::NONE;
+      if (parse_safety_command(safety["action"], safety_command)) {
+        rule.safety_command = safety_command;
+      }
+      if (safety["slow_down_percentage"]) {
+        rule.safety_slow_down_percentage = std::clamp(
+          safety["slow_down_percentage"].as<double>(), 0.0, 100.0);
+      }
+      if (rule.safety_command != SafetyCommandType::NONE &&
+        std::find(rule.actions.begin(), rule.actions.end(), ActionType::SAFETY_SYSTEM) ==
+        rule.actions.end())
+      {
+        rule.actions.push_back(ActionType::SAFETY_SYSTEM);
+      }
+    }
+    if (const auto nodemanager = plan["nodemanager"]) {
+      rule.nodemanager_modules = parse_string_sequence(nodemanager["module_keys"]);
+      if (rule.nodemanager_modules.empty()) {
+        rule.nodemanager_modules = parse_string_sequence(nodemanager["modules"]);
+      }
+      if (nodemanager && std::find(rule.actions.begin(), rule.actions.end(), ActionType::SUPERVISOR) ==
+        rule.actions.end())
+      {
+        rule.actions.push_back(ActionType::SUPERVISOR);
+      }
+    }
+  }
+
+  SafetyCommandType safety_command = SafetyCommandType::NONE;
+  if (parse_safety_command(rule_node["safety_system"], safety_command)) {
+    rule.safety_command = safety_command;
+  }
+  if (rule_node["safety_slow_down_percentage"]) {
+    rule.safety_slow_down_percentage = std::clamp(
+      rule_node["safety_slow_down_percentage"].as<double>(), 0.0, 100.0);
+  }
+  if (rule_node["reason"] && rule_node["reason"].IsScalar()) {
+    rule.reason = rule_node["reason"].as<std::string>();
+  }
+  if (rule_node["manual_takeover"]) {
+    rule.manual_takeover = parse_bool(rule_node["manual_takeover"], false);
+  }
+  if (const auto report = rule_node["report_policy"]) {
+    if (report["human_takeover"]) {
+      rule.manual_takeover = parse_bool(report["human_takeover"], rule.manual_takeover);
+    }
+    if (report["severity"]) {
+      (void)parse_fault_level(report["severity"], rule.level);
+    }
+    if (report["reason"] && report["reason"].IsScalar()) {
+      rule.report_reason = report["reason"].as<std::string>();
+      if (rule.reason.empty()) {
+        rule.reason = rule.report_reason;
+      }
+    }
+  }
+  if (rule.reason.empty()) {
+    rule.reason = "Codex rule triggered: " + rule.name;
+  }
+  return true;
 }
 
 
@@ -504,65 +746,30 @@ void FaultDetector::load_config(const std::string & config_file)
       }
     }
 
+    if (config["event_codex_rules"] && config["event_codex_rules"].IsSequence()) {
+      for (const auto & rule_node : config["event_codex_rules"]) {
+        try {
+          CombinedFaultRuleConfig rule;
+          rule.priority = 1000;
+          if (parse_codex_rule(rule_node, "event_codex_rules", rule, node_->get_logger())) {
+            combined_fault_rules_.push_back(std::move(rule));
+          }
+        } catch (const std::exception & e) {
+          RCLCPP_ERROR(node_->get_logger(), "Skip event codex rule: %s", e.what());
+        }
+      }
+    }
+
     if (config["combined_fault_rules"] && config["combined_fault_rules"].IsSequence()) {
       for (const auto & rule_node : config["combined_fault_rules"]) {
         try {
           CombinedFaultRuleConfig rule;
-          if (!rule_node["name"] || !rule_node["name"].IsScalar()) {
-            RCLCPP_ERROR(node_->get_logger(), "Skip combined fault rule: missing name");
-            continue;
+          rule.priority = 1000;
+          if (parse_codex_rule(rule_node, "combined_fault_rules", rule, node_->get_logger())) {
+            combined_fault_rules_.push_back(std::move(rule));
           }
-          rule.name = rule_node["name"].as<std::string>();
-          if (!rule_node["when_all"] || !rule_node["when_all"].IsSequence()) {
-            RCLCPP_ERROR(
-              node_->get_logger(),
-              "[combined_fault_rules][%s] missing when_all sequence",
-              rule.name.c_str());
-            continue;
-          }
-
-          for (const auto & key_node : rule_node["when_all"]) {
-            const auto fault_key = key_node.as<std::string>();
-            if (!fault_key.empty()) {
-              rule.when_all_fault_keys.push_back(fault_key);
-            }
-          }
-          if (rule.when_all_fault_keys.empty()) {
-            RCLCPP_ERROR(
-              node_->get_logger(),
-              "[combined_fault_rules][%s] when_all is empty",
-              rule.name.c_str());
-            continue;
-          }
-
-          if (!parse_fault_level(rule_node["level"], rule.level)) {
-            rule.level = FaultLevel::ERROR;
-          }
-          if (rule_node["priority"]) {
-            rule.priority = std::max(1, rule_node["priority"].as<int>());
-          }
-          rule.actions = parse_actions(
-            rule_node["actions"],
-            "[combined_fault_rules][" + rule.name + "]",
-            node_->get_logger());
-          SafetyCommandType safety_command = SafetyCommandType::NONE;
-          if (parse_safety_command(rule_node["safety_system"], safety_command)) {
-            rule.safety_command = safety_command;
-          }
-          if (rule_node["safety_slow_down_percentage"]) {
-            rule.safety_slow_down_percentage = std::clamp(
-              rule_node["safety_slow_down_percentage"].as<double>(), 0.0, 100.0);
-          }
-          if (rule_node["reason"] && rule_node["reason"].IsScalar()) {
-            rule.reason = rule_node["reason"].as<std::string>();
-          }
-          if (rule_node["manual_takeover"]) {
-            rule.manual_takeover = parse_bool(rule_node["manual_takeover"], false);
-          }
-
-          combined_fault_rules_.push_back(std::move(rule));
         } catch (const std::exception & e) {
-          RCLCPP_ERROR(node_->get_logger(), "Skip combined fault rule: %s", e.what());
+          RCLCPP_ERROR(node_->get_logger(), "Skip combined fault compatibility rule: %s", e.what());
         }
       }
     }
@@ -735,6 +942,10 @@ void FaultDetector::load_config(const std::string & config_file)
         collision_cfg_.auto_footprint_zones_enabled = parse_bool(
           cd["auto_footprint_zones_enabled"], false);
       }
+      if (cd["auto_footprint_zone_size_multiplier"]) {
+        collision_cfg_.auto_footprint_zone_size_multiplier =
+          std::max(0.1, cd["auto_footprint_zone_size_multiplier"].as<double>());
+      }
       collision_cfg_.footprint_points.clear();
       if (cd["footprint_points"] && cd["footprint_points"].IsSequence()) {
         std::vector<double> footprint_values;
@@ -805,6 +1016,7 @@ void FaultDetector::load_config(const std::string & config_file)
                 zone.model = CollisionModelType::TTC;
               } else if (model == "approach") {
                 zone.model = CollisionModelType::TTC;
+                zone.legacy_approach_model = true;
                 RCLCPP_WARN(
                   node_->get_logger(),
                   "[collision_detection][%s] model=approach is deprecated; use model=ttc",
@@ -823,6 +1035,18 @@ void FaultDetector::load_config(const std::string & config_file)
             }
             zone.auto_footprint_zone = parse_auto_footprint_zone_type(
               zone_node["auto_footprint_zone"]);
+            if (zone_node["auto_footprint_fast_scale"]) {
+              zone.auto_footprint_fast_scale =
+                std::max(0.0, zone_node["auto_footprint_fast_scale"].as<double>());
+            }
+            if (zone_node["auto_footprint_safe_scale"]) {
+              zone.auto_footprint_safe_scale =
+                std::max(0.0, zone_node["auto_footprint_safe_scale"].as<double>());
+            }
+            if (zone_node["auto_footprint_zone_size_multiplier"]) {
+              zone.auto_footprint_zone_size_multiplier =
+                std::max(0.1, zone_node["auto_footprint_zone_size_multiplier"].as<double>());
+            }
             if (zone_node["enabled"]) {
               try {
                 if (zone_node["enabled"].IsScalar()) {
@@ -890,6 +1114,10 @@ void FaultDetector::load_config(const std::string & config_file)
               } catch (...) {
                 zone.visualize = true;
               }
+            }
+            if (zone_node["navigation_safe_hold_zone"]) {
+              zone.navigation_safe_hold_zone = parse_bool(
+                zone_node["navigation_safe_hold_zone"], false);
             }
             if (zone_node["polygon_pub_topic"]) {
               zone.polygon_pub_topic = zone_node["polygon_pub_topic"].as<std::string>();
